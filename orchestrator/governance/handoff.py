@@ -33,14 +33,24 @@ def _gates_section(status_doc: Dict[str, Any]) -> List[str]:
             out += [f"### ACTION REQUIRED NOW - {g['id']}: {g['title']}", "",
                     f"**Tell Lukas, before any other development work:** {g['message']}", ""]
             out += [f"{i}. {s}" for i, s in enumerate(g["steps"], 1)]
-            out += ["", f"Checklist: `{g.get('checklist', '')}`. Status stays TRIGGERED until Lukas acknowledges it.", ""]
+            out += ["", f"**First-real-video checklist** (full version: `{g.get('checklist', '')}`):", ""]
+            out += [f"- [ ] {c}" for c in g["checklist_summary"]]
+            out += ["", "Readiness evidence behind this gate (this is readiness to START real-world validation, not proof "
+                    "of production-quality editing):", ""]
+            for mid in g["trigger_milestones"]:
+                have = ids[mid].get("readiness_evidence") or {}
+                out += [f"- {c['id']} {c['text']} - evidence: {', '.join(have.get(c['id'], [])) or 'none'}"
+                        for c in g["readiness_criteria"]]
+            out += ["", "Status stays TRIGGERED until Lukas acknowledges it.", ""]
         elif g["status"] == "ACKNOWLEDGED":
             out += [f"- {g['id']} ({g['title']}): acknowledged by {g.get('acknowledged_by')} on "
                     f"{g.get('acknowledged_date')}.", ""]
         else:
             states = ", ".join(f"{m} is {ids[m]['implementation']['state']}" for m in g["trigger_milestones"])
             out += [f"- **{g['id']} - {g['title']}** (PENDING; fires when any of {trig} is implemented; now: {states}).",
-                    f"  When it fires: {g['message']}",
+                    f"  Fires only when ALL of these have test_run or observation evidence on {trig}:"]
+            out += [f"  - {c['id']}: {c['text']}" for c in g["readiness_criteria"]]
+            out += [f"  When it fires: {g['message']}",
                     f"  Notification: {g['notification']}", ""]
     return out
 

@@ -958,13 +958,49 @@
         "Q35 is OPEN."
       ],
       "blockers": []
+    },
+    {
+      "id": "M-LFE-03",
+      "title": "First end-to-end long-form pipeline ready for real-world validation",
+      "phase": "Phase 6",
+      "description": "Readiness milestone, not a feature. It is implemented only when one run of the complete workflow has been shown (test_run or observation evidence for each criterion RC-1 to RC-5 in user_action_gates) to process source footage, produce a validated edit plan and Resolve timeline, render a complete long-form output, complete initial automated QC and export verification, and preserve originals with a recoverable project state. It means the pipeline is ready to START real-world validation on real recordings. It is NOT proof that production-quality editing has been achieved; that is what the real-world validation then tests.",
+      "weight": 4,
+      "weight_rationale": "Small PROPOSED weight: the work is in its dependencies; this milestone marks the integrated end-to-end run that unlocks real recordings.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started; depends on the long-form assembly, QC and Editor milestones."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "readiness_evidence": {
+        "RC-1": [],
+        "RC-2": [],
+        "RC-3": [],
+        "RC-4": [],
+        "RC-5": []
+      },
+      "depends_on": [
+        "M-LFE-01",
+        "M-LFE-02",
+        "M-EDT-02",
+        "M-STA-01"
+      ],
+      "commit": null,
+      "open_questions": [
+        "What counts as a complete 'long-form output' for the first run (length, content) is not decided."
+      ],
+      "blockers": []
     }
   ],
   "computed": {
-    "implementation_percent": 36.3,
-    "verification_percent": 12.5,
-    "total_weight": 160,
-    "milestone_count": 28
+    "implementation_percent": 35.4,
+    "verification_percent": 12.2,
+    "total_weight": 164,
+    "milestone_count": 29
   },
   "weights_note": "Weights and milestone granularity were drafted by an AI session (Claude Code) on 2026-11-09 and have not been reviewed by Lukas. Until he approves them, every percentage derived from them is provisional.",
   "user_action_gates": [
@@ -972,11 +1008,11 @@
       "id": "G-FIRST-REAL-VIDEO",
       "title": "Stop development-only work; start producing real videos",
       "trigger_milestones": [
-        "M-LFE-01"
+        "M-LFE-03"
       ],
-      "trigger_description": "Phase 6: the first end-to-end long-form editing pipeline exists and is ready for real-world validation. Fires when M-LFE-01 reaches IMPLEMENTED, UNDER_REVIEW or VERIFIED. If a session believes the pipeline is ready earlier or later than that, it asks Lukas rather than waiting.",
+      "trigger_description": "Phase 6: the first end-to-end long-form editing pipeline is ready for real-world validation. Fires only when the dedicated readiness milestone M-LFE-03 reaches IMPLEMENTED, UNDER_REVIEW or VERIFIED, which validation permits only if its dependencies (M-LFE-01, M-LFE-02, M-EDT-02, M-STA-01) are implemented and every readiness criterion has test_run or observation evidence. Long-form assembly alone (M-LFE-01) does not fire it. A completed real-world production is NOT required: the gate exists to begin that validation.",
       "status": "PENDING",
-      "message": "The long-form pipeline is ready for real-world validation. Stop development-only work and start producing real videos: only real recordings can show whether the editing is good, and the finished long-form videos become the source material for Phase 7 short-form repurposing.",
+      "message": "The first end-to-end long-form pipeline is ready for real-world validation. Stop development-only work and start producing real videos: only real recordings can show whether the editing is good, and the finished long-form videos become the source material for Phase 7 short-form repurposing. This is readiness to begin validation, not proof that production-quality editing has been achieved.",
       "steps": [
         "Tell Lukas, in plain words, that the pipeline is ready for real-world validation and that development-only work should pause.",
         "Give him the filming checklist in AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md and explain which footage, audio and recording variety are useful.",
@@ -986,7 +1022,39 @@
         "Set this gate to ACKNOWLEDGED (acknowledged_by, acknowledged_date) only after Lukas confirms he has read it."
       ],
       "checklist": "AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md",
-      "notification": "NONE. No scheduled task, calendar entry or external automation exists. The reminder is surfaced only by `governance validate` (which fails once the trigger fires while the gate is PENDING) and by the generated SESSION_HANDOFF.md."
+      "notification": "NONE. No scheduled task, calendar entry or external automation exists. The reminder is surfaced only by `governance validate` (which fails once the trigger fires while the gate is PENDING) and by the generated SESSION_HANDOFF.md.",
+      "readiness_criteria": [
+        {
+          "id": "RC-1",
+          "text": "Source footage is processed through the editing pipeline (ingest, understanding, plan) by the pipeline itself."
+        },
+        {
+          "id": "RC-2",
+          "text": "A validated edit plan is produced and a Resolve timeline is built from it."
+        },
+        {
+          "id": "RC-3",
+          "text": "A complete long-form output is rendered."
+        },
+        {
+          "id": "RC-4",
+          "text": "Initial automated QC and export verification are completed on that output."
+        },
+        {
+          "id": "RC-5",
+          "text": "Originals are preserved (verified unchanged) and the project state stays recoverable throughout."
+        }
+      ],
+      "checklist_summary": [
+        "Pick a real topic you would publish anyway; plan one or two long-form videos of roughly 8 to 20 minutes.",
+        "Do a 30-second audio test first; use your best microphone at a steady distance; record 20 to 30 seconds of room tone.",
+        "Use a constant frame rate where possible (variable frame rate is refused by shot detection, Q22).",
+        "Record variety: calm and animated passages, a joke, a restart or repeated phrase, quiet and fast speech, a second angle or phone clip, screen recording and short B-roll if relevant.",
+        "Keep your notes on what must not be cut (names, jokes, claims). Avoid music or footage you have no rights to.",
+        "Put the files in Incoming/<project-name>/ yourself and keep a second backup copy on another drive before anything touches them.",
+        "Ask for incoming-list and incoming-inspect (dry runs) first; ingest only after you agree; originals are never moved, edited or deleted.",
+        "Your review of each result is what makes a milestone verified; it is recorded as evidence."
+      ]
     }
   ]
 }

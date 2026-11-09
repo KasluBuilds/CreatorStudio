@@ -8,8 +8,14 @@ Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`
 
 ## User-action gates (things Lukas must be told at a milestone)
 
-- **G-FIRST-REAL-VIDEO - Stop development-only work; start producing real videos** (PENDING; fires when any of M-LFE-01 is implemented; now: M-LFE-01 is NOT_STARTED).
-  When it fires: The long-form pipeline is ready for real-world validation. Stop development-only work and start producing real videos: only real recordings can show whether the editing is good, and the finished long-form videos become the source material for Phase 7 short-form repurposing.
+- **G-FIRST-REAL-VIDEO - Stop development-only work; start producing real videos** (PENDING; fires when any of M-LFE-03 is implemented; now: M-LFE-03 is NOT_STARTED).
+  Fires only when ALL of these have test_run or observation evidence on M-LFE-03:
+  - RC-1: Source footage is processed through the editing pipeline (ingest, understanding, plan) by the pipeline itself.
+  - RC-2: A validated edit plan is produced and a Resolve timeline is built from it.
+  - RC-3: A complete long-form output is rendered.
+  - RC-4: Initial automated QC and export verification are completed on that output.
+  - RC-5: Originals are preserved (verified unchanged) and the project state stays recoverable throughout.
+  When it fires: The first end-to-end long-form pipeline is ready for real-world validation. Stop development-only work and start producing real videos: only real recordings can show whether the editing is good, and the finished long-form videos become the source material for Phase 7 short-form repurposing. This is readiness to begin validation, not proof that production-quality editing has been achieved.
   Notification: NONE. No scheduled task, calendar entry or external automation exists. The reminder is surfaced only by `governance validate` (which fails once the trigger fires while the gate is PENDING) and by the generated SESSION_HANDOFF.md.
 
 ## Verified baseline
@@ -20,11 +26,11 @@ Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`
 
 ## Progress (computed from PROJECT_STATUS.json)
 
-- Implementation: **36.3%**  
-- Verification: **12.5%**  
-- 28 milestones, total weight 160. Verification never exceeds implementation. Weights are PROPOSED: drafted by an AI session and not yet reviewed by Lukas, so these figures are provisional. 
+- Implementation: **35.4%**  
+- Verification: **12.2%**  
+- 29 milestones, total weight 164. Verification never exceeds implementation. Weights are PROPOSED: drafted by an AI session and not yet reviewed by Lukas, so these figures are provisional. 
 - How to read them: *implementation* is the weighted share of milestones whose code exists (half credit if in progress); *verification* is the weighted share demonstrated at the level evidence supports. Neither measures effort, time left, or whether the product works on real footage.
-- Milestones verified on reviewed real input: 0 of 28 (none).
+- Milestones verified on reviewed real input: 0 of 29 (none).
 - Milestones whose verification rests only on *reported* (not re-observed) evidence: M-RSV-01.
 
 | Phase | Weight | Implemented | Verified |
@@ -37,7 +43,7 @@ Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`
 | Phase 3 | 21 | 47.6% | 16.7% |
 | Phase 4 | 22 | 54.5% | 13.6% |
 | Phase 5 | 26 | 23.1% | 5.8% |
-| Phase 6 | 18 | 0.0% | 0.0% |
+| Phase 6 | 22 | 0.0% | 0.0% |
 | Phase 7 | 8 | 0.0% | 0.0% |
 | Phase 8 | 6 | 0.0% | 0.0% |
 | State foundation | 6 | 100.0% | 25.0% |
@@ -64,6 +70,7 @@ Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`
 | M-INT-03 | Reconcile the two shot detectors | 2 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-LFE-01 | Long-form autonomous assembly in Resolve | 10 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-LFE-02 | Review render, QC loop and export verification | 8 | NOT_STARTED | NONE (NOT_STARTED) |
+| M-LFE-03 | First end-to-end long-form pipeline ready for real-world validation | 4 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-MED-01 | Media analysis foundation | 6 | IN_PROGRESS | UNIT_ISOLATED (IN_PROGRESS) |
 | M-MED-02 | Transcription engine and time-aligned transcripts | 6 | BLOCKED | NONE (NOT_STARTED) |
 | M-RSR-01 | Research Agent offline foundation | 6 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |

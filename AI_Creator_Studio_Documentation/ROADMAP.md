@@ -119,7 +119,7 @@ Offline library foundations exist and are not wired into the pipeline, with no l
 
 ## Phase 6 — Long-form autonomous editing
 
-> **User-action gate `G-FIRST-REAL-VIDEO` (PENDING).** When Phase 6 reaches its first end-to-end long-form editing pipeline ready for real-world validation (milestone `M-LFE-01` implemented), tell Lukas to stop development-only work and start producing real videos, give him `AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md`, explain safe ingestion, start validating long-form editing on the real recordings, and use the resulting long-form videos as the source for Phase 7 short-form repurposing. This is a milestone-triggered action, not an instruction to film now. No scheduled notification exists: the reminder is enforced by `governance validate` failing once the trigger fires, and shown by `SESSION_HANDOFF.md`.
+> **User-action gate `G-FIRST-REAL-VIDEO` (PENDING).** When Phase 6 reaches its first end-to-end long-form editing pipeline ready for real-world validation (readiness milestone `M-LFE-03` implemented: all five readiness criteria evidenced; long-form assembly alone does not fire it), tell Lukas to stop development-only work and start producing real videos, give him `AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md`, explain safe ingestion, start validating long-form editing on the real recordings, and use the resulting long-form videos as the source for Phase 7 short-form repurposing. This is a milestone-triggered action, not an instruction to film now. No scheduled notification exists: the reminder is enforced by `governance validate` failing once the trigger fires, and shown by `SESSION_HANDOFF.md`.
 
 - [ ] Build new timeline from validated plan.
 - [ ] Add purposeful B-roll, graphics and captions.
@@ -159,7 +159,7 @@ Offline library foundations exist and are not wired into the pipeline, with no l
 | Before Phase 4 | M-INT-01, M-INT-02, M-INT-03 |
 | Phase 4 | M-RSR-01, M-RSR-02, M-AST-01, M-AST-02 |
 | Phase 5 | M-CRD-01, M-CRD-02, M-EDT-01, M-EDT-02 |
-| Phase 6 | M-LFE-01, M-LFE-02 |
+| Phase 6 | M-LFE-01, M-LFE-02, M-LFE-03 |
 | Phase 7 | M-SFE-01 |
 | Phase 8 | M-HRD-01 |
 

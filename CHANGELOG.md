@@ -23,7 +23,8 @@ The commit SHA is recorded in `PROJECT_STATUS.json` and in this entry after merg
 - Ownership: directory claims without a trailing slash and case variants now overlap; branch prefixes must match the owner type; new `governance scope` compares a branch's changed files with its claimed paths.
 - User-action gate `G-FIRST-REAL-VIDEO` (tell Lukas to start producing real videos when the first long-form pipeline is ready) in `PROJECT_STATUS.json`, `PROJECT_OPERATING_PROTOCOL.md` section 14, `CLAUDE.md`, `ROADMAP.md`, the generated handoff and the new `FIRST_REAL_VIDEO_CHECKLIST.md`. Validation fails once the trigger fires while the gate is still PENDING. No external notification exists.
 - Real-input evidence from the local `Projects/my-first-test` recorded as machine-local observations (ingest and shot detection of one real file, transcription experiments). No verification level was raised and nothing is VERIFIED.
-- 38 new governance tests (91 in total).
+- Filming gate trigger corrected on Lukas's review: it now fires on a dedicated readiness milestone `M-LFE-03` (weight 4, PROPOSED, NOT_STARTED), not on long-form assembly (`M-LFE-01`). The milestone may be marked implemented only if its dependencies are implemented and each of five readiness criteria (RC-1 to RC-5: footage processed, validated plan and Resolve timeline, complete long-form render, initial QC and export verification, originals preserved with recoverable state) has `test_run` or `observation` evidence. Readiness to begin real-world validation, not proof of production-quality editing. The generated handoff shows the criteria while PENDING and the checklist when TRIGGERED. Adding the milestone moved the figures to 35.4% implementation and 12.2% verification (29 milestones, weight 164).
+- 44 new governance tests (97 in total).
 
 ### Changed
 - `CLAUDE.md`: new section 0 pointing sessions at the governance files and the branch/ownership rules.

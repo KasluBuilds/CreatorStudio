@@ -245,6 +245,22 @@ def validate(doc: Any) -> List[str]:
         for lst in ("open_questions", "blockers", "depends_on"):
             if not isinstance(m.get(lst), list) or not all(_nonempty(x) for x in m.get(lst, [])):
                 problems.append(f"{label}: '{lst}' must be a list of non-empty strings")
+        readiness = m.get("readiness_evidence")
+        if readiness is not None:
+            if not isinstance(readiness, dict):
+                problems.append(f"{label}: readiness_evidence must be an object {{criterion id: [evidence ids]}}")
+            else:
+                for crit, refs in readiness.items():
+                    if not isinstance(refs, list):
+                        problems.append(f"{label}: readiness_evidence[{crit}] must be a list of evidence ids")
+                        continue
+                    for ref in refs:
+                        rec = evidence.get(ref) if isinstance(ref, str) else None
+                        if not isinstance(rec, dict):
+                            problems.append(f"{label}: readiness_evidence[{crit}] references unknown evidence {ref!r}")
+                        elif rec.get("type") not in ("test_run", "observation"):
+                            problems.append(f"{label}: readiness_evidence[{crit}] needs a test_run or observation record "
+                                            f"(a reported or review record alone is not enough): {ref}")
         commit = m.get("commit")
         if commit is not None and not (isinstance(commit, str) and SHA40.match(commit)):
             problems.append(f"{label}: commit must be null or a full 40-character lowercase hex SHA")
@@ -341,9 +357,21 @@ def _validate_gates(doc: Dict[str, Any], ids: Dict[str, dict]) -> List[str]:
         for f in ("title", "message", "notification"):
             if not _nonempty(g.get(f)):
                 problems.append(f"{label}: '{f}' is required")
-        for f in ("trigger_milestones", "steps"):
+        for f in ("trigger_milestones", "steps", "checklist_summary"):
             if not isinstance(g.get(f), list) or not g.get(f) or not all(_nonempty(x) for x in g[f]):
                 problems.append(f"{label}: '{f}' must be a non-empty list of strings")
+        crits = g.get("readiness_criteria")
+        crit_ids = []
+        if not isinstance(crits, list) or not crits:
+            problems.append(f"{label}: 'readiness_criteria' must be a non-empty list of {{id, text}}")
+        else:
+            for c in crits:
+                if not (isinstance(c, dict) and _nonempty(c.get("id")) and _nonempty(c.get("text"))):
+                    problems.append(f"{label}: every readiness criterion needs an 'id' and a 'text'")
+                elif c["id"] in crit_ids:
+                    problems.append(f"{label}: duplicate readiness criterion {c['id']}")
+                else:
+                    crit_ids.append(c["id"])
         triggers = g.get("trigger_milestones") if isinstance(g.get("trigger_milestones"), list) else []
         for mid in triggers:
             if mid not in ids:
@@ -352,6 +380,22 @@ def _validate_gates(doc: Dict[str, Any], ids: Dict[str, dict]) -> List[str]:
             problems.append(f"{label}: status must be one of {', '.join(GATE_STATUSES)}")
             continue
         fired = gate_triggered({"trigger_milestones": triggers}, ids)
+        # A trigger milestone that claims to be implemented must actually show readiness: its dependencies are
+        # implemented and every criterion has test_run/observation evidence. Otherwise the claim is rejected.
+        for mid in triggers:
+            m = ids.get(mid)
+            if not (m and isinstance(m.get("implementation"), dict)
+                    and m["implementation"].get("state") in IMPLEMENTED_STATES):
+                continue
+            late = [d for d in (m.get("depends_on") or []) if d in ids
+                    and ids[d].get("implementation", {}).get("state") not in IMPLEMENTED_STATES]
+            if late:
+                problems.append(f"{label}: {mid} is marked implemented but its dependencies are not: {', '.join(sorted(late))}")
+            have = m.get("readiness_evidence") if isinstance(m.get("readiness_evidence"), dict) else {}
+            for cid in crit_ids:
+                if not have.get(cid):
+                    problems.append(f"{label}: {mid} is marked implemented but readiness criterion {cid} has no "
+                                    "test_run or observation evidence")
         if fired and g["status"] == "PENDING":
             problems.append(f"{label}: trigger reached ({', '.join(triggers)} implemented) but the gate is "
                             "still PENDING; set it to TRIGGERED and tell Lukas now")

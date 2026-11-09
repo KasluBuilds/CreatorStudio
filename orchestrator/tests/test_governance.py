@@ -596,12 +596,45 @@ class TestReviewHardening(unittest.TestCase):
 
     # ---- user-action gates
     GATE = {"id": "G-TEST-1", "title": "t", "trigger_milestones": ["M-AAA-01"], "status": "PENDING", "message": "tell Lukas",
-            "steps": ["one", "two"], "notification": "NONE"}
+            "steps": ["one", "two"], "notification": "NONE", "checklist_summary": ["film something real"],
+            "readiness_criteria": [{"id": "RC-1", "text": "first"}, {"id": "RC-2", "text": "second"}]}
 
-    def gate_doc(self, impl, gstatus="PENDING", **extra):
-        doc = status_doc([milestone(impl=impl)])
+    def gate_doc(self, impl, gstatus="PENDING", readiness=None, **extra):
+        ready = {"RC-1": ["E-T1"], "RC-2": ["E-O1"]} if readiness is None else readiness
+        doc = status_doc([milestone(impl=impl, readiness_evidence=ready)])
         doc["user_action_gates"] = [dict(self.GATE, status=gstatus, **extra)]
         return doc
+
+    def test_trigger_requires_evidence_for_every_readiness_criterion(self):
+        doc = self.gate_doc("IMPLEMENTED", "TRIGGERED", readiness={"RC-1": ["E-T1"], "RC-2": []})
+        self.assertTrue(any("criterion RC-2 has no test_run or observation evidence" in p for p in status.validate(doc)))
+        doc = self.gate_doc("IMPLEMENTED", "TRIGGERED", readiness={})
+        self.assertEqual(len([p for p in status.validate(doc) if "criterion" in p]), 2)
+
+    def test_reported_or_review_evidence_does_not_satisfy_readiness(self):
+        for ev in ("E-R1", "E-H1"):
+            doc = self.gate_doc("IMPLEMENTED", "TRIGGERED", readiness={"RC-1": [ev], "RC-2": ["E-O1"]})
+            self.assertTrue(any("test_run or observation" in p for p in status.validate(doc)), ev)
+
+    def test_unknown_readiness_evidence_is_rejected(self):
+        doc = self.gate_doc("NOT_STARTED", readiness={"RC-1": ["E-NOPE"], "RC-2": []})
+        self.assertTrue(any("unknown evidence" in p for p in status.validate(doc)))
+
+    def test_trigger_milestone_cannot_be_implemented_before_its_dependencies(self):
+        doc = self.gate_doc("IMPLEMENTED", "TRIGGERED")
+        doc["milestones"][0]["depends_on"] = ["M-BBB-01"]
+        doc["milestones"].append(milestone("M-BBB-01", impl="IN_PROGRESS"))
+        self.assertTrue(any("dependencies are not: M-BBB-01" in p for p in status.validate(doc)))
+        doc["milestones"][1]["implementation"]["state"] = "IMPLEMENTED"
+        self.assertEqual(status.validate(doc), [])
+
+    def test_gate_needs_criteria_and_checklist(self):
+        doc = self.gate_doc("NOT_STARTED")
+        del doc["user_action_gates"][0]["readiness_criteria"]
+        del doc["user_action_gates"][0]["checklist_summary"]
+        msgs = " | ".join(status.validate(doc))
+        self.assertIn("readiness_criteria", msgs)
+        self.assertIn("checklist_summary", msgs)
 
     def test_pending_gate_before_trigger_is_valid(self):
         self.assertEqual(status.validate(self.gate_doc("NOT_STARTED")), [])
@@ -646,17 +679,55 @@ class TestReviewHardening(unittest.TestCase):
     def test_repository_gate_for_the_first_real_video(self):
         doc = json.loads((ROOT / "PROJECT_STATUS.json").read_text(encoding="utf-8"))
         gate = next(g for g in doc["user_action_gates"] if g["id"] == "G-FIRST-REAL-VIDEO")
-        self.assertEqual(gate["trigger_milestones"], ["M-LFE-01"])
+        self.assertEqual(gate["trigger_milestones"], ["M-LFE-03"])  # dedicated readiness milestone, not assembly alone
         self.assertEqual(gate["status"], "PENDING")
         self.assertIn("NONE", gate["notification"])  # no external automation is claimed
         self.assertTrue((ROOT / gate["checklist"]).is_file())
         steps = " ".join(gate["steps"]).lower()
         for needle in ("checklist", "ingest", "validating", "phase 7"):
             self.assertIn(needle, steps)
-        # the moment the long-form milestone is implemented, validation must start failing until the gate is handled
-        doc["milestones"] = [dict(m, implementation=dict(m["implementation"], state="IMPLEMENTED")) if m["id"] == "M-LFE-01" else m
-                             for m in doc["milestones"]]
-        self.assertTrue(any("G-FIRST-REAL-VIDEO" in p and "still PENDING" in p for p in status.validate(doc)))
+        self.assertEqual([c["id"] for c in gate["readiness_criteria"]], ["RC-1", "RC-2", "RC-3", "RC-4", "RC-5"])
+
+        def implement(d, mid):
+            d["milestones"] = [dict(m, implementation=dict(m["implementation"], state="IMPLEMENTED")) if m["id"] == mid else m
+                               for m in d["milestones"]]
+
+        # long-form assembly alone does NOT fire the gate
+        early = copy.deepcopy(doc)
+        implement(early, "M-LFE-01")
+        self.assertFalse(any("G-FIRST-REAL-VIDEO" in p for p in status.validate(early)))
+        # claiming the readiness milestone without dependencies and evidence is rejected, and the gate would fire
+        ready = copy.deepcopy(doc)
+        implement(ready, "M-LFE-03")
+        msgs = " | ".join(p for p in status.validate(ready) if "G-FIRST-REAL-VIDEO" in p)
+        self.assertIn("still PENDING", msgs)
+        self.assertIn("dependencies are not", msgs)
+        self.assertIn("criterion RC-5", msgs)
+        # with dependencies implemented and evidence for all five criteria, only the PENDING status is left to fix
+        for mid in ("M-LFE-01", "M-LFE-02", "M-EDT-02", "M-STA-01"):
+            implement(ready, mid)
+        target = next(m for m in ready["milestones"] if m["id"] == "M-LFE-03")
+        ready["evidence"]["E-OBS-T"] = {"id": "E-OBS-T", "type": "observation", "date": "2026-11-09", "summary": "s", "ref": "r",
+                                        "observer": "claude:t"}
+        target["readiness_evidence"] = {c["id"]: ["E-OBS-T"] for c in gate["readiness_criteria"]}
+        msgs = [p for p in status.validate(ready) if "G-FIRST-REAL-VIDEO" in p]
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("still PENDING", msgs[0])
+        ready["user_action_gates"][0]["status"] = "TRIGGERED"
+        self.assertEqual([p for p in status.validate(ready) if "G-FIRST-REAL-VIDEO" in p], [])
+        text = handoff.render(ready, json.loads((ROOT / "ACTIVE_TASKS.json").read_text(encoding="utf-8")))
+        self.assertIn("ACTION REQUIRED NOW - G-FIRST-REAL-VIDEO", text)
+        self.assertIn("First-real-video checklist", text)
+        self.assertIn("start producing real videos", text)
+        self.assertIn("not proof", text)
+
+    def test_readiness_milestone_is_a_proposed_small_weight_and_not_started(self):
+        doc = json.loads((ROOT / "PROJECT_STATUS.json").read_text(encoding="utf-8"))
+        m = next(x for x in doc["milestones"] if x["id"] == "M-LFE-03")
+        self.assertEqual(doc["weights_status"], "PROPOSED")
+        self.assertEqual(m["implementation"]["state"], "NOT_STARTED")
+        self.assertIn("NOT proof", m["description"])
+        self.assertEqual(set(m["depends_on"]), {"M-LFE-01", "M-LFE-02", "M-EDT-02", "M-STA-01"})
 
     def test_reminder_is_recorded_in_the_canonical_places(self):
         for rel in ("PROJECT_OPERATING_PROTOCOL.md", "CLAUDE.md", "SESSION_HANDOFF.md",

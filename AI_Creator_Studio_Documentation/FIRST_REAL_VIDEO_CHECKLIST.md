@@ -1,8 +1,10 @@
 # First real video: checklist for Lukas
 
 **Status: PROPOSED guidance. Not an instruction to start filming now.** It is delivered to Lukas when the user-action gate
-`G-FIRST-REAL-VIDEO` in `PROJECT_STATUS.json` fires, which is when the first end-to-end long-form editing pipeline (Phase 6,
-milestone `M-LFE-01`) exists and is ready for real-world validation. Until then the gate is `PENDING`. No scheduled notification or
+`G-FIRST-REAL-VIDEO` in `PROJECT_STATUS.json` fires, which is when the first end-to-end long-form editing pipeline (Phase 6)
+exists and is ready for real-world validation. That is the readiness milestone `M-LFE-03`, which needs evidence that one run processed footage,
+produced a validated plan and Resolve timeline, rendered a complete long-form output, completed initial QC and export verification, and kept originals
+and project state recoverable. It means ready to *start* validation, not that production-quality editing is proven. Until then the gate is `PENDING`. No scheduled notification or
 external automation exists; sessions are told by `python -B -m governance validate` and by `SESSION_HANDOFF.md`.
 
 ## Why this moment matters
