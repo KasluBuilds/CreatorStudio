@@ -30,6 +30,7 @@ UNIT_ISOLATED and INTEGRATION only, and milestones that rest on it alone are fla
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
 import re
 import subprocess
 from decimal import Decimal, ROUND_HALF_UP
@@ -68,7 +69,14 @@ EVIDENCE_RULES = {
     "human_review": ("ref", "reviewer"),
     "commit": ("commit",),
 }
-EVIDENCE_KEYS = {"id", "type", "date", "summary", "ref", "command", "result", "commit", "reviewer", "observer"}
+EVIDENCE_KEYS = {"id", "type", "date", "summary", "ref", "command", "result", "commit", "reviewer", "observer",
+                 "real_input"}
+LEVEL_ORDER = list(VERIFICATION_LEVELS)
+WEIGHTS_STATUSES = ("PROPOSED", "APPROVED")
+GATE_STATUSES = ("PENDING", "TRIGGERED", "ACKNOWLEDGED")
+GATE_ID = re.compile(r"^G-[A-Z0-9-]+$")
+# A human_review must be by a human: these name prefixes are rejected as reviewers/approvers.
+NON_HUMAN_PREFIXES = ("claude", "chatgpt", "gpt", "openai", "anthropic", "assistant")
 
 
 class StatusError(ValueError):
@@ -79,12 +87,16 @@ class StatusError(ValueError):
         super().__init__("; ".join(self.problems))
 
 
-def _is_int(v: Any) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
-
-
 def _nonempty(v: Any) -> bool:
     return isinstance(v, str) and bool(v.strip())
+
+
+def is_human_name(name: Any) -> bool:
+    return _nonempty(name) and not name.strip().lower().startswith(NON_HUMAN_PREFIXES)
+
+
+def _is_int(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
 
 
 def _valid_date(v: Any) -> bool:
@@ -122,6 +134,10 @@ def _validate_evidence(eid: str, rec: Any, problems: List[str]) -> None:
             problems.append(f"{where}: {typ} evidence requires '{field}'")
     if typ in ("test_run", "commit") and _nonempty(rec.get("commit")) and not SHA40.match(rec["commit"]):
         problems.append(f"{where}: commit must be a full 40-character lowercase hex SHA")
+    if "real_input" in rec and not isinstance(rec["real_input"], bool):
+        problems.append(f"{where}: real_input must be true or false")
+    if typ == "human_review" and _nonempty(rec.get("reviewer")) and not is_human_name(rec["reviewer"]):
+        problems.append(f"{where}: a human_review must name a human reviewer, not an AI agent")
 
 
 def _evidence_supports(level: str, records: List[dict]) -> List[str]:
@@ -140,6 +156,9 @@ def _evidence_supports(level: str, records: List[dict]) -> List[str]:
         problems.append(f"{level} requires a human_review evidence record")
     if not any(t in ("test_run", "observation") for t in types):
         problems.append(f"{level} requires a test_run or observation evidence record (reported/review alone is not enough)")
+    if reviews and not any(r.get("real_input") is True for r in reviews):
+        problems.append(f"{level} requires a human_review record with real_input: true "
+                        "(the reviewer attests that the material reviewed was real input, not synthetic)")
     if level == "REPEATED_REAL_USE" and len({r["date"] for r in reviews}) < 2:
         problems.append("REPEATED_REAL_USE requires human_review records on at least two different dates")
     return problems
@@ -150,8 +169,16 @@ def _validate_header(doc: Dict[str, Any]) -> List[str]:
     problems = []
     if not _valid_date(doc.get("updated")):
         problems.append("'updated' must be a real YYYY-MM-DD date")
-    if not _nonempty(doc.get("weights_status")):
-        problems.append("'weights_status' is required (say whether the weights were reviewed)")
+    if doc.get("weights_status") not in WEIGHTS_STATUSES:
+        problems.append(f"'weights_status' must be one of {', '.join(WEIGHTS_STATUSES)}")
+    if doc.get("weights_status") == "APPROVED":
+        if not is_human_name(doc.get("weights_approved_by")):
+            problems.append("APPROVED weights need 'weights_approved_by' naming a human (not an AI agent)")
+        if not _valid_date(doc.get("weights_approved_date")):
+            problems.append("APPROVED weights need a real 'weights_approved_date'")
+    gates = doc.get("user_action_gates")
+    if gates is not None and not isinstance(gates, list):
+        problems.append("'user_action_gates' must be a list")
     for key in ("open_decisions", "next_actions"):
         if not isinstance(doc.get(key), list) or not all(_nonempty(x) for x in doc[key]):
             problems.append(f"'{key}' must be a list of non-empty strings")
@@ -266,6 +293,73 @@ def validate(doc: Any) -> List[str]:
             elif dep not in ids:
                 problems.append(f"{mid}: depends_on unknown milestone {dep}")
     problems.extend(_dependency_cycles(ids))
+    if doc.get("weights_status") == "APPROVED" and doc.get("weights_fingerprint") != weights_fingerprint(doc):
+        problems.append("weights changed since they were approved (weights_fingerprint mismatch); set weights_status "
+                        "to PROPOSED until Lukas approves the new weights")
+    if isinstance(doc.get("user_action_gates"), list):
+        problems.extend(_validate_gates(doc, ids))
+    return problems
+
+
+def weights_fingerprint(doc: Dict[str, Any]) -> str:
+    """SHA-256 over the sorted 'id:weight' lines: any change to a weight, or to the set of milestones, changes it."""
+    lines = sorted(f"{m.get('id')}:{m.get('weight')}" for m in doc.get("milestones", []) if isinstance(m, dict))
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
+def gate_triggered(gate: Dict[str, Any], ids: Dict[str, dict]) -> bool:
+    """A gate fires when ANY trigger milestone has reached an implemented state (code exists)."""
+    for mid in gate.get("trigger_milestones", []):
+        m = ids.get(mid)
+        if m and isinstance(m.get("implementation"), dict) and m["implementation"].get("state") in IMPLEMENTED_STATES:
+            return True
+    return False
+
+
+def _validate_gates(doc: Dict[str, Any], ids: Dict[str, dict]) -> List[str]:
+    """User-action gates: instructions to tell the human something once a milestone is reached.
+
+    A gate whose trigger has fired but whose status is still PENDING makes validation FAIL, so the reminder
+    cannot be overlooked: whoever advances the milestone must also mark the gate TRIGGERED (and tell Lukas).
+    No external notification exists; the gate is surfaced by `validate` and by the generated handoff only.
+    """
+    problems: List[str] = []
+    seen = set()
+    for idx, g in enumerate(doc.get("user_action_gates") or []):
+        label = f"user_action_gates[{idx}]"
+        if not isinstance(g, dict):
+            problems.append(f"{label}: must be an object")
+            continue
+        gid = g.get("id")
+        if not isinstance(gid, str) or not GATE_ID.match(gid):
+            problems.append(f"{label}: id must match {GATE_ID.pattern}")
+            continue
+        label = gid
+        if gid in seen:
+            problems.append(f"{label}: duplicate gate id")
+        seen.add(gid)
+        for f in ("title", "message", "notification"):
+            if not _nonempty(g.get(f)):
+                problems.append(f"{label}: '{f}' is required")
+        for f in ("trigger_milestones", "steps"):
+            if not isinstance(g.get(f), list) or not g.get(f) or not all(_nonempty(x) for x in g[f]):
+                problems.append(f"{label}: '{f}' must be a non-empty list of strings")
+        triggers = g.get("trigger_milestones") if isinstance(g.get("trigger_milestones"), list) else []
+        for mid in triggers:
+            if mid not in ids:
+                problems.append(f"{label}: trigger milestone {mid} does not exist")
+        if g.get("status") not in GATE_STATUSES:
+            problems.append(f"{label}: status must be one of {', '.join(GATE_STATUSES)}")
+            continue
+        fired = gate_triggered({"trigger_milestones": triggers}, ids)
+        if fired and g["status"] == "PENDING":
+            problems.append(f"{label}: trigger reached ({', '.join(triggers)} implemented) but the gate is "
+                            "still PENDING; set it to TRIGGERED and tell Lukas now")
+        if not fired and g["status"] != "PENDING":
+            problems.append(f"{label}: status {g['status']} but the trigger milestone has not reached an implemented state")
+        if g["status"] == "ACKNOWLEDGED":
+            if not is_human_name(g.get("acknowledged_by")) or not _valid_date(g.get("acknowledged_date")):
+                problems.append(f"{label}: ACKNOWLEDGED needs 'acknowledged_by' (a human) and a real 'acknowledged_date'")
     return problems
 
 
@@ -330,7 +424,11 @@ def calculate(doc: Dict[str, Any]) -> Dict[str, Any]:
                      "implementation_credit": str(icredit), "verification_credit": str(vcredit),
                      "reported_only": reported_only})
     assert ver_sum <= impl_sum, "invariant violated: verification credit exceeds implementation credit"
+    real = sorted(r["id"] for r in rows if r["verification_level"] in VERIFIED_LEVELS
+                  and r["verification_state"] in COUNTED_VERIFICATION_STATES and r["verification_credit"] != "0")
     return {
+        "weights_status": doc["weights_status"],
+        "real_input_reviewed_milestones": real,
         "total_weight": int(total),
         "milestone_count": len(rows),
         "implementation_percent": _pct(impl_sum, total),
@@ -368,4 +466,39 @@ def verify_commits(doc: Dict[str, Any], repo: Path) -> List[str]:
                            capture_output=True, text=True)
         if r.returncode != 0:
             problems.append(f"commit {sha[:12]} is not present in this repository")
+    return problems
+
+
+def transition_problems(old: Dict[str, Any], new: Dict[str, Any]) -> List[str]:
+    """Compare a NEW status document with an OLD one (for example the version on main).
+
+    Catches changes that are individually valid but not legitimate: dropping milestones, rewriting history in
+    the evidence registry, raising a verification level without new evidence, and changing weights after approval.
+    """
+    problems: List[str] = []
+    old_ms = {m["id"]: m for m in old.get("milestones", []) if isinstance(m, dict) and "id" in m}
+    new_ms = {m["id"]: m for m in new.get("milestones", []) if isinstance(m, dict) and "id" in m}
+    for mid in old_ms:
+        if mid not in new_ms:
+            problems.append(f"{mid}: milestone removed (ids are stable; mark it DEFERRED instead)")
+    old_ev, new_ev = old.get("evidence", {}), new.get("evidence", {})
+    for eid, rec in old_ev.items():
+        if eid not in new_ev:
+            problems.append(f"evidence {eid} was removed (the registry is append-only)")
+        elif new_ev[eid] != rec:
+            problems.append(f"evidence {eid} was modified (the registry is append-only; add a new record)")
+    fresh_ids = set(new_ev) - set(old_ev)
+    for mid, nm in new_ms.items():
+        om = old_ms.get(mid)
+        nv = nm.get("verification", {})
+        old_level = om["verification"]["level"] if om else "NONE"
+        old_state = om["verification"]["state"] if om else "NOT_STARTED"
+        fresh = set(nv.get("evidence", [])) & fresh_ids
+        if nv.get("level") in LEVEL_ORDER and LEVEL_ORDER.index(nv["level"]) > LEVEL_ORDER.index(old_level) and not fresh:
+            problems.append(f"{mid}: verification level raised from {old_level} to {nv['level']} without any new evidence record")
+        if nv.get("state") == "VERIFIED" and old_state != "VERIFIED" and not fresh:
+            problems.append(f"{mid}: became VERIFIED without any new evidence record")
+    if old.get("weights_status") == "APPROVED" and weights_fingerprint(old) != weights_fingerprint(new) \
+            and new.get("weights_status") != "PROPOSED":
+        problems.append("weights changed after approval; weights_status must go back to PROPOSED until Lukas re-approves")
     return problems

@@ -25,10 +25,10 @@ def evidence_set():
         "E-O1": {"id": "E-O1", "type": "observation", "date": "2026-11-02", "summary": "observed", "ref": "run 1",
                  "observer": "claude:test"},
         "E-R1": {"id": "E-R1", "type": "reported", "date": "2026-11-03", "summary": "doc says so", "ref": "docs/x.md"},
-        "E-H1": {"id": "E-H1", "type": "human_review", "date": "2026-11-04", "summary": "reviewed", "ref": "review 1",
+        "E-H1": {"id": "E-H1", "type": "human_review", "date": "2026-11-04", "summary": "reviewed", "ref": "review 1", "real_input": True,
                  "reviewer": "Lukas"},
         "E-H2": {"id": "E-H2", "type": "human_review", "date": "2026-11-05", "summary": "reviewed again",
-                 "ref": "review 2", "reviewer": "Lukas"},
+                 "ref": "review 2", "reviewer": "Lukas", "real_input": True},
     }
 
 
@@ -436,9 +436,316 @@ class TestCommittedFiles(unittest.TestCase):
         pattern = re.compile(r"((?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}"
                              r"|BEGIN [A-Z ]*PRIVATE KEY)")
         for name in ("PROJECT_STATUS.json", "ACTIVE_TASKS.json", "SESSION_HANDOFF.md", "CHANGELOG.md",
-                     "PROJECT_OPERATING_PROTOCOL.md", "AI_Creator_Studio_Documentation/ENVIRONMENT.md"):
+                     "PROJECT_OPERATING_PROTOCOL.md", "AI_Creator_Studio_Documentation/ENVIRONMENT.md",
+                     "AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md"):
             text = (ROOT / name).read_text(encoding="utf-8")
             self.assertIsNone(pattern.search(text), name)
+
+
+class TestReviewHardening(unittest.TestCase):
+    """Gaps found in the self-review of PR #1: tamper resistance, transitions, gates, scope, handoff wording."""
+
+    def setUp(self):
+        import contextlib
+        import io
+        stack = contextlib.ExitStack()  # keep CLI console output out of the test log
+        stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+        stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+        self.addCleanup(stack.close)
+
+    def real_doc(self, level="REAL_INPUT_REVIEWED", vstate="VERIFIED", impl="VERIFIED"):
+        return status_doc([milestone(impl=impl, vstate=vstate, level=level, ev=["E-T1", "E-H1"])])
+
+    # ---- reviews must be human and about real input
+    def test_review_without_real_input_flag_is_rejected(self):
+        doc = self.real_doc()
+        del doc["evidence"]["E-H1"]["real_input"]
+        self.assertTrue(any("real_input" in p for p in status.validate(doc)))
+
+    def test_real_input_false_is_rejected_too(self):
+        doc = self.real_doc()
+        doc["evidence"]["E-H1"]["real_input"] = False
+        self.assertTrue(any("real_input" in p for p in status.validate(doc)))
+
+    def test_real_input_must_be_boolean(self):
+        doc = self.real_doc()
+        doc["evidence"]["E-H1"]["real_input"] = "yes"
+        self.assertTrue(any("true or false" in p for p in status.validate(doc)))
+
+    def test_ai_agents_cannot_be_reviewers(self):
+        for name in ("Claude Code", "claude:governance-session", "ChatGPT", "GPT-5", "OpenAI assistant"):
+            doc = self.real_doc()
+            doc["evidence"]["E-H1"]["reviewer"] = name
+            self.assertTrue(any("human reviewer" in p for p in status.validate(doc)), name)
+
+    def test_a_human_review_with_real_input_is_accepted(self):
+        self.assertEqual(status.validate(self.real_doc()), [])
+
+    def test_reported_evidence_still_cannot_reach_verified(self):
+        doc = status_doc([milestone(impl="VERIFIED", vstate="VERIFIED", level="REAL_INPUT_REVIEWED", ev=["E-R1", "E-H1"])])
+        self.assertTrue(any("test_run or observation" in p for p in status.validate(doc)))
+
+    # ---- weights
+    def test_weights_status_is_an_enum(self):
+        doc = status_doc()
+        doc["weights_status"] = "PROPOSED - looks fine"
+        self.assertTrue(any("weights_status" in p for p in status.validate(doc)))
+
+    def approved(self):
+        doc = status_doc([milestone("M-AAA-01", 2), milestone("M-AAA-02", 3)])
+        doc.update(weights_status="APPROVED", weights_approved_by="Lukas", weights_approved_date="2026-11-09",
+                   weights_fingerprint=status.weights_fingerprint(doc))
+        return doc
+
+    def test_approved_weights_validate_and_change_is_detected(self):
+        doc = self.approved()
+        self.assertEqual(status.validate(doc), [])
+        doc["milestones"][0]["weight"] = 9
+        self.assertTrue(any("weights changed since they were approved" in p for p in status.validate(doc)))
+
+    def test_adding_a_milestone_after_approval_is_detected(self):
+        doc = self.approved()
+        doc["milestones"].append(milestone("M-AAA-03", 1))
+        self.assertTrue(any("weights changed" in p for p in status.validate(doc)))
+
+    def test_fingerprint_ignores_order(self):
+        doc = self.approved()
+        before = status.weights_fingerprint(doc)
+        doc["milestones"].reverse()
+        self.assertEqual(before, status.weights_fingerprint(doc))
+
+    def test_approval_needs_a_human_and_a_date(self):
+        for field, value in (("weights_approved_by", "Claude Code"), ("weights_approved_by", ""),
+                             ("weights_approved_date", "2026-13-01")):
+            doc = self.approved()
+            doc[field] = value
+            self.assertTrue(status.validate(doc), (field, value))
+
+    def test_score_reports_weight_status_and_real_input_count(self):
+        r = status.calculate(self.real_doc())
+        self.assertEqual(r["weights_status"], "PROPOSED")
+        self.assertEqual(r["real_input_reviewed_milestones"], ["M-AAA-01"])
+        r = status.calculate(status_doc([milestone(impl="IMPLEMENTED", vstate="IN_PROGRESS", level="UNIT_ISOLATED", ev=["E-T1"])]))
+        self.assertEqual(r["real_input_reviewed_milestones"], [])
+
+    # ---- transitions against an earlier version
+    def test_identical_documents_have_no_transition_problems(self):
+        doc = self.real_doc()
+        self.assertEqual(status.transition_problems(doc, copy.deepcopy(doc)), [])
+
+    def test_removed_milestone_and_evidence_are_rejected(self):
+        old = status_doc([milestone("M-AAA-01"), milestone("M-AAA-02")])
+        new = copy.deepcopy(old)
+        new["milestones"].pop()
+        del new["evidence"]["E-R1"]
+        msgs = " | ".join(status.transition_problems(old, new))
+        self.assertIn("M-AAA-02: milestone removed", msgs)
+        self.assertIn("evidence E-R1 was removed", msgs)
+
+    def test_edited_evidence_is_rejected(self):
+        old = status_doc()
+        new = copy.deepcopy(old)
+        new["evidence"]["E-T1"]["result"] = "OK, honest"
+        self.assertTrue(any("was modified" in p for p in status.transition_problems(old, new)))
+
+    def test_level_raise_needs_new_evidence(self):
+        old = status_doc([milestone(impl="IMPLEMENTED", vstate="IN_PROGRESS", level="UNIT_ISOLATED", ev=["E-T1"])])
+        new = copy.deepcopy(old)
+        new["milestones"][0]["verification"]["level"] = "INTEGRATION"
+        self.assertTrue(any("without any new evidence" in p for p in status.transition_problems(old, new)))
+        new["evidence"]["E-O2"] = {"id": "E-O2", "type": "observation", "date": "2026-11-09", "summary": "s", "ref": "r",
+                                   "observer": "claude:t"}
+        new["milestones"][0]["verification"]["evidence"].append("E-O2")
+        self.assertEqual(status.transition_problems(old, new), [])
+
+    def test_becoming_verified_needs_new_evidence(self):
+        old = status_doc([milestone(impl="IMPLEMENTED", vstate="IN_PROGRESS", level="REAL_INPUT_REVIEWED", ev=["E-T1", "E-H1"])])
+        new = copy.deepcopy(old)
+        new["milestones"][0]["verification"]["state"] = "VERIFIED"
+        new["milestones"][0]["implementation"]["state"] = "VERIFIED"
+        self.assertTrue(any("became VERIFIED" in p for p in status.transition_problems(old, new)))
+
+    def test_weights_cannot_change_while_staying_approved(self):
+        old = self.approved()
+        new = copy.deepcopy(old)
+        new["milestones"][0]["weight"] = 9
+        new["weights_fingerprint"] = status.weights_fingerprint(new)  # a tamperer fixes the fingerprint too
+        self.assertEqual(status.validate(new), [])
+        self.assertTrue(any("weights changed after approval" in p for p in status.transition_problems(old, new)))
+        new["weights_status"] = "PROPOSED"
+        self.assertEqual(status.transition_problems(old, new), [])
+
+    def test_cli_validate_against_a_git_ref(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            git = lambda *a: subprocess.run(["git", "-C", tmp, *a], check=True, capture_output=True, text=True)
+            git("init", "-q")
+            git("config", "user.email", "t@example.invalid")
+            git("config", "user.name", "t")
+            git("config", "commit.gpgsign", "false")
+            for name in ("PROJECT_STATUS.json", "ACTIVE_TASKS.json"):
+                (Path(tmp) / name).write_text((ROOT / name).read_text(encoding="utf-8"), encoding="utf-8")
+            git("add", "PROJECT_STATUS.json", "ACTIVE_TASKS.json")
+            git("commit", "-q", "-m", "base")
+            self.assertEqual(cli_main(["--root", tmp, "validate", "--against", "HEAD"]), 0)
+            doc = json.loads((Path(tmp) / "PROJECT_STATUS.json").read_text(encoding="utf-8"))
+            doc["evidence"]["E-FULLSUITE-0001"]["result"] = "rewritten"
+            (Path(tmp) / "PROJECT_STATUS.json").write_text(json.dumps(doc), encoding="utf-8")
+            self.assertEqual(cli_main(["--root", tmp, "validate", "--against", "HEAD"]), 1)
+
+    # ---- user-action gates
+    GATE = {"id": "G-TEST-1", "title": "t", "trigger_milestones": ["M-AAA-01"], "status": "PENDING", "message": "tell Lukas",
+            "steps": ["one", "two"], "notification": "NONE"}
+
+    def gate_doc(self, impl, gstatus="PENDING", **extra):
+        doc = status_doc([milestone(impl=impl)])
+        doc["user_action_gates"] = [dict(self.GATE, status=gstatus, **extra)]
+        return doc
+
+    def test_pending_gate_before_trigger_is_valid(self):
+        self.assertEqual(status.validate(self.gate_doc("NOT_STARTED")), [])
+        self.assertEqual(status.validate(self.gate_doc("IN_PROGRESS")), [])
+
+    def test_trigger_with_pending_gate_fails_validation(self):
+        for impl in ("IMPLEMENTED", "UNDER_REVIEW"):
+            self.assertTrue(any("still PENDING" in p for p in status.validate(self.gate_doc(impl))), impl)
+
+    def test_triggered_gate_after_trigger_is_valid(self):
+        self.assertEqual(status.validate(self.gate_doc("IMPLEMENTED", "TRIGGERED")), [])
+
+    def test_gate_cannot_be_triggered_early(self):
+        self.assertTrue(any("has not reached" in p for p in status.validate(self.gate_doc("NOT_STARTED", "TRIGGERED"))))
+
+    def test_acknowledgement_needs_a_human_and_date(self):
+        doc = self.gate_doc("IMPLEMENTED", "ACKNOWLEDGED")
+        self.assertTrue(status.validate(doc))
+        doc = self.gate_doc("IMPLEMENTED", "ACKNOWLEDGED", acknowledged_by="Lukas", acknowledged_date="2026-11-10")
+        self.assertEqual(status.validate(doc), [])
+        doc["user_action_gates"][0]["acknowledged_by"] = "Claude Code"
+        self.assertTrue(status.validate(doc))
+
+    def test_gate_with_missing_pieces_is_rejected(self):
+        doc = self.gate_doc("NOT_STARTED")
+        doc["user_action_gates"][0]["trigger_milestones"] = ["M-ZZZ-99"]
+        doc["user_action_gates"][0]["steps"] = []
+        msgs = " | ".join(status.validate(doc))
+        self.assertIn("does not exist", msgs)
+        self.assertIn("'steps'", msgs)
+
+    def test_handoff_surfaces_pending_and_triggered_gates(self):
+        pending = handoff.render(self.gate_doc("NOT_STARTED"), tasks_doc())
+        self.assertIn("G-TEST-1", pending)
+        self.assertIn("PENDING", pending)
+        self.assertNotIn("ACTION REQUIRED NOW", pending)
+        triggered = handoff.render(self.gate_doc("IMPLEMENTED", "TRIGGERED"), tasks_doc())
+        self.assertIn("ACTION REQUIRED NOW - G-TEST-1", triggered)
+        self.assertIn("tell Lukas", triggered)
+        self.assertLess(triggered.index("ACTION REQUIRED NOW"), triggered.index("## Progress"))
+
+    def test_repository_gate_for_the_first_real_video(self):
+        doc = json.loads((ROOT / "PROJECT_STATUS.json").read_text(encoding="utf-8"))
+        gate = next(g for g in doc["user_action_gates"] if g["id"] == "G-FIRST-REAL-VIDEO")
+        self.assertEqual(gate["trigger_milestones"], ["M-LFE-01"])
+        self.assertEqual(gate["status"], "PENDING")
+        self.assertIn("NONE", gate["notification"])  # no external automation is claimed
+        self.assertTrue((ROOT / gate["checklist"]).is_file())
+        steps = " ".join(gate["steps"]).lower()
+        for needle in ("checklist", "ingest", "validating", "phase 7"):
+            self.assertIn(needle, steps)
+        # the moment the long-form milestone is implemented, validation must start failing until the gate is handled
+        doc["milestones"] = [dict(m, implementation=dict(m["implementation"], state="IMPLEMENTED")) if m["id"] == "M-LFE-01" else m
+                             for m in doc["milestones"]]
+        self.assertTrue(any("G-FIRST-REAL-VIDEO" in p and "still PENDING" in p for p in status.validate(doc)))
+
+    def test_reminder_is_recorded_in_the_canonical_places(self):
+        for rel in ("PROJECT_OPERATING_PROTOCOL.md", "CLAUDE.md", "SESSION_HANDOFF.md",
+                    "AI_Creator_Studio_Documentation/ROADMAP.md"):
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertIn("G-FIRST-REAL-VIDEO", text, rel)
+
+    # ---- real-input evidence recorded without inflating anything
+    def test_local_real_input_observations_do_not_raise_levels(self):
+        doc = json.loads((ROOT / "PROJECT_STATUS.json").read_text(encoding="utf-8"))
+        by_id = {m["id"]: m for m in doc["milestones"]}
+        self.assertEqual(by_id["M-ING-01"]["verification"]["level"], "INTEGRATION")
+        self.assertEqual(by_id["M-SHT-01"]["verification"]["level"], "INTEGRATION")
+        self.assertEqual(by_id["M-MED-02"]["verification"]["level"], "NONE")
+        self.assertEqual(status.calculate(doc)["real_input_reviewed_milestones"], [])
+        for eid in ("E-OBS-LOCAL-INGEST-REAL", "E-OBS-LOCAL-SHOTS-REAL", "E-OBS-LOCAL-TRANSCRIPTION-EXP"):
+            self.assertEqual(doc["evidence"][eid]["type"], "observation")
+            self.assertIn("git-ignored", doc["evidence"][eid]["ref"])
+
+    # ---- handoff wording
+    def test_handoff_wording_follows_weight_status(self):
+        proposed = handoff.render(status_doc(), tasks_doc())
+        self.assertIn("Weights are PROPOSED", proposed)
+        doc = TestReviewHardening.approved(self)
+        approved = handoff.render(doc, tasks_doc())
+        self.assertNotIn("Weights are PROPOSED", approved)
+        self.assertIn("APPROVED by Lukas", approved)
+
+    def test_handoff_does_not_judge_leases_without_a_clock(self):
+        self.assertIn("governance leases", handoff.render(status_doc(), tasks_doc()))
+
+    # ---- ownership loopholes
+    def test_directory_claim_without_trailing_slash_still_overlaps(self):
+        self.assertTrue(tasks.overlaps("orchestrator/research", "orchestrator/research/a.py"))
+        self.assertTrue(tasks.overlaps("orchestrator/research/a.py", "orchestrator/research"))
+        self.assertFalse(tasks.overlaps("orchestrator/research", "orchestrator/research_extra/a.py"))
+
+    def test_overlap_is_case_insensitive(self):
+        self.assertTrue(tasks.overlaps("Orchestrator/Research/", "orchestrator/research/a.py"))
+
+    def test_case_variant_claims_are_caught_by_validation(self):
+        doc = tasks_doc()
+        doc["tasks"] = [task("T-AAA-001", "claude:research", "task/a", ["orchestrator/research/"]),
+                        task("T-BBB-001", "claude:other", "task/b", ["Orchestrator/Research"])]
+        self.assertTrue(any("both claim" in p for p in tasks.validate(doc)))
+
+    def test_branch_prefix_must_match_owner_type(self):
+        doc = tasks_doc()
+        doc["tasks"] = [task("T-AAA-001", "claude:research", "chatgpt/a", ["orchestrator/research/"])]
+        self.assertTrue(any("must start with 'task/'" in p for p in tasks.validate(doc)))
+        doc["tasks"] = [task("T-AAA-001", "chatgpt:x", "task/a", ["ROADMAP.md"])]
+        self.assertTrue(any("must start with 'chatgpt/'" in p for p in tasks.validate(doc)))
+
+    def test_scope_check(self):
+        doc = tasks_doc()
+        ok = ["orchestrator/research/a.py", "orchestrator/research/sub/b.py"]
+        self.assertEqual(tasks.scope_problems(doc, "task/a", ok), [])
+        bad = tasks.scope_problems(doc, "task/a", ok + ["orchestrator/media_analysis/x.py", "ROADMAP.md"])
+        self.assertEqual(len(bad), 2)
+        self.assertTrue(all("not covered" in b for b in bad))
+        self.assertIn("no ACTIVE", tasks.scope_problems(doc, "task/unknown", ok)[0])
+        doc["tasks"][0]["status"] = "COMPLETED"
+        self.assertIn("no ACTIVE", tasks.scope_problems(doc, "task/a", ok)[0])
+
+    def test_scope_does_not_match_sibling_directories(self):
+        doc = tasks_doc()
+        self.assertEqual(len(tasks.scope_problems(doc, "task/a", ["orchestrator/research_extra/a.py"])), 1)
+
+    def test_repository_branch_scope_via_cli_against_a_real_git_history(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            git = lambda *a: subprocess.run(["git", "-C", tmp, *a], check=True, capture_output=True, text=True)
+            git("init", "-q", "-b", "main")
+            git("config", "user.email", "t@example.invalid")
+            git("config", "user.name", "t")
+            git("config", "commit.gpgsign", "false")
+            doc = tasks_doc()
+            (Path(tmp) / "ACTIVE_TASKS.json").write_text(json.dumps(doc), encoding="utf-8")
+            git("add", "ACTIVE_TASKS.json")
+            git("commit", "-q", "-m", "base")
+            git("checkout", "-q", "-b", "task/a")
+            (Path(tmp) / "orchestrator" / "research").mkdir(parents=True)
+            (Path(tmp) / "orchestrator" / "research" / "a.py").write_text("x = 1\n", encoding="utf-8")
+            git("add", "orchestrator/research/a.py")
+            git("commit", "-q", "-m", "work")
+            self.assertEqual(cli_main(["--root", tmp, "scope", "--base", "main"]), 0)
+            (Path(tmp) / "ROADMAP.md").write_text("outside\n", encoding="utf-8")  # untracked and not claimed
+            self.assertEqual(cli_main(["--root", tmp, "scope", "--base", "main"]), 1)
 
 
 class TestCli(unittest.TestCase):

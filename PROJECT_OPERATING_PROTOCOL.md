@@ -58,8 +58,10 @@ git -C ..\CreatorStudio-worktrees\<slug> branch --unset-upstream   # a new branc
 - Push a task branch only by name: `git push -u origin task/<slug>`. Never `git push` without a branch name from a task worktree.
 - The primary folder `C:\Users\Korisnik\CreatorStudio` stays on `main`. It holds the git-ignored local data (`Incoming/`, `Projects/`,
   `tools/`, launchers, `.mcp.json`). Worktrees do **not** contain that data.
-- UNKNOWN: whether code run from a worktree can use the primary folder's `Projects/`. Until that is tested, a task that needs real
-  project data runs in the primary folder and is serialized: Lukas arbitrates, and the task says so in `integration_notes`.
+- Partly tested (2026-11-09, VERIFIED): from a worktree, `python -B -m creator_state --root <primary folder> list` read the primary folder's `Projects/` and
+  changed nothing (117 files, identical size/mtime snapshot before and after). `creator_state` also honours `CREATOR_STUDIO_ROOT`. NOT TESTED: every
+  other command (`check`, `resume`, `ingest`, `shots-detect`, ...), any write, and any path built outside `creator_state`. Until a task that owns
+  the area tests them, a task that needs real project data runs in the primary folder and is serialized: Lukas arbitrates, and the task says so in `integration_notes`.
 - Remove a worktree only after its branch is merged or abandoned: `git worktree remove ..\CreatorStudio-worktrees\<slug>`
   (never with `--force` while it has uncommitted work).
 
@@ -86,9 +88,9 @@ Each task is an entry in `ACTIVE_TASKS.json` with id, owner, branch, worktree, `
 later), run `cd orchestrator && python -B -m governance validate` and `python -B -m governance handoff --write`, commit only
 those files, push the branch and open a small *claim pull request*. The integrator merges claim pull requests promptly, in order.
 Before opening one, list other open claims (`gh pr list --state open`) and read their `ACTIVE_TASKS.json` diffs: the validator can
-only see what is on your branch. Do not edit owned files until the claim is merged or Lukas says to proceed.
+only see what is on your branch. Do not edit owned files until the claim is merged or Lukas says to proceed. **A claim exists only once it is on `main`.** If two open claim pull requests overlap, the one merged first wins; the other merges `origin/main` into its branch and `validate` then rejects it until the overlap is resolved. Throughout the work, `cd orchestrator && python -B -m governance scope --base origin/main` lists any changed file that lies outside the branch's claimed `owned_paths`; run it before every push. There is no continuous integration, so this check is a procedure too.
 
-**Renew.** Before `lease.expires`, set `acquired` to now and `expires` to at most 24 hours later (the validator rejects any lease
+**Renew.** The 72-hour maximum applies to each lease period (`expires` minus `acquired`); renewals are separate small pull requests that restart the period, so a long task is renewed repeatedly and each renewal is visible in history. Before `lease.expires`, set `acquired` to now and `expires` to at most 24 hours later (the validator rejects any lease
 longer than 72 hours between those two timestamps) in a small pull request.
 
 **Complete.** In the final pull request set `status` to `COMPLETED`. Paths are released the moment the merged file no longer lists
@@ -166,6 +168,8 @@ Percentage = Σ(weight × credit) ÷ Σ(weight), exact rational arithmetic, roun
 file is checked against a fresh calculation by `validate` and by the test suite. Weights are **proposals until Lukas reviews them**
 (`weights_status`). Do not quote any other completion figure.
 
+Reading the two percentages: *implementation* is the weighted share of milestones whose code exists; *verification* is the weighted share demonstrated at the level the evidence supports. Neither measures effort or time remaining, and while the weights are `PROPOSED` both are provisional. A `human_review` used for the top two levels must name a human and carry `real_input: true`. Evidence records are append-only, and `python -B -m governance validate --against origin/main` rejects removed milestones, edited evidence, verification upgrades without new evidence, and weight changes after approval (`weights_status: APPROVED` requires a human approver, a date and a matching `weights_fingerprint`; any later weight change invalidates it).
+
 ## 10. Security and safe Git use
 
 Never commit: `pro.ps1`, `backup.ps1`, `.mcp.json`, `.claude/settings.local.json`, `.env*`, keys, tokens, footage, anything under
@@ -218,6 +222,14 @@ Not performed or tested by Claude Code. The menu names depend on ChatGPT's curre
 A read-only dashboard page should read the same JSON. If it cannot reach the GitHub connector, a Claude Code session can publish a
 snapshot of `PROJECT_STATUS.json` into the page after each merge; the page must show the commit SHA and time of that snapshot so staleness is visible.
 
-## 14. Change history
+## 14. User-action gates (things Lukas must be told at a milestone)
+
+`PROJECT_STATUS.json` → `user_action_gates` holds instructions that a session must deliver to Lukas when a milestone is reached. A gate is `PENDING`, `TRIGGERED` or `ACKNOWLEDGED`. When any trigger milestone reaches an implemented state, `python -B -m governance validate` **fails** while the gate is still `PENDING`, so the task that advances the milestone must also set the gate to `TRIGGERED` and tell Lukas; the generated `SESSION_HANDOFF.md` then shows it as "ACTION REQUIRED NOW" until Lukas acknowledges it (`acknowledged_by`, `acknowledged_date`). Nothing outside the repository is scheduled: no calendar entry, notification or automation exists, and none may be claimed.
+
+Current gate, from Lukas's brief of 2026-11-09:
+
+**User-action gate `G-FIRST-REAL-VIDEO` (PENDING).** When Phase 6 reaches its first end-to-end long-form editing pipeline ready for real-world validation (milestone `M-LFE-01` implemented), tell Lukas to stop development-only work and start producing real videos, give him `AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md`, explain safe ingestion, start validating long-form editing on the real recordings, and use the resulting long-form videos as the source for Phase 7 short-form repurposing. This is a milestone-triggered action, not an instruction to film now. No scheduled notification exists: the reminder is enforced by `governance validate` failing once the trigger fires, and shown by `SESSION_HANDOFF.md`.
+
+## 15. Change history
 
 This protocol is a shared file. Changes go through a pull request that states what rule changed and why, and add a `CHANGELOG.md` entry.

@@ -54,8 +54,13 @@ def path_problem(p: Any) -> str:
 
 
 def overlaps(a: str, b: str) -> bool:
-    """Directories end with '/'. Two paths overlap if equal or one is a directory containing the other."""
-    return a == b or (a.endswith("/") and b.startswith(a)) or (b.endswith("/") and a.startswith(b))
+    """Two paths overlap if equal or one contains the other.
+
+    A path is treated as a possible directory whether or not it ends with '/', so ``orchestrator/research`` still
+    overlaps ``orchestrator/research/a.py``. Comparison is case-insensitive because Windows checkouts are.
+    """
+    a, b = a.lower(), b.lower()
+    return a == b or b.startswith(a.rstrip("/") + "/") or a.startswith(b.rstrip("/") + "/")
 
 
 def _overlap_path(a: str, b: str) -> str:
@@ -173,6 +178,11 @@ def validate(doc: Any) -> List[str]:
             problems.append(f"{label}: owner must match {OWNER.pattern}")
         if not (isinstance(t.get("branch"), str) and BRANCH.match(t["branch"])):
             problems.append(f"{label}: branch must match {BRANCH.pattern}")
+        if isinstance(t.get("owner"), str) and isinstance(t.get("branch"), str):
+            if t["owner"].startswith("claude:") and not t["branch"].startswith("task/"):
+                problems.append(f"{label}: a Claude Code task branch must start with 'task/'")
+            if t["owner"].startswith("chatgpt:") and not t["branch"].startswith("chatgpt/"):
+                problems.append(f"{label}: a ChatGPT task branch must start with 'chatgpt/'")
         wt = t.get("worktree")
         if wt is not None and not _nonempty(wt):
             problems.append(f"{label}: worktree must be null or a path")
@@ -277,6 +287,28 @@ def _task_cycles(by_id: Dict[str, dict]) -> List[str]:
         if tid not in state:
             visit(tid, [])
     return problems
+
+
+def covers(owned: str, changed_file: str) -> bool:
+    """True if the owned path (a file, or a directory ending in '/') contains the changed file."""
+    return overlaps(owned, changed_file) and (owned.lower() == changed_file.lower()
+                                               or changed_file.lower().startswith(owned.lower().rstrip("/") + "/"))
+
+
+def scope_problems(doc: Dict[str, Any], branch: str, changed_files: List[str]) -> List[str]:
+    """Every changed file must lie inside the owned_paths of the single active task registered for `branch`.
+
+    This is the check that makes the claim registry bite: validate() only compares claims with each other,
+    while this compares a branch's real changes with its own claim.
+    """
+    tasks = [t for t in doc.get("tasks", []) if t.get("branch") == branch and t.get("status") in ACTIVE_STATUSES]
+    if not tasks:
+        return [f"no ACTIVE or UNDER_REVIEW task is registered for branch {branch!r}; claim your files first"]
+    if len(tasks) > 1:
+        return [f"branch {branch!r} is registered by more than one active task"]
+    owned = tasks[0].get("owned_paths", [])
+    return [f"{f} is changed on {branch} but not covered by owned_paths of {tasks[0]['id']}"
+            for f in sorted(changed_files) if not any(covers(p, f) for p in owned)]
 
 
 def expired_leases(doc: Dict[str, Any], now: _dt.datetime) -> List[Dict[str, str]]:

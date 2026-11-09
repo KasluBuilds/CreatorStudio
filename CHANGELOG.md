@@ -17,6 +17,14 @@ The commit SHA is recorded in `PROJECT_STATUS.json` and in this entry after merg
 - `AI_Creator_Studio_Documentation/ENVIRONMENT.md`: development environment and setup facts, labelled VERIFIED or REPORTED.
 - `CHANGELOG.md` (this file).
 
+### Self-review corrections (same branch, after the first push)
+- Scoring: `weights_status` is now an enum (`PROPOSED` or `APPROVED`); approval needs a human, a date and a `weights_fingerprint`, so any later weight change invalidates it. `human_review` evidence must name a human and carry `real_input: true`. `score` and the handoff say whether weights are proposed and how many milestones are verified on reviewed real input.
+- Tamper resistance: `governance validate --against <ref>` rejects removed milestones, edited or removed evidence, verification upgrades without new evidence, and weight changes after approval.
+- Ownership: directory claims without a trailing slash and case variants now overlap; branch prefixes must match the owner type; new `governance scope` compares a branch's changed files with its claimed paths.
+- User-action gate `G-FIRST-REAL-VIDEO` (tell Lukas to start producing real videos when the first long-form pipeline is ready) in `PROJECT_STATUS.json`, `PROJECT_OPERATING_PROTOCOL.md` section 14, `CLAUDE.md`, `ROADMAP.md`, the generated handoff and the new `FIRST_REAL_VIDEO_CHECKLIST.md`. Validation fails once the trigger fires while the gate is still PENDING. No external notification exists.
+- Real-input evidence from the local `Projects/my-first-test` recorded as machine-local observations (ingest and shot detection of one real file, transcription experiments). No verification level was raised and nothing is VERIFIED.
+- 38 new governance tests (91 in total).
+
 ### Changed
 - `CLAUDE.md`: new section 0 pointing sessions at the governance files and the branch/ownership rules.
 - `ROADMAP.md`: status-authority note, milestone index, Phase 0 read-only MCP item ticked on the strength of the 2026-11-08 change-log record, notes that offline Research, Asset and Creative Director foundations exist.

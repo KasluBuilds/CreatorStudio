@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -37,11 +38,23 @@ def _report(problems: List[str], ok_message: str) -> int:
     return 0
 
 
+def _git(root: Path, *args: str) -> str:
+    r = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise OSError(f"git {' '.join(args)} failed: {r.stderr.strip()}")
+    return r.stdout
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m governance", description=__doc__)
     p.add_argument("--root", type=Path, default=ROOT, help="repository root (default: this checkout)")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("validate", help="validate PROJECT_STATUS.json and ACTIVE_TASKS.json")
+    va = sub.add_parser("validate", help="validate PROJECT_STATUS.json and ACTIVE_TASKS.json")
+    va.add_argument("--against", metavar="REF", help="also compare PROJECT_STATUS.json with its version at this git ref "
+                    "(for example origin/main): append-only evidence, no dropped milestones, no unevidenced upgrades")
+    sp = sub.add_parser("scope", help="check that this branch's changed files lie inside its task's owned_paths")
+    sp.add_argument("--base", default="origin/main", help="git ref the branch started from (default origin/main)")
+    sp.add_argument("--branch", help="branch name (default: the current branch)")
     sc = sub.add_parser("score", help="print implementation and verification percentages")
     sc.add_argument("--json", action="store_true", help="machine-readable output")
     sc.add_argument("--write", action="store_true", help="refresh the 'computed' block in PROJECT_STATUS.json")
@@ -67,7 +80,22 @@ def main(argv: Optional[List[str]] = None) -> int:
             problems += [f"{TASKS_FILE}: {x}" for x in tasks_mod.validate(tdoc)]
             if not problems:
                 problems += [f"{STATUS_FILE}: {x}" for x in status_mod.check_computed(sdoc)]
+            if not problems and args.against:
+                exists = subprocess.run(["git", "-C", str(root), "cat-file", "-e", f"{args.against}:{STATUS_FILE}"],
+                                        capture_output=True).returncode == 0
+                if exists:
+                    old = json.loads(_git(root, "show", f"{args.against}:{STATUS_FILE}"))
+                    problems += [f"{STATUS_FILE} vs {args.against}: {x}" for x in status_mod.transition_problems(old, sdoc)]
+                else:
+                    print(f"note: {STATUS_FILE} does not exist at {args.against}; nothing to compare with")
             return _report(problems, "OK: status and task registry are valid and consistent")
+        if args.cmd == "scope":
+            branch = args.branch or _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+            changed = set(_git(root, "diff", "--name-only", f"{args.base}...HEAD").split())
+            changed |= set(_git(root, "diff", "--name-only", "HEAD").split())
+            changed |= set(_git(root, "ls-files", "--others", "--exclude-standard").split())
+            return _report(tasks_mod.scope_problems(_load(tfile), branch, sorted(changed)),
+                           f"OK: all {len(changed)} changed files on {branch} are inside its claimed paths")
         if args.cmd == "tasks":
             return _report(tasks_mod.validate(_load(tfile)), "OK: task registry is valid")
         if args.cmd == "score":
@@ -86,7 +114,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             else:
                 print(f"Implementation: {result['implementation_percent']}%")
                 print(f"Verification:   {result['verification_percent']}%")
-                print(f"({result['milestone_count']} milestones, total weight {result['total_weight']})")
+                print(f"({result['milestone_count']} milestones, total weight {result['total_weight']}; "
+                      f"weights {result['weights_status']}"
+                      + (" - proposals awaiting Lukas's review" if result["weights_status"] == "PROPOSED" else "") + ")")
+                print(f"Milestones verified on reviewed real input: {len(result['real_input_reviewed_milestones'])} "
+                      f"of {result['milestone_count']}")
                 if result["reported_only_milestones"]:
                     print("Verification credit resting on reported evidence only: "
                           + ", ".join(result["reported_only_milestones"]))

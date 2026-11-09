@@ -3,7 +3,7 @@
   "updated": "2026-11-09",
   "repository": "https://github.com/KasluBuilds/CreatorStudio",
   "authority": "Authoritative for current milestone status and progress. Design and decisions stay authoritative in AI_Creator_Studio_Documentation/. Scoring rules: orchestrator/governance/status.py and PROJECT_OPERATING_PROTOCOL.md section 9.",
-  "weights_status": "PROPOSED - weights and milestone granularity were drafted by Claude Code on 2026-11-09 and await review by Lukas",
+  "weights_status": "PROPOSED",
   "baseline": {
     "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d",
     "branch": "main",
@@ -18,17 +18,20 @@
   "open_decisions": [
     "Weights and milestone granularity in this file need Lukas's review (weights_status).",
     "Ownership of the creator_state, media_analysis and speaker_attribution packages is UNRESOLVED (ACTIVE_TASKS.json package_owners).",
-    "Q11: which transcription engine; the docs say none is chosen, but analysis/transcription/engine_runs exists under Projects/my-first-test with results not recorded in the docs (UNKNOWN).",
-    "Docs state no real footage has been processed, but Projects/my-first-test references real footage and contains shot-detection output dated 2026-11-09; whether it was reviewed is not recorded (UNKNOWN).",
+    "Q11: which transcription engine. No engine is chosen. Local experiments on one real recording exist (E-OBS-LOCAL-TRANSCRIPTION-EXP); the engine text and the creator's listening notes disagree and the discrepancy is unresolved.",
+    "CLAUDE.md, INGESTION.md and SHOT_DETECTION.md still say ingestion and shot detection were tested on synthetic media only, but a real file was ingested (2026-11-08) and shot-detected (2026-11-09) in Projects/my-first-test. Lukas to confirm this was intended and to review the results; those documents belong to the creator_state owner (UNRESOLVED) and were not edited here.",
     "Q33 (when the understand stage may complete) and Q35 (two shot detectors) remain OPEN in DECISIONS_AND_OPEN_QUESTIONS.md.",
-    "Branch protection and rulesets are not available for this private repository on the current GitHub plan (HTTP 403 observed 2026-11-09); the single-writer rule for main is procedural."
+    "Branch protection and rulesets are not available for this private repository on the current GitHub plan (HTTP 403 observed 2026-11-09); the single-writer rule for main is procedural.",
+    "Worktree access to the git-ignored Projects/ is only partly tested: the read-only `creator_state --root <primary> list` worked from a worktree and changed nothing (observed 2026-11-09). Every other command and any write are NOT TESTED; the serialization rule stays in force.",
+    "Milestone-triggered user action G-FIRST-REAL-VIDEO is PENDING (see user_action_gates)."
   ],
   "next_actions": [
     "Lukas reviews and merges pull request task/governance-foundation (or requests changes).",
     "Lukas reviews the milestone weights and confirms or changes package owners.",
     "Lukas connects ChatGPT's GitHub connector and tests retrieval of PROJECT_STATUS.json (steps are in PROJECT_OPERATING_PROTOCOL.md section 13).",
     "After merge, record verification evidence for M-INF-02 with the final commit SHA and release task T-GOV-001.",
-    "Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director."
+    "Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.",
+    "Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages."
   ],
   "evidence": {
     "E-FULLSUITE-0001": {
@@ -186,6 +189,30 @@
       "date": "2026-11-08",
       "summary": "SHOT_DETECTION.md states verification on generated 64x48 25 fps clips (cuts, short shots, flash, dissolve, fades, static footage, interruptions).",
       "ref": "AI_Creator_Studio_Documentation/SHOT_DETECTION.md (status line)"
+    },
+    "E-OBS-LOCAL-INGEST-REAL": {
+      "id": "E-OBS-LOCAL-INGEST-REAL",
+      "type": "observation",
+      "date": "2026-11-09",
+      "summary": "Projects/my-first-test records the ingest stage as completed on 2026-11-08 for one real file (MVI_0890.MOV, 102.6 s) with ffprobe used and a deep source verification 'ok 1'. This shows the pipeline ran on real input; it is not a recorded human review of the result and cannot be reproduced from the repository.",
+      "ref": "Projects/my-first-test/logs/activity.log, HANDOFF.md, source_manifest.json (machine-local, git-ignored, not in this repository)",
+      "observer": "claude:governance-session"
+    },
+    "E-OBS-LOCAL-SHOTS-REAL": {
+      "id": "E-OBS-LOCAL-SHOTS-REAL",
+      "type": "observation",
+      "date": "2026-11-09",
+      "summary": "A shot-detection run on the same real file finished with status 'completed' at 2026-11-09T11:58Z (2565 frames at 25 fps; 9 shots, 0 hard cuts, 8 dissolves, 10 rejected events, 1 uncertain candidate). The run's own report says the thresholds are untuned and not validated on real footage. No human review of the detections is recorded.",
+      "ref": "Projects/my-first-test/analysis/shots/m_440fc5ddcd/r_cac95007_30355cc4/run.json and report.md (machine-local, git-ignored, not in this repository)",
+      "observer": "claude:governance-session"
+    },
+    "E-OBS-LOCAL-TRANSCRIPTION-EXP": {
+      "id": "E-OBS-LOCAL-TRANSCRIPTION-EXP",
+      "type": "observation",
+      "date": "2026-11-09",
+      "summary": "On 2026-11-08 the same file was transcribed by an external engine (Faster-Whisper-XXL r245.4, large-v3, per the experiment README) in a baseline run, a direct CLI run and six isolated-clip runs, outside any CreatorStudio code. The creator recorded a human listening reference. The comparison documents report that engine text and the creator's notes disagree in several regions and that the discrepancy is unresolved. No engine has been chosen (Q11).",
+      "ref": "Projects/my-first-test/analysis/transcription/ (engine_runs, exp02_isolated_clips, human_review) (machine-local, git-ignored, not in this repository)",
+      "observer": "claude:governance-session"
     }
   },
   "milestones": [
@@ -340,10 +367,11 @@
       "verification": {
         "state": "IN_PROGRESS",
         "level": "INTEGRATION",
-        "summary": "63 tests including real ffmpeg/ffprobe on synthetic clips (reported); no recorded review on real footage.",
+        "summary": "63 tests including real ffmpeg/ffprobe on synthetic clips (reported). The pipeline also ran on one real file on 2026-11-08 (machine-local record, observed); no human review of that run is recorded, so the level stays INTEGRATION.",
         "evidence": [
           "E-MOD-INGEST",
-          "E-REP-INGEST-FFMPEG"
+          "E-REP-INGEST-FFMPEG",
+          "E-OBS-LOCAL-INGEST-REAL"
         ]
       },
       "depends_on": [
@@ -352,7 +380,7 @@
       "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
       "open_questions": [
         "Variable-frame-rate handling is undecided (Q22).",
-        "Projects/my-first-test references real footage although the docs say none was ingested; no review is recorded."
+        "Needs local-machine verification by Lukas: confirm the 2026-11-08 ingest of MVI_0890.MOV was intended and that the manifest is correct. CLAUDE.md and INGESTION.md still say ingestion was tested on synthetic media only."
       ],
       "blockers": []
     },
@@ -394,20 +422,22 @@
       "weight_rationale": "Gating capability: Creator DNA, Creative Director and editing all need real transcripts.",
       "implementation": {
         "state": "BLOCKED",
-        "summary": "No engine is chosen; a decision brief exists and experiment folders exist locally with unrecorded results."
+        "summary": "No engine is chosen and no transcription code exists in the repository. Manual experiments with an external engine on one real recording exist locally (machine-local record, observed); they are not pipeline work, and their comparison with the creator's listening notes is inconclusive."
       },
       "verification": {
         "state": "NOT_STARTED",
         "level": "NONE",
-        "summary": "Nothing to verify.",
-        "evidence": []
+        "summary": "Experiments exist but nothing is claimed as verified: the engine/human discrepancy is unresolved.",
+        "evidence": [
+          "E-OBS-LOCAL-TRANSCRIPTION-EXP"
+        ]
       },
       "depends_on": [
         "M-MED-01"
       ],
       "commit": null,
       "open_questions": [
-        "Q11: which engine; results of the local engine_runs experiments are not recorded in the docs (UNKNOWN)."
+        "Q11: which engine. The local experiments are summarised in E-OBS-LOCAL-TRANSCRIPTION-EXP; their conclusion (engine vs the creator's listening notes) is unresolved."
       ],
       "blockers": [
         "Decision Q11 (transcription engine) has not been made."
@@ -427,10 +457,11 @@
       "verification": {
         "state": "IN_PROGRESS",
         "level": "INTEGRATION",
-        "summary": "141 tests with generated clips and real FFmpeg (reported); real-footage accuracy unknown and unreviewed.",
+        "summary": "141 tests with generated clips and real FFmpeg (reported). A run on the real file completed on 2026-11-09 (machine-local record, observed); its accuracy is unreviewed and the tool itself says it is not validated on real footage, so the level stays INTEGRATION.",
         "evidence": [
           "E-MOD-SHOTS",
-          "E-REP-SHOTS-SYNTH"
+          "E-REP-SHOTS-SYNTH",
+          "E-OBS-LOCAL-SHOTS-REAL"
         ]
       },
       "depends_on": [
@@ -439,7 +470,7 @@
       "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
       "open_questions": [
         "Q35: relationship to media_analysis.scene_detection.",
-        "A run on real footage appears to exist (files dated 2026-11-09 under Projects/my-first-test); no review recorded."
+        "Needs local-machine verification by Lukas: review the 9 detected shots of MVI_0890.MOV against the video (analysis/shots/m_440fc5ddcd/r_cac95007_30355cc4/report.md); until then accuracy on real footage is UNKNOWN."
       ],
       "blockers": []
     },
@@ -934,5 +965,28 @@
     "verification_percent": 12.5,
     "total_weight": 160,
     "milestone_count": 28
-  }
+  },
+  "weights_note": "Weights and milestone granularity were drafted by an AI session (Claude Code) on 2026-11-09 and have not been reviewed by Lukas. Until he approves them, every percentage derived from them is provisional.",
+  "user_action_gates": [
+    {
+      "id": "G-FIRST-REAL-VIDEO",
+      "title": "Stop development-only work; start producing real videos",
+      "trigger_milestones": [
+        "M-LFE-01"
+      ],
+      "trigger_description": "Phase 6: the first end-to-end long-form editing pipeline exists and is ready for real-world validation. Fires when M-LFE-01 reaches IMPLEMENTED, UNDER_REVIEW or VERIFIED. If a session believes the pipeline is ready earlier or later than that, it asks Lukas rather than waiting.",
+      "status": "PENDING",
+      "message": "The long-form pipeline is ready for real-world validation. Stop development-only work and start producing real videos: only real recordings can show whether the editing is good, and the finished long-form videos become the source material for Phase 7 short-form repurposing.",
+      "steps": [
+        "Tell Lukas, in plain words, that the pipeline is ready for real-world validation and that development-only work should pause.",
+        "Give him the filming checklist in AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md and explain which footage, audio and recording variety are useful.",
+        "Explain how to ingest the footage safely: place it under Incoming/<project-name>/, catalogue it in place, never move or edit originals, keep a separate backup, and run inspection before ingestion.",
+        "With Lukas's permission, start validating long-form editing against the real recordings; record every real run and its human review as evidence in PROJECT_STATUS.json (a milestone counts as verified only after he has reviewed the result).",
+        "Plan Phase 7 short-form repurposing on the long-form videos produced this way.",
+        "Set this gate to ACKNOWLEDGED (acknowledged_by, acknowledged_date) only after Lukas confirms he has read it."
+      ],
+      "checklist": "AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md",
+      "notification": "NONE. No scheduled task, calendar entry or external automation exists. The reminder is surfaced only by `governance validate` (which fails once the trigger fires while the gate is PENDING) and by the generated SESSION_HANDOFF.md."
+    }
+  ]
 }

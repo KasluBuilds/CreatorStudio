@@ -21,12 +21,37 @@ def _cell(text: Any) -> str:
     return str(text).replace("|", "\\|").replace("\n", " ")
 
 
+def _gates_section(status_doc: Dict[str, Any]) -> List[str]:
+    gates = status_doc.get("user_action_gates") or []
+    if not gates:
+        return []
+    ids = {m["id"]: m for m in status_doc["milestones"]}
+    out = ["## User-action gates (things Lukas must be told at a milestone)", ""]
+    for g in gates:
+        trig = ", ".join(g["trigger_milestones"])
+        if g["status"] == "TRIGGERED":
+            out += [f"### ACTION REQUIRED NOW - {g['id']}: {g['title']}", "",
+                    f"**Tell Lukas, before any other development work:** {g['message']}", ""]
+            out += [f"{i}. {s}" for i, s in enumerate(g["steps"], 1)]
+            out += ["", f"Checklist: `{g.get('checklist', '')}`. Status stays TRIGGERED until Lukas acknowledges it.", ""]
+        elif g["status"] == "ACKNOWLEDGED":
+            out += [f"- {g['id']} ({g['title']}): acknowledged by {g.get('acknowledged_by')} on "
+                    f"{g.get('acknowledged_date')}.", ""]
+        else:
+            states = ", ".join(f"{m} is {ids[m]['implementation']['state']}" for m in g["trigger_milestones"])
+            out += [f"- **{g['id']} - {g['title']}** (PENDING; fires when any of {trig} is implemented; now: {states}).",
+                    f"  When it fires: {g['message']}",
+                    f"  Notification: {g['notification']}", ""]
+    return out
+
+
 def render(status_doc: Dict[str, Any], tasks_doc: Dict[str, Any]) -> str:
     calc = status_mod.calculate(status_doc)
     base = status_doc["baseline"]
     lines: List[str] = [HEADER, "", "# Session handoff", ""]
     lines += [f"Status record dated **{status_doc['updated']}**. Baseline commit **`{base['commit'][:12]}`** "
               f"on `{base['branch']}`.", ""]
+    lines += _gates_section(status_doc)
     lines += ["## Verified baseline", "",
               f"- Command: `{base['test_command']}`",
               f"- Result: {base['tests_total']} tests, {base['failures']} failures, {base['errors']} errors, "
@@ -36,8 +61,15 @@ def render(status_doc: Dict[str, Any], tasks_doc: Dict[str, Any]) -> str:
               f"- Implementation: **{calc['implementation_percent']}%**  ",
               f"- Verification: **{calc['verification_percent']}%**  ",
               f"- {calc['milestone_count']} milestones, total weight {calc['total_weight']}. "
-              "Verification never exceeds implementation; weights are proposals awaiting Lukas's review "
-              f"(`{status_doc['weights_status']}`).",
+              "Verification never exceeds implementation. "
+              + ("Weights are PROPOSED: drafted by an AI session and not yet reviewed by Lukas, so these figures are "
+                 "provisional. " if status_doc["weights_status"] == "PROPOSED" else
+                 f"Weights APPROVED by {status_doc.get('weights_approved_by')} on {status_doc.get('weights_approved_date')}. "),
+              "- How to read them: *implementation* is the weighted share of milestones whose code exists (half credit "
+              "if in progress); *verification* is the weighted share demonstrated at the level evidence supports. "
+              "Neither measures effort, time left, or whether the product works on real footage.",
+              f"- Milestones verified on reviewed real input: {len(calc['real_input_reviewed_milestones'])} of "
+              f"{calc['milestone_count']} ({', '.join(calc['real_input_reviewed_milestones']) or 'none'}).",
               f"- Milestones whose verification rests only on *reported* (not re-observed) evidence: "
               f"{', '.join(calc['reported_only_milestones']) or 'none'}.", "",
               "| Phase | Weight | Implemented | Verified |", "|---|---:|---:|---:|"]
@@ -56,6 +88,9 @@ def render(status_doc: Dict[str, Any], tasks_doc: Dict[str, Any]) -> str:
         for t in active:
             lines.append(f"| {t['id']} {_cell(t['title'])} | {t['owner']} | `{t['branch']}` | {t['status']} | "
                          f"{t['lease']['expires']} | {_cell(', '.join(t['owned_paths']))} |")
+        lines.append("")
+        lines.append("Leases are not judged here (this file never reads the clock): run "
+                     "`cd orchestrator && python -B -m governance leases` to list expired ones.")
     else:
         lines.append("No active tasks.")
     lines += ["", "## Package ownership", "", "| Package | Owner | How established |", "|---|---|---|"]

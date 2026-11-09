@@ -6,6 +6,12 @@
 
 Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`.
 
+## User-action gates (things Lukas must be told at a milestone)
+
+- **G-FIRST-REAL-VIDEO - Stop development-only work; start producing real videos** (PENDING; fires when any of M-LFE-01 is implemented; now: M-LFE-01 is NOT_STARTED).
+  When it fires: The long-form pipeline is ready for real-world validation. Stop development-only work and start producing real videos: only real recordings can show whether the editing is good, and the finished long-form videos become the source material for Phase 7 short-form repurposing.
+  Notification: NONE. No scheduled task, calendar entry or external automation exists. The reminder is surfaced only by `governance validate` (which fails once the trigger fires while the gate is PENDING) and by the generated SESSION_HANDOFF.md.
+
 ## Verified baseline
 
 - Command: `cd orchestrator && python -B -I -m unittest discover -s tests`
@@ -16,7 +22,9 @@ Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`
 
 - Implementation: **36.3%**  
 - Verification: **12.5%**  
-- 28 milestones, total weight 160. Verification never exceeds implementation; weights are proposals awaiting Lukas's review (`PROPOSED - weights and milestone granularity were drafted by Claude Code on 2026-11-09 and await review by Lukas`).
+- 28 milestones, total weight 160. Verification never exceeds implementation. Weights are PROPOSED: drafted by an AI session and not yet reviewed by Lukas, so these figures are provisional. 
+- How to read them: *implementation* is the weighted share of milestones whose code exists (half credit if in progress); *verification* is the weighted share demonstrated at the level evidence supports. Neither measures effort, time left, or whether the product works on real footage.
+- Milestones verified on reviewed real input: 0 of 28 (none).
 - Milestones whose verification rests only on *reported* (not re-observed) evidence: M-RSV-01.
 
 | Phase | Weight | Implemented | Verified |
@@ -71,7 +79,9 @@ Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`
 
 | Task | Owner | Branch | Status | Lease expires | Owns |
 |---|---|---|---|---|---|
-| T-GOV-001 Governance foundation | claude:governance-session | `task/governance-foundation` | UNDER_REVIEW | 2026-11-10T19:20:00+01:00 | PROJECT_OPERATING_PROTOCOL.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, SESSION_HANDOFF.md, CHANGELOG.md, CLAUDE.md, AI_Creator_Studio_Documentation/ENVIRONMENT.md, AI_Creator_Studio_Documentation/README.md, AI_Creator_Studio_Documentation/ROADMAP.md, AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md, AI_Creator_Studio_Documentation/MASTER.md, AI_Creator_Studio_Documentation/AGENTS.md, AI_Creator_Studio_Documentation/RESEARCH.md, AI_Creator_Studio_Documentation/ASSETS.md, orchestrator/governance/, orchestrator/tests/test_governance.py |
+| T-GOV-001 Governance foundation | claude:governance-session | `task/governance-foundation` | UNDER_REVIEW | 2026-11-10T19:20:00+01:00 | PROJECT_OPERATING_PROTOCOL.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, SESSION_HANDOFF.md, CHANGELOG.md, CLAUDE.md, AI_Creator_Studio_Documentation/ENVIRONMENT.md, AI_Creator_Studio_Documentation/README.md, AI_Creator_Studio_Documentation/ROADMAP.md, AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md, AI_Creator_Studio_Documentation/MASTER.md, AI_Creator_Studio_Documentation/AGENTS.md, AI_Creator_Studio_Documentation/RESEARCH.md, AI_Creator_Studio_Documentation/ASSETS.md, orchestrator/governance/, orchestrator/tests/test_governance.py, AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md |
+
+Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
 ## Package ownership
 
@@ -94,10 +104,12 @@ Unresolved ownership: `creator_state`, `media_analysis`, `speaker_attribution`, 
 - **M-MED-02** blocked by: Decision Q11 (transcription engine) has not been made.
 - Weights and milestone granularity in this file need Lukas's review (weights_status).
 - Ownership of the creator_state, media_analysis and speaker_attribution packages is UNRESOLVED (ACTIVE_TASKS.json package_owners).
-- Q11: which transcription engine; the docs say none is chosen, but analysis/transcription/engine_runs exists under Projects/my-first-test with results not recorded in the docs (UNKNOWN).
-- Docs state no real footage has been processed, but Projects/my-first-test references real footage and contains shot-detection output dated 2026-11-09; whether it was reviewed is not recorded (UNKNOWN).
+- Q11: which transcription engine. No engine is chosen. Local experiments on one real recording exist (E-OBS-LOCAL-TRANSCRIPTION-EXP); the engine text and the creator's listening notes disagree and the discrepancy is unresolved.
+- CLAUDE.md, INGESTION.md and SHOT_DETECTION.md still say ingestion and shot detection were tested on synthetic media only, but a real file was ingested (2026-11-08) and shot-detected (2026-11-09) in Projects/my-first-test. Lukas to confirm this was intended and to review the results; those documents belong to the creator_state owner (UNRESOLVED) and were not edited here.
 - Q33 (when the understand stage may complete) and Q35 (two shot detectors) remain OPEN in DECISIONS_AND_OPEN_QUESTIONS.md.
 - Branch protection and rulesets are not available for this private repository on the current GitHub plan (HTTP 403 observed 2026-11-09); the single-writer rule for main is procedural.
+- Worktree access to the git-ignored Projects/ is only partly tested: the read-only `creator_state --root <primary> list` worked from a worktree and changed nothing (observed 2026-11-09). Every other command and any write are NOT TESTED; the serialization rule stays in force.
+- Milestone-triggered user action G-FIRST-REAL-VIDEO is PENDING (see user_action_gates).
 
 ## Next actions
 
@@ -106,6 +118,7 @@ Unresolved ownership: `creator_state`, `media_analysis`, `speaker_attribution`, 
 3. Lukas connects ChatGPT's GitHub connector and tests retrieval of PROJECT_STATUS.json (steps are in PROJECT_OPERATING_PROTOCOL.md section 13).
 4. After merge, record verification evidence for M-INF-02 with the final commit SHA and release task T-GOV-001.
 5. Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.
+6. Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.
 
 ## Where things live
 
