@@ -249,7 +249,7 @@
       "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d",
       "open_questions": [
         "Branch protection is unavailable on the current plan (HTTP 403); consider whether procedural rules suffice.",
-        "ChatGPT GitHub connector retrieval has not been tested."
+        "REPORTED by Lukas, not independently verified: ChatGPT retrieved the five canonical files through its GitHub connector. Whether ChatGPT can create branches or write pull requests has not been tested."
       ],
       "blockers": []
     },
