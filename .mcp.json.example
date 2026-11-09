@@ -1,0 +1,17 @@
+{
+  "_comment": "Template only. Copy to .mcp.json (which is git-ignored) and replace every <PLACEHOLDER> with the value for your machine. Structure mirrors the working local configuration; no values are copied.",
+  "mcpServers": {
+    "davinci-resolve": {
+      "command": "<CREATORSTUDIO_ROOT>\\tools\\davinci-resolve-mcp\\venv\\Scripts\\python.exe",
+      "args": [
+        "<CREATORSTUDIO_ROOT>\\tools\\davinci-resolve-mcp\\src\\server.py"
+      ],
+      "env": {
+        "RESOLVE_SCRIPT_API": "<PROGRAMDATA>\\Blackmagic Design\\DaVinci Resolve\\Support\\Developer\\Scripting",
+        "RESOLVE_SCRIPT_LIB": "<RESOLVE_INSTALL_DIR>\\fusionscript.dll",
+        "PYTHONPATH": "<PROGRAMDATA>\\Blackmagic Design\\DaVinci Resolve\\Support\\Developer\\Scripting\\Modules",
+        "PYTHONHOME": "<PYTHON_INSTALL_DIR>"
+      }
+    }
+  }
+}

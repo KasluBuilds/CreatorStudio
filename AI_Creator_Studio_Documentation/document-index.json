@@ -1,0 +1,30 @@
+{
+  "project": "AI Creator Studio",
+  "as_of": "2026-11-08",
+  "documents": [
+    "README.md",
+    "MASTER.md",
+    "WORKFLOW.md",
+    "AGENTS.md",
+    "EDITING_ENGINE.md",
+    "CREATOR_DNA.md",
+    "RESEARCH.md",
+    "ASSETS.md",
+    "RESOLVE_INTEGRATION.md",
+    "TECHNICAL_ARCHITECTURE.md",
+    "PROJECT_STATE.md",
+    "INGESTION.md",
+    "SHOT_DETECTION.md",
+    "TRANSCRIPTION_ENGINE_BRIEF.md",
+    "QUALITY_CONTROL.md",
+    "ROADMAP.md",
+    "DECISIONS_AND_OPEN_QUESTIONS.md"
+  ],
+  "status_labels": [
+    "VERIFIED",
+    "DECIDED",
+    "PROPOSED",
+    "OPEN",
+    "NOT TESTED"
+  ]
+}

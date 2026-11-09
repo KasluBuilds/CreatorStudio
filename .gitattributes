@@ -1,0 +1,22 @@
+# Normalize line endings: text files are stored with LF in the repository.
+# On Windows, checkouts use the platform default (CRLF) unless overridden.
+* text=auto
+
+*.py   text diff=python
+*.md   text
+*.json text
+*.txt  text
+*.yml  text
+*.yaml text
+*.toml text
+*.ps1  text eol=crlf
+*.example text
+
+# Binary safety net. Media is deliberately NOT tracked (see .gitignore),
+# and Git LFS is not used. These entries prevent accidental text conversion.
+*.mov  binary
+*.mp4  binary
+*.wav  binary
+*.jpg  binary
+*.png  binary
+*.bin  binary

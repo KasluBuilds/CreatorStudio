@@ -1,0 +1,146 @@
+# CreatorStudio .gitignore
+#
+# Policy: this repository holds source code, documentation and project
+# governance only. It must NEVER contain original footage, footage-derived
+# personal data, credentials, launcher scripts, or machine-specific config.
+# When in doubt, leave a path ignored and ask the project owner.
+
+# ---------------------------------------------------------------------------
+# Secrets and credentials (never commit)
+# ---------------------------------------------------------------------------
+/pro.ps1
+/backup.ps1
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.token
+*.secret
+*secrets*.json
+*credentials*.json
+id_rsa*
+id_ed25519*
+
+# ---------------------------------------------------------------------------
+# Local / machine-specific configuration
+# ---------------------------------------------------------------------------
+# Real MCP config contains absolute machine paths; commit .mcp.json.example only.
+/.mcp.json
+/.claude/settings.local.json
+/.claude/*.local.*
+/.claude/worktrees/
+*.local.json
+
+# ---------------------------------------------------------------------------
+# Source footage and anything derived from it (privacy + size)
+# ---------------------------------------------------------------------------
+# Incoming/ holds original footage. Only its README is documentation.
+/Incoming/*
+!/Incoming/README.md
+/test_media/
+/Projects/
+/Assets/
+/Research/
+/AI/
+
+# Media of any kind, wherever it appears
+*.mov
+*.mp4
+*.m4v
+*.mkv
+*.avi
+*.webm
+*.mxf
+*.mts
+*.m2ts
+*.braw
+*.r3d
+*.wav
+*.mp3
+*.aac
+*.flac
+*.m4a
+*.ogg
+*.aif
+*.aiff
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.heic
+*.cr2
+*.cr3
+*.arw
+*.tif
+*.tiff
+*.psd
+*.srt
+*.vtt
+
+# Resolve databases, caches, exports and project archives
+*.drp
+*.drt
+*.dra
+*.db
+*.sqlite
+*.sqlite3
+*.resolve.*
+/Resolve*/
+/CacheClip/
+/.gallery/
+/ProxyMedia/
+/RenderCache/
+
+# ---------------------------------------------------------------------------
+# Third-party tools (installed separately; versions pinned in TOOLS.md)
+# ---------------------------------------------------------------------------
+/tools/
+
+# ---------------------------------------------------------------------------
+# AI model weights and large binaries
+# ---------------------------------------------------------------------------
+*.safetensors
+*.gguf
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.bin
+models/
+
+# ---------------------------------------------------------------------------
+# Python environments, caches and build output
+# ---------------------------------------------------------------------------
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# ---------------------------------------------------------------------------
+# Logs, temp files, editor and OS noise
+# ---------------------------------------------------------------------------
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.lock
+.all_runs_finished
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
