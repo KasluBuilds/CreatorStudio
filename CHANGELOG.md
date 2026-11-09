@@ -4,9 +4,9 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
-## Unreleased — branch `task/governance-foundation` (task `T-GOV-001`, under review, not merged)
+## 2026-11-09 — `93a9a829e073595151666f99b0d1a57416db28c3` Governance layer (PR #1, task `T-GOV-001`, merged)
 
-The commit SHA is recorded in `PROJECT_STATUS.json` and in this entry after merge.
+Merged with a merge commit; PR head `4eb229645dc054939dea1b1ee4a9e6089671df42`. Full suite on merged main: 1166 tests, 0 failures, 0 errors, 1 skipped. Evidence: `E-FULLSUITE-0003` in `PROJECT_STATUS.json`.
 
 ### Added
 - `PROJECT_OPERATING_PROTOCOL.md`: rules for parallel Claude Code and ChatGPT work (branches, worktrees, ownership, task leases, integration, tests, security, ChatGPT procedure).

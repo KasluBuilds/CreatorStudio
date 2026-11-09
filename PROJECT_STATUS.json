@@ -5,15 +5,15 @@
   "authority": "Authoritative for current milestone status and progress. Design and decisions stay authoritative in AI_Creator_Studio_Documentation/. Scoring rules: orchestrator/governance/status.py and PROJECT_OPERATING_PROTOCOL.md section 9.",
   "weights_status": "PROPOSED",
   "baseline": {
-    "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d",
+    "commit": "93a9a829e073595151666f99b0d1a57416db28c3",
     "branch": "main",
     "date": "2026-11-09",
     "test_command": "cd orchestrator && python -B -I -m unittest discover -s tests",
-    "tests_total": 1069,
+    "tests_total": 1166,
     "failures": 0,
     "errors": 0,
     "skipped": 1,
-    "scope": "original project and a clean clone; the skip is test_symlink_source_refused (symlinks unavailable)"
+    "scope": "merged main in the primary folder after PR #1; the skip is test_symlink_source_refused (symlinks unavailable)"
   },
   "open_decisions": [
     "Weights and milestone granularity in this file need Lukas's review (weights_status).",
@@ -26,12 +26,12 @@
     "Milestone-triggered user action G-FIRST-REAL-VIDEO is PENDING (see user_action_gates)."
   ],
   "next_actions": [
-    "Lukas reviews and merges pull request task/governance-foundation (or requests changes).",
+    "Lukas reviews and merges the small follow-up pull request that closes task T-GOV-001 (task/governance-close).",
     "Lukas reviews the milestone weights and confirms or changes package owners.",
     "Lukas connects ChatGPT's GitHub connector and tests retrieval of PROJECT_STATUS.json (steps are in PROJECT_OPERATING_PROTOCOL.md section 13).",
-    "After merge, record verification evidence for M-INF-02 with the final commit SHA and release task T-GOV-001.",
     "Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.",
-    "Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages."
+    "Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.",
+    "Lukas tests the ChatGPT GitHub connector against main (PROJECT_OPERATING_PROTOCOL.md section 13)."
   ],
   "evidence": {
     "E-FULLSUITE-0001": {
@@ -213,6 +213,16 @@
       "summary": "On 2026-11-08 the same file was transcribed by an external engine (Faster-Whisper-XXL r245.4, large-v3, per the experiment README) in a baseline run, a direct CLI run and six isolated-clip runs, outside any CreatorStudio code. The creator recorded a human listening reference. The comparison documents report that engine text and the creator's notes disagree in several regions and that the discrepancy is unresolved. No engine has been chosen (Q11).",
       "ref": "Projects/my-first-test/analysis/transcription/ (engine_runs, exp02_isolated_clips, human_review) (machine-local, git-ignored, not in this repository)",
       "observer": "claude:governance-session"
+    },
+    "E-FULLSUITE-0003": {
+      "id": "E-FULLSUITE-0003",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "Full suite on main in the primary folder immediately after PR #1 was merged (includes 97 governance tests); governance validate and handoff --check also passed",
+      "ref": "primary project folder at the merge commit of PR #1",
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+      "result": "Ran 1166 tests in 169.8s: OK (skipped=1); 0 failures, 0 errors",
+      "commit": "93a9a829e073595151666f99b0d1a57416db28c3"
     }
   },
   "milestones": [
@@ -252,19 +262,21 @@
       "weight": 3,
       "weight_rationale": "Small but load-bearing: enables safe parallel work and honest progress reporting; no product capability.",
       "implementation": {
-        "state": "UNDER_REVIEW",
-        "summary": "Implemented on branch task/governance-foundation; awaiting Lukas's review of the pull request."
+        "state": "IMPLEMENTED",
+        "summary": "Merged to main through PR #1 (merge commit 93a9a829e073) on 2026-11-09 after review by Lukas."
       },
       "verification": {
-        "state": "NOT_STARTED",
-        "level": "NONE",
-        "summary": "Governance tests ran on the task branch before the pull request; evidence is recorded here after merge so the commit SHA is final.",
-        "evidence": []
+        "state": "IN_PROGRESS",
+        "level": "UNIT_ISOLATED",
+        "summary": "97 governance tests and the full suite pass on merged main (unit level, synthetic fixtures). Not yet exercised by a second concurrent workstream or reviewed in use.",
+        "evidence": [
+          "E-FULLSUITE-0003"
+        ]
       },
       "depends_on": [
         "M-INF-01"
       ],
-      "commit": null,
+      "commit": "93a9a829e073595151666f99b0d1a57416db28c3",
       "open_questions": [
         "Milestone weights need Lukas's review."
       ],
@@ -998,7 +1010,7 @@
   ],
   "computed": {
     "implementation_percent": 35.4,
-    "verification_percent": 12.2,
+    "verification_percent": 12.7,
     "total_weight": 164,
     "milestone_count": 29
   },
