@@ -23,15 +23,14 @@
     "Q33 (when the understand stage may complete) and Q35 (two shot detectors) remain OPEN in DECISIONS_AND_OPEN_QUESTIONS.md.",
     "Branch protection and rulesets are not available for this private repository on the current GitHub plan (HTTP 403 observed 2026-11-09); the single-writer rule for main is procedural.",
     "Worktree access to the git-ignored Projects/ is only partly tested: the read-only `creator_state --root <primary> list` worked from a worktree and changed nothing (observed 2026-11-09). Every other command and any write are NOT TESTED; the serialization rule stays in force.",
-    "Milestone-triggered user action G-FIRST-REAL-VIDEO is PENDING (see user_action_gates)."
+    "Milestone-triggered user action G-FIRST-REAL-VIDEO is PENDING (see user_action_gates).",
+    "REPORTED by Lukas (not independently verified): ChatGPT retrieved all five canonical files from main through the GitHub connector. Whether it can create branches or pull requests is not recorded."
   ],
   "next_actions": [
-    "Lukas reviews and merges the small follow-up pull request that closes task T-GOV-001 (task/governance-close).",
     "Lukas reviews the milestone weights and confirms or changes package owners.",
-    "Lukas connects ChatGPT's GitHub connector and tests retrieval of PROJECT_STATUS.json (steps are in PROJECT_OPERATING_PROTOCOL.md section 13).",
     "Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.",
     "Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.",
-    "Lukas tests the ChatGPT GitHub connector against main (PROJECT_OPERATING_PROTOCOL.md section 13)."
+    "Lukas to confirm, in ChatGPT, that the weekly \"Phase 6 Readiness Check\" automation can read the private repository and to report the result of its first completed run; until then its successful access is NOT VERIFIED."
   ],
   "evidence": {
     "E-FULLSUITE-0001": {
@@ -250,7 +249,7 @@
       "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d",
       "open_questions": [
         "Branch protection is unavailable on the current plan (HTTP 403); consider whether procedural rules suffice.",
-        "ChatGPT GitHub connector retrieval has not been tested."
+        "REPORTED by Lukas, not independently verified: ChatGPT retrieved the five canonical files through its GitHub connector. Whether ChatGPT can create branches or write pull requests has not been tested."
       ],
       "blockers": []
     },
@@ -1034,7 +1033,7 @@
         "Set this gate to ACKNOWLEDGED (acknowledged_by, acknowledged_date) only after Lukas confirms he has read it."
       ],
       "checklist": "AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md",
-      "notification": "NONE. No scheduled task, calendar entry or external automation exists. The reminder is surfaced only by `governance validate` (which fails once the trigger fires while the gate is PENDING) and by the generated SESSION_HANDOFF.md.",
+      "notification": "In the repository, `governance validate` (it fails once the trigger fires while the gate is PENDING) and the generated SESSION_HANDOFF.md are the reminders. REPORTED by Lukas, not verified by Claude: a weekly ChatGPT automation named \"Phase 6 Readiness Check\" is scheduled inside ChatGPT. NOT VERIFIED: that this automation can read the private repository or has completed any check; no completed run is recorded here. The automation does not trigger, replace or acknowledge the gate; only milestone evidence and validation trigger it and only Lukas acknowledges it.",
       "readiness_criteria": [
         {
           "id": "RC-1",

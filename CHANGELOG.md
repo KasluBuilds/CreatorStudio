@@ -4,6 +4,12 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — branch `task/governance-housekeeping` (governance wording only, pending review)
+
+- `PROJECT_STATUS.json`: removed `next_actions` that referred to the now-merged PR #2 and to connecting/testing the ChatGPT connector; added the REPORTED connector retrieval and an action to confirm the weekly automation's access.
+- Notification wording (`PROJECT_STATUS.json` gate, `PROJECT_OPERATING_PROTOCOL.md` section 14, `ROADMAP.md`, `FIRST_REAL_VIDEO_CHECKLIST.md`) now distinguishes the repository's own reminders from the REPORTED weekly ChatGPT "Phase 6 Readiness Check": scheduled existence is not evidence of successful private-repository access, which is NOT VERIFIED.
+- No milestone state, evidence, weight or gate trigger changed; `SESSION_HANDOFF.md` regenerated.
+
 ## 2026-11-09 — `93a9a829e073595151666f99b0d1a57416db28c3` Governance layer (PR #1, task `T-GOV-001`, merged)
 
 Merged with a merge commit; PR head `4eb229645dc054939dea1b1ee4a9e6089671df42`. Full suite on merged main: 1166 tests, 0 failures, 0 errors, 1 skipped. Evidence: `E-FULLSUITE-0003` in `PROJECT_STATUS.json`.

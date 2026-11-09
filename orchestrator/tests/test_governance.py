@@ -681,7 +681,10 @@ class TestReviewHardening(unittest.TestCase):
         gate = next(g for g in doc["user_action_gates"] if g["id"] == "G-FIRST-REAL-VIDEO")
         self.assertEqual(gate["trigger_milestones"], ["M-LFE-03"])  # dedicated readiness milestone, not assembly alone
         self.assertEqual(gate["status"], "PENDING")
-        self.assertIn("NONE", gate["notification"])  # no external automation is claimed
+        note = gate["notification"]  # a scheduled automation must not be presented as a completed or verified check
+        for needle in ("Phase 6 Readiness Check", "REPORTED", "NOT VERIFIED", "does not trigger"):
+            self.assertIn(needle, note)
+        self.assertNotIn("has completed a check", note)
         self.assertTrue((ROOT / gate["checklist"]).is_file())
         steps = " ".join(gate["steps"]).lower()
         for needle in ("checklist", "ingest", "validating", "phase 7"):
@@ -720,6 +723,12 @@ class TestReviewHardening(unittest.TestCase):
         self.assertIn("First-real-video checklist", text)
         self.assertIn("start producing real videos", text)
         self.assertIn("not proof", text)
+
+    def test_next_actions_do_not_refer_to_finished_steps(self):
+        doc = json.loads((ROOT / "PROJECT_STATUS.json").read_text(encoding="utf-8"))
+        text = " ".join(doc["next_actions"])
+        for stale in ("task/governance-close", "task/governance-foundation", "connects ChatGPT", "tests the ChatGPT GitHub connector"):
+            self.assertNotIn(stale, text)
 
     def test_readiness_milestone_is_a_proposed_small_weight_and_not_started(self):
         doc = json.loads((ROOT / "PROJECT_STATUS.json").read_text(encoding="utf-8"))
