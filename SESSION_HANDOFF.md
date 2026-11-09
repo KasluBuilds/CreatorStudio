@@ -16,7 +16,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
   - RC-4: Initial automated QC and export verification are completed on that output.
   - RC-5: Originals are preserved (verified unchanged) and the project state stays recoverable throughout.
   When it fires: The first end-to-end long-form pipeline is ready for real-world validation. Stop development-only work and start producing real videos: only real recordings can show whether the editing is good, and the finished long-form videos become the source material for Phase 7 short-form repurposing. This is readiness to begin validation, not proof that production-quality editing has been achieved.
-  Notification: NONE. No scheduled task, calendar entry or external automation exists. The reminder is surfaced only by `governance validate` (which fails once the trigger fires while the gate is PENDING) and by the generated SESSION_HANDOFF.md.
+  Notification: In the repository, `governance validate` (it fails once the trigger fires while the gate is PENDING) and the generated SESSION_HANDOFF.md are the reminders. REPORTED by Lukas, not verified by Claude: a weekly ChatGPT automation named "Phase 6 Readiness Check" is scheduled inside ChatGPT. NOT VERIFIED: that this automation can read the private repository or has completed any check; no completed run is recorded here. The automation does not trigger, replace or acknowledge the gate; only milestone evidence and validation trigger it and only Lukas acknowledges it.
 
 ## Verified baseline
 
@@ -113,15 +113,14 @@ Unresolved ownership: `creator_state`, `media_analysis`, `speaker_attribution`, 
 - Branch protection and rulesets are not available for this private repository on the current GitHub plan (HTTP 403 observed 2026-11-09); the single-writer rule for main is procedural.
 - Worktree access to the git-ignored Projects/ is only partly tested: the read-only `creator_state --root <primary> list` worked from a worktree and changed nothing (observed 2026-11-09). Every other command and any write are NOT TESTED; the serialization rule stays in force.
 - Milestone-triggered user action G-FIRST-REAL-VIDEO is PENDING (see user_action_gates).
+- REPORTED by Lukas (not independently verified): ChatGPT retrieved all five canonical files from main through the GitHub connector. Whether it can create branches or pull requests is not recorded.
 
 ## Next actions
 
-1. Lukas reviews and merges the small follow-up pull request that closes task T-GOV-001 (task/governance-close).
-2. Lukas reviews the milestone weights and confirms or changes package owners.
-3. Lukas connects ChatGPT's GitHub connector and tests retrieval of PROJECT_STATUS.json (steps are in PROJECT_OPERATING_PROTOCOL.md section 13).
-4. Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.
-5. Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.
-6. Lukas tests the ChatGPT GitHub connector against main (PROJECT_OPERATING_PROTOCOL.md section 13).
+1. Lukas reviews the milestone weights and confirms or changes package owners.
+2. Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.
+3. Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.
+4. Lukas to confirm, in ChatGPT, that the weekly "Phase 6 Readiness Check" automation can read the private repository and to report the result of its first completed run; until then its successful access is NOT VERIFIED.
 
 ## Where things live
 

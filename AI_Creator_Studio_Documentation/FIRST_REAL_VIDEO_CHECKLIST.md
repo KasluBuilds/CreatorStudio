@@ -4,8 +4,9 @@
 `G-FIRST-REAL-VIDEO` in `PROJECT_STATUS.json` fires, which is when the first end-to-end long-form editing pipeline (Phase 6)
 exists and is ready for real-world validation. That is the readiness milestone `M-LFE-03`, which needs evidence that one run processed footage,
 produced a validated plan and Resolve timeline, rendered a complete long-form output, completed initial QC and export verification, and kept originals
-and project state recoverable. It means ready to *start* validation, not that production-quality editing is proven. Until then the gate is `PENDING`. No scheduled notification or
-external automation exists; sessions are told by `python -B -m governance validate` and by `SESSION_HANDOFF.md`.
+and project state recoverable. It means ready to *start* validation, not that production-quality editing is proven. Until then the gate is `PENDING`. The repository schedules nothing;
+sessions are told by `python -B -m governance validate` and by `SESSION_HANDOFF.md`. A weekly ChatGPT "Phase 6 Readiness Check" is
+REPORTED by Lukas as scheduled outside the repository (not verified by Claude; no completed check is recorded).
 
 ## Why this moment matters
 Every earlier phase was tested on synthetic clips or on one short recording. Only real videos can show whether the editing is good,
