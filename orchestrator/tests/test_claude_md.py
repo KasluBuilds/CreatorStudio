@@ -13,6 +13,13 @@ from creator_state.cli import build_parser
 ROOT = Path(__file__).resolve().parents[2]
 TEXT = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
 
+# Machine-local files that CLAUDE.md names but that are deliberately NOT in the repository
+# (git-ignored: credentials, machine paths, or a separately installed third-party tool).
+# They may be absent in a fresh clone, so their absence is not a failure. They are only
+# checked for existence, never opened or read. Each must stay listed in .gitignore.
+OPTIONAL_LOCAL = {"pro.ps1": "/pro.ps1", "backup.ps1": "/backup.ps1",
+                  ".mcp.json": "/.mcp.json", "tools/": "/tools/"}
+
 
 def _subparsers():
     parser = build_parser()
@@ -43,9 +50,36 @@ class TestClaudeMd(unittest.TestCase):
                 path = ROOT / tok
             else:
                 continue
+            if tok in OPTIONAL_LOCAL:  # machine-local: may legitimately be absent (see OPTIONAL_LOCAL)
+                continue
             checked += 1
             self.assertTrue(path.exists(), f"CLAUDE.md references missing file: {tok}")
         self.assertGreater(checked, 10)
+
+    def test_optional_local_files_are_git_ignored(self):
+        """The files tolerated as absent must be exactly the ones the repository keeps out of Git."""
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        rules = {line.strip() for line in ignore if line.strip() and not line.startswith("#")}
+        for tok, rule in OPTIONAL_LOCAL.items():
+            self.assertIn(rule, rules, f".gitignore must ignore {tok} (rule {rule}) if it is optional")
+            self.assertIn(tok, TEXT, f"{tok} is listed as optional but CLAUDE.md no longer mentions it")
+
+    def test_mcp_example_template_is_valid_and_machine_neutral(self):
+        """.mcp.json.example is the tracked template for the git-ignored, machine-specific .mcp.json."""
+        import json
+        path = ROOT / ".mcp.json.example"
+        self.assertTrue(path.exists(), ".mcp.json.example (tracked template) is missing")
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        server = data["mcpServers"]["davinci-resolve"]
+        self.assertEqual({"command", "args", "env"}, set(server))
+        self.assertEqual({"RESOLVE_SCRIPT_API", "RESOLVE_SCRIPT_LIB", "PYTHONPATH", "PYTHONHOME"},
+                         set(server["env"]))
+        self.assertTrue(server["args"] and all(isinstance(a, str) for a in server["args"]))
+        for value in [server["command"], *server["args"], *server["env"].values()]:
+            self.assertRegex(value, r"<[A-Z_]+>", f"template value is not a placeholder: {value}")
+        self.assertNotRegex(raw, r"(?i)c:\\\\users\\\\", "template must not contain a personal absolute path")
+        self.assertNotRegex(raw, r"sk-[A-Za-z0-9_-]{8,}")
 
     def test_documentation_reading_order_starts_with_master(self):
         self.assertLess(TEXT.index("MASTER.md"), TEXT.index("WORKFLOW.md"))
