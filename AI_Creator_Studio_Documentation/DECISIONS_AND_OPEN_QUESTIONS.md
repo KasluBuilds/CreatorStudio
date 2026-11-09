@@ -24,6 +24,7 @@ This document prevents proposals and assumptions from being mistaken for confirm
 | Speaker attribution (2026-11-09, from the task brief) | DECIDED | Unknown attribution must never silently become creator attribution; a friend speaking the same dialect, a visible person, or a narrator is not automatically (or automatically not) the creator. Uncertainty is preserved; no voice biometrics or face recognition is required. |
 | Test file `MVI_0879.MOV` (2026-11-09) | DECIDED | A friend's narration in the creator's dialect. Allowed for generic transcription-engine tests; **must not** be used as Creator DNA evidence. |
 | Media ingestion | DECIDED (2026-11-08) | Hybrid: originals never modified and referenced in place by absolute path; catalogue and organize; proxies/working copies only as explicit, verified, separate operations; analysis and generated files kept apart from originals; Claude Code CLI first, no dashboard yet |
+| Repository and governance (2026-11-09, from Lukas's task briefs) | DECIDED | A private GitHub repository is the canonical source of truth; several Claude Code and ChatGPT workstreams run in parallel under shared governance (task branches, worktrees, explicit ownership, task leases); progress must distinguish implementation from verification and be computed from weighted milestone records, not invented |
 
 ## 2. Verified technical facts
 
@@ -50,6 +51,8 @@ This document prevents proposals and assumptions from being mistaken for confirm
 - Test status (2026-11-09, from `orchestrator/`, `python -I -m unittest discover -s tests -p "<file>"`): `test_media_analysis.py` 67, `test_creator_dna.py` 69, `test_integration_phase2_phase3.py` 38, `test_speaker_attribution.py` 56 — all passing. The full suite (`python -I -m unittest discover -s tests`, 579 tests) also covers the separately owned `research` package (`test_research.py`, 186 tests), which was being edited concurrently: it showed 0 failures in one run and 45 failures/errors (all in `test_research.py`) minutes later. Quote a full-suite result only together with its time and re-run it; do not assume it.
 - Speaker attribution and eligibility (`orchestrator/speaker_attribution/`, `CREATOR_DNA.md` §8a, 2026-11-09): identity, delivery context, attribution evidence (human / project metadata authoritative; supporting evidence can only propose), explicit persisted eligibility decisions with reasons, human confirmation/correction/cluster mapping, revocation, and Creator DNA schema v3 whose store refuses footage evidence without an eligible-creator stamp. 56 tests. Synthetic data only; **no attribution provider exists, no CLI, nothing run on real footage.**
 - Design rules derived from the *non-negotiable authenticity constraint* (not new product decisions): an engine’s transcript is never treated as verified speech; only a named human review can make text “verbatim” evidence; creator statements are never counted as footage evidence; missing confidence is never replaced by a default. Their *parameters* (weights, thresholds) are implementer defaults awaiting the creator — see Q26–Q36.
+- Research Agent, Asset Agent and Creative Director foundations (`orchestrator/research/`, `orchestrator/assets/`, `orchestrator/creative_director/`): offline libraries with fixture providers only; no network, no concrete provider, not wired into the pipeline or `creator_state`; unit-tested on synthetic data (284, 146 and 132 tests collected on 2026-11-09). Recorded as M-RSR-01, M-AST-01 and M-CRD-01 in `PROJECT_STATUS.json`.
+- Test status (2026-11-09, commit `5f6925e`): the full suite ran 1069 tests with 0 failures, 0 errors and 1 skipped (a symlink test) on the original project and on a clean clone. This supersedes the 579-test and 45-failure remarks above, which describe earlier moments (the 45 failures in `test_research.py` did not reproduce). Current figures are always in `PROJECT_STATUS.json` → `baseline`.
 - Provider switching is **not** automatic. The state layer lets a replacement session continue from files; a human starts that session.
 
 ## 3. Proposals, not implemented facts
@@ -59,7 +62,7 @@ This document prevents proposals and assumptions from being mistaken for confirm
 - Structured edit-plan JSON schema.
 - High-level validated Resolve wrapper functions.
 - Creator DNA *learning on real footage*, humor/delivery/gesture analyzers, and use of the profile by other agents (only the evidence store and a reference phrase analyzer exist — §2a).
-- Research and Asset Agent implementation.
+- Research and Asset Agent *providers, pipeline wiring and runs on real input* (offline library foundations exist, see section 2a).
 - Automatic transcription (no engine), speaker identification, speech-activity detection and scene *understanding* (only measurements, a boundary detector and the interfaces exist — §2a).
 - Automated review render/QC correction loop.
 - Fully autonomous long-form/short-form production.
@@ -150,6 +153,7 @@ OmniRoute:
 ## 6. Change log
 
 ### 2026-11-09
+- GitHub migration and governance: created the private repository `KasluBuilds/CreatorStudio` (initial commit `51fcd85`; `5f6925e` made `test_claude_md.py` tolerate the git-ignored launchers, `.mcp.json` and `tools/`, and added a check of `.mcp.json.example`). Added `PROJECT_OPERATING_PROTOCOL.md`, `PROJECT_STATUS.json`, `ACTIVE_TASKS.json`, a generated `SESSION_HANDOFF.md`, `CHANGELOG.md`, `ENVIRONMENT.md` and the `orchestrator/governance/` package on branch `task/governance-foundation` (pending review). Corrected stale status text only where evidence supports it: the read-only MCP test in `ROADMAP.md`, and the Research/Asset/Creative Director status. No design decision was changed; milestone weights are proposals awaiting Lukas.
 - Added speaker attribution and Creator DNA eligibility (`orchestrator/speaker_attribution/`, Creator DNA schema v3, pipeline steps `evaluate_eligibility` and an attributed `prepare_dna_handoff`). Docs updated (`CREATOR_DNA.md` §8a, `INGESTION.md`, `WORKFLOW.md`, `ROADMAP.md`); open choices recorded as Q37–Q44. Synthetic data only; no provider, no CLI; `MVI_0879.MOV` is excluded from Creator DNA evidence.
 - Documentation consistency cleanup: Q35 rewritten in place (same number, still OPEN) to reflect that the `creator_state` shot detector is now documented and has CLI commands. No question was renumbered and no decision was made.
 

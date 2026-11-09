@@ -1,0 +1,938 @@
+{
+  "schema_version": 1,
+  "updated": "2026-11-09",
+  "repository": "https://github.com/KasluBuilds/CreatorStudio",
+  "authority": "Authoritative for current milestone status and progress. Design and decisions stay authoritative in AI_Creator_Studio_Documentation/. Scoring rules: orchestrator/governance/status.py and PROJECT_OPERATING_PROTOCOL.md section 9.",
+  "weights_status": "PROPOSED - weights and milestone granularity were drafted by Claude Code on 2026-11-09 and await review by Lukas",
+  "baseline": {
+    "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d",
+    "branch": "main",
+    "date": "2026-11-09",
+    "test_command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+    "tests_total": 1069,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "scope": "original project and a clean clone; the skip is test_symlink_source_refused (symlinks unavailable)"
+  },
+  "open_decisions": [
+    "Weights and milestone granularity in this file need Lukas's review (weights_status).",
+    "Ownership of the creator_state, media_analysis and speaker_attribution packages is UNRESOLVED (ACTIVE_TASKS.json package_owners).",
+    "Q11: which transcription engine; the docs say none is chosen, but analysis/transcription/engine_runs exists under Projects/my-first-test with results not recorded in the docs (UNKNOWN).",
+    "Docs state no real footage has been processed, but Projects/my-first-test references real footage and contains shot-detection output dated 2026-11-09; whether it was reviewed is not recorded (UNKNOWN).",
+    "Q33 (when the understand stage may complete) and Q35 (two shot detectors) remain OPEN in DECISIONS_AND_OPEN_QUESTIONS.md.",
+    "Branch protection and rulesets are not available for this private repository on the current GitHub plan (HTTP 403 observed 2026-11-09); the single-writer rule for main is procedural."
+  ],
+  "next_actions": [
+    "Lukas reviews and merges pull request task/governance-foundation (or requests changes).",
+    "Lukas reviews the milestone weights and confirms or changes package owners.",
+    "Lukas connects ChatGPT's GitHub connector and tests retrieval of PROJECT_STATUS.json (steps are in PROJECT_OPERATING_PROTOCOL.md section 13).",
+    "After merge, record verification evidence for M-INF-02 with the final commit SHA and release task T-GOV-001.",
+    "Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director."
+  ],
+  "evidence": {
+    "E-FULLSUITE-0001": {
+      "id": "E-FULLSUITE-0001",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "Full suite on the original project after the test_claude_md fix",
+      "ref": "orchestrator/tests",
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+      "result": "Ran 1069 tests in 178.8s: OK (skipped=1); 0 failures, 0 errors",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-FULLSUITE-0002": {
+      "id": "E-FULLSUITE-0002",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "Full suite in an independent clean clone of origin/main (no launchers, no .mcp.json, no tools/)",
+      "ref": "scratch clone of https://github.com/KasluBuilds/CreatorStudio.git",
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+      "result": "Ran 1069 tests in 149.5s: OK (skipped=1); 0 failures, 0 errors",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-OBS-REMOTE-0001": {
+      "id": "E-OBS-REMOTE-0001",
+      "type": "observation",
+      "date": "2026-11-09",
+      "summary": "GitHub API reported visibility PRIVATE, default branch main; remote main SHA equalled local HEAD (API and git ls-remote); remote tree held 108 blobs and none of the forbidden paths; unauthenticated API request returned 404",
+      "ref": "gh api repos/KasluBuilds/CreatorStudio; git ls-remote origin refs/heads/main",
+      "observer": "claude:governance-session"
+    },
+    "E-MOD-STATE": {
+      "id": "E-MOD-STATE",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "test_state.py: 62 tests collected and run",
+      "ref": "orchestrator/tests/test_state.py",
+      "command": "python -B -I -m unittest discover -s tests -p test_state.py",
+      "result": "Ran 62 tests: OK (and included in the full run with 0 failures)",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-MOD-INGEST": {
+      "id": "E-MOD-INGEST",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "test_ingest.py: 63 tests collected; passed inside the full run",
+      "ref": "orchestrator/tests/test_ingest.py",
+      "command": "python -B -I -m unittest discover -s tests",
+      "result": "63 collected (unittest loader count); full run 0 failures, 0 errors",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-MOD-SHOTS": {
+      "id": "E-MOD-SHOTS",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "test_shots.py: 141 tests collected; passed inside the full run",
+      "ref": "orchestrator/tests/test_shots.py",
+      "command": "python -B -I -m unittest discover -s tests",
+      "result": "141 collected (unittest loader count); full run 0 failures, 0 errors",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-MOD-MEDIA": {
+      "id": "E-MOD-MEDIA",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "test_media_analysis.py: 67 tests collected; passed inside the full run",
+      "ref": "orchestrator/tests/test_media_analysis.py",
+      "command": "python -B -I -m unittest discover -s tests",
+      "result": "67 collected (unittest loader count); full run 0 failures, 0 errors",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-MOD-DNA": {
+      "id": "E-MOD-DNA",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "test_creator_dna.py: 69 tests collected; passed inside the full run",
+      "ref": "orchestrator/tests/test_creator_dna.py",
+      "command": "python -B -I -m unittest discover -s tests",
+      "result": "69 collected (unittest loader count); full run 0 failures, 0 errors",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-MOD-SPK": {
+      "id": "E-MOD-SPK",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "test_speaker_attribution.py: 56 tests collected; passed inside the full run",
+      "ref": "orchestrator/tests/test_speaker_attribution.py",
+      "command": "python -B -I -m unittest discover -s tests",
+      "result": "56 collected (unittest loader count); full run 0 failures, 0 errors",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-MOD-INTEG": {
+      "id": "E-MOD-INTEG",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "test_integration_phase2_phase3.py: 38 cross-package tests (media_analysis, speaker_attribution, creator_dna) on synthetic data; passed inside the full run",
+      "ref": "orchestrator/tests/test_integration_phase2_phase3.py",
+      "command": "python -B -I -m unittest discover -s tests",
+      "result": "38 collected (unittest loader count); full run 0 failures, 0 errors",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-MOD-RESEARCH": {
+      "id": "E-MOD-RESEARCH",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "test_research.py: 284 tests collected; passed inside the full run (an earlier concurrent-edit run reported 45 failures; they did not reproduce)",
+      "ref": "orchestrator/tests/test_research.py",
+      "command": "python -B -I -m unittest discover -s tests",
+      "result": "284 collected (unittest loader count); full run 0 failures, 0 errors",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-MOD-ASSETS": {
+      "id": "E-MOD-ASSETS",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "test_assets.py: 146 tests collected; passed inside the full run except the one environmental skip (symlinks unavailable)",
+      "ref": "orchestrator/tests/test_assets.py",
+      "command": "python -B -I -m unittest discover -s tests",
+      "result": "146 collected (unittest loader count); full run 0 failures, 0 errors, 1 skipped",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-MOD-CRD": {
+      "id": "E-MOD-CRD",
+      "type": "test_run",
+      "date": "2026-11-09",
+      "summary": "test_creative_director.py: 132 tests collected; passed inside the full run",
+      "ref": "orchestrator/tests/test_creative_director.py",
+      "command": "python -B -I -m unittest discover -s tests",
+      "result": "132 collected (unittest loader count); full run 0 failures, 0 errors",
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d"
+    },
+    "E-REP-RESOLVE-BASELINE": {
+      "id": "E-REP-RESOLVE-BASELINE",
+      "type": "reported",
+      "date": "2026-11-08",
+      "summary": "Project documents record that Resolve Free 21.0.4.5 scripting, timeline creation, marker insertion, clip append, ZoomX write/read-back and an MP4/H.264 render were tested on disposable media. Not re-run in the governance session.",
+      "ref": "AI_Creator_Studio_Documentation/MASTER.md section 9; DECISIONS_AND_OPEN_QUESTIONS.md section 2"
+    },
+    "E-REP-RESOLVE-MCP": {
+      "id": "E-REP-RESOLVE-MCP",
+      "type": "reported",
+      "date": "2026-11-08",
+      "summary": "Change log records a read-only MCP connection test succeeding (project MCP_COMPATIBILITY_TEST) and Claude Code listing davinci-resolve with 37 tools. Not re-run in the governance session.",
+      "ref": "AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md section 6 (2026-11-08)"
+    },
+    "E-REP-INGEST-FFMPEG": {
+      "id": "E-REP-INGEST-FFMPEG",
+      "type": "reported",
+      "date": "2026-11-08",
+      "summary": "INGESTION.md states ingestion was tested with generated dummy files, an injected fake ffprobe and real ffmpeg/ffprobe on synthetic clips.",
+      "ref": "AI_Creator_Studio_Documentation/INGESTION.md (status line)"
+    },
+    "E-REP-SHOTS-SYNTH": {
+      "id": "E-REP-SHOTS-SYNTH",
+      "type": "reported",
+      "date": "2026-11-08",
+      "summary": "SHOT_DETECTION.md states verification on generated 64x48 25 fps clips (cuts, short shots, flash, dissolve, fades, static footage, interruptions).",
+      "ref": "AI_Creator_Studio_Documentation/SHOT_DETECTION.md (status line)"
+    }
+  },
+  "milestones": [
+    {
+      "id": "M-INF-01",
+      "title": "Canonical private GitHub repository and safety configuration",
+      "phase": "Governance",
+      "description": "Private repository KasluBuilds/CreatorStudio holds source and documentation; .gitignore keeps footage, derived data, credentials, launchers, local configuration and tools/ out; a tracked .mcp.json.example replaces the machine-specific file.",
+      "weight": 3,
+      "weight_rationale": "Small, completed enabler: every other workstream depends on it, but it adds no product capability.",
+      "implementation": {
+        "state": "IMPLEMENTED",
+        "summary": "Repository created and pushed; main at the baseline commit; migration commits 51fcd85 and 5f6925e."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "INTEGRATION",
+        "summary": "Remote state independently observed and a clean clone passes the full suite; not yet reviewed by Lukas as a whole.",
+        "evidence": [
+          "E-OBS-REMOTE-0001",
+          "E-FULLSUITE-0002"
+        ]
+      },
+      "depends_on": [],
+      "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d",
+      "open_questions": [
+        "Branch protection is unavailable on the current plan (HTTP 403); consider whether procedural rules suffice.",
+        "ChatGPT GitHub connector retrieval has not been tested."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-INF-02",
+      "title": "Governance layer and deterministic progress calculation",
+      "phase": "Governance",
+      "description": "Operating protocol, status and task registries, generated session handoff, changelog, environment document and the governance package with tests.",
+      "weight": 3,
+      "weight_rationale": "Small but load-bearing: enables safe parallel work and honest progress reporting; no product capability.",
+      "implementation": {
+        "state": "UNDER_REVIEW",
+        "summary": "Implemented on branch task/governance-foundation; awaiting Lukas's review of the pull request."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Governance tests ran on the task branch before the pull request; evidence is recorded here after merge so the commit SHA is final.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-INF-01"
+      ],
+      "commit": null,
+      "open_questions": [
+        "Milestone weights need Lukas's review."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-RSV-01",
+      "title": "Resolve Free scripting, bridge and MCP baseline",
+      "phase": "Phase 0",
+      "description": "DaVinci Resolve Free 21.0.4.5 reachable through the in-app bridge and the Resolve MCP server; basic timeline, marker, clip, transform and render operations exercised.",
+      "weight": 5,
+      "weight_rationale": "Everything that edits video depends on this; it is mostly configuration of third-party software, so effort is moderate but risk is high.",
+      "implementation": {
+        "state": "IMPLEMENTED",
+        "summary": "Bridge and MCP server installed and registered; connection and basic operations reported working."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "INTEGRATION",
+        "summary": "Real Resolve and disposable media, per project documents only; not re-observed in the governance session.",
+        "evidence": [
+          "E-REP-RESOLVE-BASELINE",
+          "E-REP-RESOLVE-MCP"
+        ]
+      },
+      "depends_on": [],
+      "commit": null,
+      "open_questions": [
+        "Only a subset of the 37 MCP tools has been exercised.",
+        "Test the OmniRoute fallback with MCP.",
+        "Inspect the bridge output-root allowlist before exporting into Projects.",
+        "Free 21.1 may no longer expose Python scripting; compatibility with other versions is unknown."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-RSV-02",
+      "title": "Safe, validated Resolve operations",
+      "phase": "Phase 1",
+      "description": "Frame-accurate source in/out, multi-track and sync, transforms, titles and captions, audio, render status and verification, 9:16 export, with documented limits.",
+      "weight": 10,
+      "weight_rationale": "Largest single technical risk: the whole editing engine rests on reliable Resolve operations; ROADMAP lists nine untested areas.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "None of the nine ROADMAP Phase 1 items is done; only the Phase 0 baseline exists."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify yet.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-RSV-01"
+      ],
+      "commit": null,
+      "open_questions": [
+        "Why a nominal 100-frame source range produced a 95-frame item is unexplained."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-STA-01",
+      "title": "Persistent project state, checkpoints, handoff and recovery",
+      "phase": "State foundation",
+      "description": "creator_state: per-project state file, append-only hashed checkpoints, operation journal, generated HANDOFF.md, recovery analysis, CLI.",
+      "weight": 6,
+      "weight_rationale": "Substantial, well-contained code that every production run depends on for crash safety.",
+      "implementation": {
+        "state": "IMPLEMENTED",
+        "summary": "Library and CLI implemented; stage validators and an automatic orchestrator loop do not exist."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "UNIT_ISOLATED",
+        "summary": "62 unit tests in temporary directories; never used on a real production or real provider switch.",
+        "evidence": [
+          "E-MOD-STATE"
+        ]
+      },
+      "depends_on": [],
+      "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
+      "open_questions": [
+        "Exercise on a real project and a real Claude Pro to OmniRoute switch.",
+        "Observe real sessions following CLAUDE.md."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-ING-01",
+      "title": "Hybrid media ingestion and inventory",
+      "phase": "Phase 2",
+      "description": "Originals catalogued in place with ffprobe metadata and checksums, source manifest and report, explicit proxy and managed-copy operations, source verification.",
+      "weight": 5,
+      "weight_rationale": "Mid-sized, mostly deterministic code; gate for all media work.",
+      "implementation": {
+        "state": "IMPLEMENTED",
+        "summary": "Ingestion, inventory, verification and proxy operations implemented with CLI."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "INTEGRATION",
+        "summary": "63 tests including real ffmpeg/ffprobe on synthetic clips (reported); no recorded review on real footage.",
+        "evidence": [
+          "E-MOD-INGEST",
+          "E-REP-INGEST-FFMPEG"
+        ]
+      },
+      "depends_on": [
+        "M-STA-01"
+      ],
+      "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
+      "open_questions": [
+        "Variable-frame-rate handling is undecided (Q22).",
+        "Projects/my-first-test references real footage although the docs say none was ingested; no review is recorded."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-MED-01",
+      "title": "Media analysis foundation",
+      "phase": "Phase 2",
+      "description": "Audio analysis copies, transcript format with replaceable provider interface and human review layer, energy-based audio measures, moment index, and the understand-stage pipeline connection.",
+      "weight": 6,
+      "weight_rationale": "Large package; the evidence layer for everything downstream, but several parts are interfaces without engines.",
+      "implementation": {
+        "state": "IN_PROGRESS",
+        "summary": "Interfaces, fixtures, measurements and moment index exist; no transcription engine, no speech-activity detection and no CLI."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "UNIT_ISOLATED",
+        "summary": "67 tests on synthetic data; nothing real.",
+        "evidence": [
+          "E-MOD-MEDIA"
+        ]
+      },
+      "depends_on": [
+        "M-ING-01"
+      ],
+      "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
+      "open_questions": [
+        "Q33: when may the understand stage complete.",
+        "Q26-Q29 scoring/policy parameters are implementer defaults awaiting the creator."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-MED-02",
+      "title": "Transcription engine and time-aligned transcripts",
+      "phase": "Phase 2",
+      "description": "Choose, install, wrap and validate a speech-to-text engine producing word-level timestamps, then run it on permitted real speech.",
+      "weight": 6,
+      "weight_rationale": "Gating capability: Creator DNA, Creative Director and editing all need real transcripts.",
+      "implementation": {
+        "state": "BLOCKED",
+        "summary": "No engine is chosen; a decision brief exists and experiment folders exist locally with unrecorded results."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-MED-01"
+      ],
+      "commit": null,
+      "open_questions": [
+        "Q11: which engine; results of the local engine_runs experiments are not recorded in the docs (UNKNOWN)."
+      ],
+      "blockers": [
+        "Decision Q11 (transcription engine) has not been made."
+      ]
+    },
+    {
+      "id": "M-SHT-01",
+      "title": "Shot, transition and candidate detection with CLI",
+      "phase": "Phase 2",
+      "description": "creator_state shot_* modules and the shots-plan/detect/status/check commands.",
+      "weight": 5,
+      "weight_rationale": "Mid-sized, self-contained; useful input to editing but heuristic.",
+      "implementation": {
+        "state": "IMPLEMENTED",
+        "summary": "Core, orchestration and CLI implemented; constant-frame-rate sources only; thresholds untuned."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "INTEGRATION",
+        "summary": "141 tests with generated clips and real FFmpeg (reported); real-footage accuracy unknown and unreviewed.",
+        "evidence": [
+          "E-MOD-SHOTS",
+          "E-REP-SHOTS-SYNTH"
+        ]
+      },
+      "depends_on": [
+        "M-ING-01"
+      ],
+      "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
+      "open_questions": [
+        "Q35: relationship to media_analysis.scene_detection.",
+        "A run on real footage appears to exist (files dated 2026-11-09 under Projects/my-first-test); no review recorded."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-DNA-01",
+      "title": "Creator DNA evidence store and confidence model",
+      "phase": "Phase 3",
+      "description": "creator_dna: append-only evidence store, layers, derived confidence and scope, confirm/reject/correct, audio metric contract, schema v3.",
+      "weight": 6,
+      "weight_rationale": "Core of the authenticity requirement; well-bounded library of moderate size.",
+      "implementation": {
+        "state": "IMPLEMENTED",
+        "summary": "Library-level store and contracts; no analyzers beyond a reference phrase analyzer; no creator-facing tool."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "UNIT_ISOLATED",
+        "summary": "69 unit tests on synthetic data; no real recording analysed; no profile exists.",
+        "evidence": [
+          "E-MOD-DNA"
+        ]
+      },
+      "depends_on": [],
+      "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
+      "open_questions": [
+        "Where DNA learning sits in the stage sequence and where the profile lives (Q31, Q32)."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-SPK-01",
+      "title": "Speaker attribution and Creator DNA eligibility",
+      "phase": "Phase 3",
+      "description": "speaker_attribution: human-supplied attribution, explicit eligibility decisions with reasons, revocation, and a DNA store that refuses ineligible footage evidence.",
+      "weight": 4,
+      "weight_rationale": "Smaller library but safety-critical: prevents learning someone else's speech as the creator's.",
+      "implementation": {
+        "state": "IMPLEMENTED",
+        "summary": "Library only; no attribution provider (unknown stays unknown) and no CLI."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "INTEGRATION",
+        "summary": "56 package tests plus 38 cross-package tests on synthetic data.",
+        "evidence": [
+          "E-MOD-SPK",
+          "E-MOD-INTEG"
+        ]
+      },
+      "depends_on": [
+        "M-DNA-01",
+        "M-MED-01"
+      ],
+      "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
+      "open_questions": [
+        "Attribution defaults and policies (Q37-Q43).",
+        "How the creator says 'this is me' without special recordings (Q39)."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-DNA-02",
+      "title": "Creator DNA learned from real recordings",
+      "phase": "Phase 3",
+      "description": "Analyze representative real recordings that contain the creator; extract vocabulary, humor, delivery and visual-presence patterns with evidence and confidence.",
+      "weight": 8,
+      "weight_rationale": "Largest Creator DNA effort and the real test of the whole evidence pipeline; needs several analyzers and real input.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Only a reference phrase analyzer exists."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-MED-02",
+        "M-SPK-01"
+      ],
+      "commit": null,
+      "open_questions": [
+        "MVI_0879.MOV is a friend's narration and must not be used as Creator DNA evidence."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-DNA-03",
+      "title": "Creator-facing review of transcripts, speakers and traits",
+      "phase": "Phase 3",
+      "description": "A way for the creator to review transcripts, confirm speakers and confirm or correct traits.",
+      "weight": 3,
+      "weight_rationale": "Modest interface work, but blocked by unresolved design questions.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-DNA-01"
+      ],
+      "commit": null,
+      "open_questions": [
+        "Q30, Q39: review workflow and how the creator is identified."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-RSR-01",
+      "title": "Research Agent offline foundation",
+      "phase": "Phase 4",
+      "description": "research: provider abstraction (untrusted input), source scoring, claim status derivation, attestation, risk and safety checks, brief outputs including asset-request and creative-director packs.",
+      "weight": 6,
+      "weight_rationale": "Largest package by code and tests; foundation for research but with no live source yet.",
+      "implementation": {
+        "state": "IMPLEMENTED",
+        "summary": "Offline library with fixture providers only; no network, no concrete provider, not wired into the pipeline."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "UNIT_ISOLATED",
+        "summary": "284 unit tests on synthetic data; an earlier concurrent-edit run reported failures that did not reproduce.",
+        "evidence": [
+          "E-MOD-RESEARCH"
+        ]
+      },
+      "depends_on": [],
+      "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
+      "open_questions": [
+        "No integration test between research outputs and the asset or creative-director inputs was identified."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-RSR-02",
+      "title": "Live research providers and pipeline integration",
+      "phase": "Phase 4",
+      "description": "Concrete web, scholarly and trend providers, source-quality rules in use, and integration with the project stages.",
+      "weight": 5,
+      "weight_rationale": "Real-world integration work with external services, cost and reliability risks.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-RSR-01"
+      ],
+      "commit": null,
+      "open_questions": [],
+      "blockers": []
+    },
+    {
+      "id": "M-AST-01",
+      "title": "Asset Agent offline foundation",
+      "phase": "Phase 4",
+      "description": "assets: metadata schema, fail-closed rights engine, evaluation, library with rights-gated state and safe storage, provider interfaces.",
+      "weight": 6,
+      "weight_rationale": "Rights handling is a non-negotiable constraint; sizeable and security-sensitive library.",
+      "implementation": {
+        "state": "IMPLEMENTED",
+        "summary": "Offline library; no provider, downloader or automated licence verification."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "UNIT_ISOLATED",
+        "summary": "146 unit tests (one skipped: symlinks unavailable); synthetic data only.",
+        "evidence": [
+          "E-MOD-ASSETS"
+        ]
+      },
+      "depends_on": [],
+      "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
+      "open_questions": [
+        "Single-process use assumed; no cross-process locking."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-AST-02",
+      "title": "Asset acquisition, providers and licence verification",
+      "phase": "Phase 4",
+      "description": "Concrete search/generation providers, an explicit acquisition step, and rights evidence handling beyond the offline engine.",
+      "weight": 5,
+      "weight_rationale": "External services and legal-risk handling; substantial and unavoidable before B-roll can be automated.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-AST-01"
+      ],
+      "commit": null,
+      "open_questions": [],
+      "blockers": []
+    },
+    {
+      "id": "M-CRD-01",
+      "title": "Creative Director offline foundation",
+      "phase": "Phase 5",
+      "description": "creative_director: analysis, structure, story brief, schema-driven safety validation and an editor-facing view; Creator DNA informational only.",
+      "weight": 6,
+      "weight_rationale": "Large library implementing the no-invented-dialogue rule structurally.",
+      "implementation": {
+        "state": "IMPLEMENTED",
+        "summary": "Offline library; writes nothing, calls nothing external, not wired into the pipeline, not the Editor Agent or the shared edit-plan schema."
+      },
+      "verification": {
+        "state": "IN_PROGRESS",
+        "level": "UNIT_ISOLATED",
+        "summary": "132 unit tests on synthetic transcripts only.",
+        "evidence": [
+          "E-MOD-CRD"
+        ]
+      },
+      "depends_on": [],
+      "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
+      "open_questions": [
+        "Confidence-weighted Creator DNA influence is a later integration stage."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-CRD-02",
+      "title": "Creative Director on real transcripts with Research and Creator DNA",
+      "phase": "Phase 5",
+      "description": "Run on real transcripts with a research packet and Creator DNA view; review the resulting story briefs with Lukas.",
+      "weight": 4,
+      "weight_rationale": "Integration and review work that depends on real transcripts.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-CRD-01",
+        "M-MED-02"
+      ],
+      "commit": null,
+      "open_questions": [],
+      "blockers": []
+    },
+    {
+      "id": "M-EDT-01",
+      "title": "Validated edit-plan schema and Editor planning workflow",
+      "phase": "Phase 5",
+      "description": "Shared edit-plan JSON schema, source-range and frame validation, track and operation capability validation, Editor planning workflow.",
+      "weight": 8,
+      "weight_rationale": "The contract between creative reasoning and deterministic execution; high design risk.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Only an illustrative shape in TECHNICAL_ARCHITECTURE.md."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-CRD-01",
+        "M-RSV-02"
+      ],
+      "commit": null,
+      "open_questions": [],
+      "blockers": []
+    },
+    {
+      "id": "M-EDT-02",
+      "title": "High-level validated Resolve wrapper",
+      "phase": "Phase 5",
+      "description": "Deterministic high-level operations that build a timeline from a validated plan, with recovery points.",
+      "weight": 8,
+      "weight_rationale": "Core engineering for safe automation; depends on solid Phase 1 knowledge.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-EDT-01",
+        "M-RSV-02"
+      ],
+      "commit": null,
+      "open_questions": [],
+      "blockers": []
+    },
+    {
+      "id": "M-LFE-01",
+      "title": "Long-form autonomous assembly in Resolve",
+      "phase": "Phase 6",
+      "description": "Build the long-form timeline from the plan with B-roll, graphics, captions and audio processing, on a real but backed-up project.",
+      "weight": 10,
+      "weight_rationale": "The product's main promise; large, risky, and last in the dependency chain.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-EDT-02",
+        "M-AST-02"
+      ],
+      "commit": null,
+      "open_questions": [],
+      "blockers": []
+    },
+    {
+      "id": "M-LFE-02",
+      "title": "Review render, QC loop and export verification",
+      "phase": "Phase 6",
+      "description": "Low-resolution review renders, automated QC with targeted corrections, automatic verification of the final export.",
+      "weight": 8,
+      "weight_rationale": "Closes the autonomy loop; substantial analysis work.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "QUALITY_CONTROL.md is a PROPOSED design only."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-LFE-01"
+      ],
+      "commit": null,
+      "open_questions": [],
+      "blockers": []
+    },
+    {
+      "id": "M-SFE-01",
+      "title": "Short-form repurposing and vertical export",
+      "phase": "Phase 7",
+      "description": "Independent short-form moments with hook, context and payoff, vertical reframing and safe areas, platform exports, standalone check.",
+      "weight": 8,
+      "weight_rationale": "A second full deliverable with its own constraints, built on the long-form pipeline.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-LFE-01"
+      ],
+      "commit": null,
+      "open_questions": [],
+      "blockers": []
+    },
+    {
+      "id": "M-HRD-01",
+      "title": "Production hardening",
+      "phase": "Phase 8",
+      "description": "Orchestrator loop with automatic resumption, project rollback, job dashboard, cost measurement, Resolve regression tests, multiple full productions.",
+      "weight": 6,
+      "weight_rationale": "Important for reliability but incremental on top of working pipelines.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "State and resume detection exist (M-STA-01); the rest is not started."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-LFE-02"
+      ],
+      "commit": null,
+      "open_questions": [],
+      "blockers": []
+    },
+    {
+      "id": "M-INT-01",
+      "title": "End-to-end Phase 2 to 3 run on one real recording of the creator",
+      "phase": "Before Phase 4",
+      "description": "Run analysis and Creator DNA on one real, permitted recording that contains the creator and review the result, including attribution decisions.",
+      "weight": 6,
+      "weight_rationale": "First test of the system on real input; exposes issues all synthetic tests miss.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-MED-02",
+        "M-SPK-01"
+      ],
+      "commit": null,
+      "open_questions": [
+        "Lukas must permit processing of the chosen recording."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-INT-02",
+      "title": "Resolve the media_analysis and speaker_attribution dependency cycle",
+      "phase": "Before Phase 4",
+      "description": "media_analysis imports speaker_attribution and speaker_attribution imports media_analysis; it did not break the import orders tried, but it is an architectural concern.",
+      "weight": 2,
+      "weight_rationale": "Small refactor, deliberately low weight; value is risk reduction.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started; the cycle was observed in the 2026-11-09 audit."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [],
+      "commit": null,
+      "open_questions": [
+        "Package ownership of media_analysis and speaker_attribution is unresolved."
+      ],
+      "blockers": []
+    },
+    {
+      "id": "M-INT-03",
+      "title": "Reconcile the two shot detectors",
+      "phase": "Before Phase 4",
+      "description": "media_analysis.scene_detection and creator_state/shot_*.py overlap; decide their relationship (Q35).",
+      "weight": 2,
+      "weight_rationale": "Small cleanup after a design decision.",
+      "implementation": {
+        "state": "NOT_STARTED",
+        "summary": "Not started."
+      },
+      "verification": {
+        "state": "NOT_STARTED",
+        "level": "NONE",
+        "summary": "Nothing to verify.",
+        "evidence": []
+      },
+      "depends_on": [
+        "M-SHT-01"
+      ],
+      "commit": null,
+      "open_questions": [
+        "Q35 is OPEN."
+      ],
+      "blockers": []
+    }
+  ],
+  "computed": {
+    "implementation_percent": 36.3,
+    "verification_percent": 12.5,
+    "total_weight": 160,
+    "milestone_count": 28
+  }
+}

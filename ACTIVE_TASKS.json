@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "updated": "2026-11-09",
+  "lease_policy": {"default_hours": 24, "max_hours": 72},
+  "package_owners": {
+    "creator_state": {
+      "paths": ["orchestrator/creator_state/", "orchestrator/tests/test_state.py", "orchestrator/tests/test_ingest.py", "orchestrator/tests/test_shots.py", "orchestrator/tests/test_claude_md.py"],
+      "owner": "UNRESOLVED",
+      "owner_status": "UNRESOLVED - built by earlier sessions (state, ingestion, shot detection); Lukas has not named a current owner"
+    },
+    "media_analysis": {
+      "paths": ["orchestrator/media_analysis/", "orchestrator/tests/test_media_analysis.py"],
+      "owner": "UNRESOLVED",
+      "owner_status": "UNRESOLVED - shared between the Creator DNA and earlier media work; deliberately left open until subsystem boundaries are reviewed"
+    },
+    "speaker_attribution": {
+      "paths": ["orchestrator/speaker_attribution/", "orchestrator/tests/test_speaker_attribution.py"],
+      "owner": "UNRESOLVED",
+      "owner_status": "UNRESOLVED - written alongside Creator DNA on 2026-11-09 but no owner named; its import cycle with media_analysis (M-INT-02) needs one owner"
+    },
+    "cross_package_tests": {
+      "paths": ["orchestrator/tests/test_integration_phase2_phase3.py", "orchestrator/tests/_dna_lenient.py"],
+      "owner": "UNRESOLVED",
+      "owner_status": "UNRESOLVED - test files spanning media_analysis, speaker_attribution and creator_dna"
+    },
+    "creator_dna": {
+      "paths": ["orchestrator/creator_dna/", "orchestrator/tests/test_creator_dna.py"],
+      "owner": "claude:creator-dna-stream",
+      "owner_status": "REPORTED - Lukas's brief names Creator DNA as one of four subsystem assignments; the stream identity is assumed, confirm it"
+    },
+    "research": {
+      "paths": ["orchestrator/research/", "orchestrator/tests/test_research.py"],
+      "owner": "claude:research-stream",
+      "owner_status": "REPORTED - Lukas's brief names the Research Agent as one of four subsystem assignments; the stream identity is assumed, confirm it"
+    },
+    "assets": {
+      "paths": ["orchestrator/assets/", "orchestrator/tests/test_assets.py"],
+      "owner": "claude:asset-stream",
+      "owner_status": "REPORTED - Lukas's brief names the Asset Agent as one of four subsystem assignments; the stream identity is assumed, confirm it"
+    },
+    "creative_director": {
+      "paths": ["orchestrator/creative_director/", "orchestrator/tests/test_creative_director.py"],
+      "owner": "claude:creative-director-stream",
+      "owner_status": "REPORTED - Lukas's brief names the Creative Director as one of four subsystem assignments; the stream identity is assumed, confirm it"
+    },
+    "governance": {
+      "paths": ["orchestrator/governance/", "orchestrator/tests/test_governance.py"],
+      "owner": "claude:governance-session",
+      "owner_status": "ASSIGNED - Lukas assigned the governance migration to this session on 2026-11-09"
+    }
+  },
+  "shared_files": {
+    "CLAUDE.md": "Loaded by every Claude Code session; one change at a time.",
+    "PROJECT_OPERATING_PROTOCOL.md": "The rules every workstream follows.",
+    "PROJECT_STATUS.json": "Single status record updated by every finished task.",
+    "ACTIVE_TASKS.json": "Task registry written by every session when claiming or releasing work.",
+    "SESSION_HANDOFF.md": "Generated from the two JSON files; never edited by hand.",
+    "CHANGELOG.md": "Appended to by every merged task.",
+    "TOOLS.md": "Pinned tool versions for the whole project.",
+    ".gitignore": "Security boundary of the repository.",
+    ".gitattributes": "Line-ending and binary rules for the whole repository.",
+    ".mcp.json.example": "Tracked template for machine-specific MCP configuration.",
+    "AI_Creator_Studio_Documentation/MASTER.md": "Project-wide specification.",
+    "AI_Creator_Studio_Documentation/ROADMAP.md": "Phase plan referenced by every workstream.",
+    "AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md": "Decision log appended to by every workstream.",
+    "AI_Creator_Studio_Documentation/README.md": "Document map for the whole documentation pack."
+  },
+  "integration_agreements": {},
+  "tasks": [
+    {
+      "id": "T-GOV-001",
+      "title": "Governance foundation",
+      "description": "Add the operating protocol, status and task registries, generated session handoff, changelog, environment document and the governance package with tests; make surgical, evidence-based corrections to existing status text.",
+      "owner": "claude:governance-session",
+      "branch": "task/governance-foundation",
+      "worktree": "C:\\Users\\Korisnik\\CreatorStudio-worktrees\\task-governance-foundation",
+      "status": "UNDER_REVIEW",
+      "depends_on": [],
+      "lease": {"acquired": "2026-11-09T19:20:00+01:00", "expires": "2026-11-10T19:20:00+01:00"},
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [
+        "PROJECT_OPERATING_PROTOCOL.md",
+        "PROJECT_STATUS.json",
+        "ACTIVE_TASKS.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md",
+        "CLAUDE.md",
+        "AI_Creator_Studio_Documentation/ENVIRONMENT.md",
+        "AI_Creator_Studio_Documentation/README.md",
+        "AI_Creator_Studio_Documentation/ROADMAP.md",
+        "AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md",
+        "AI_Creator_Studio_Documentation/MASTER.md",
+        "AI_Creator_Studio_Documentation/AGENTS.md",
+        "AI_Creator_Studio_Documentation/RESEARCH.md",
+        "AI_Creator_Studio_Documentation/ASSETS.md",
+        "orchestrator/governance/",
+        "orchestrator/tests/test_governance.py"
+      ],
+      "acceptance_criteria": [
+        "PROJECT_STATUS.json and ACTIVE_TASKS.json validate with python -B -m governance validate",
+        "SESSION_HANDOFF.md is current (python -B -m governance handoff --check)",
+        "Verification percentage never exceeds implementation percentage and no milestone is marked VERIFIED without human-reviewed real-input evidence",
+        "No existing source file other than documentation and CLAUDE.md is modified",
+        "Full suite passes with python -B -I and no secrets or forbidden paths are staged"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_governance.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Pushed as a task branch for review. Not to be merged into main without Lukas's explicit approval. After merge: record M-INF-02 verification evidence with the final SHA, set this task to COMPLETED and release its lease."
+    }
+  ]
+}

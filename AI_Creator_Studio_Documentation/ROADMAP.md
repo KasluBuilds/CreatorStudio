@@ -2,6 +2,8 @@
 
 **Status date:** 2026-11-08 (Phases 2 and 3 updated after the media-analysis / Creator DNA integration). This roadmap is a recommended sequence, not a claim that unlisted work has been completed.
 
+**Status authority (2026-11-09):** current milestone status, evidence and progress percentages are recorded in `PROJECT_STATUS.json` (milestone ids `M-XXX-NN`, indexed at the end of this file). The checkboxes in this file are narrative and can lag it; if they disagree, the status file wins and the disagreement should be corrected here.
+
 ## Phase 0 — Foundation and compatibility
 
 <badge>Mostly complete</badge>
@@ -14,7 +16,7 @@
 - [x] Register root `.mcp.json`.
 - [x] Launch Claude Code with project trust.
 - [x] Confirm `/mcp` lists `davinci-resolve` with 37 tools.
-- [ ] Verify one harmless read-only MCP tool call end-to-end.
+- [x] Verify one harmless read-only MCP tool call end-to-end. (Recorded as succeeding in the 2026-11-08 change log of `DECISIONS_AND_OPEN_QUESTIONS.md`; M-RSV-01. Reported, not re-run.)
 - [ ] Test OmniRoute fallback with MCP.
 - [ ] Inspect bridge output-root allowlist before exporting to `CreatorStudio\Projects`.
 
@@ -96,6 +98,8 @@ Implemented 2026-11-08 in `orchestrator/creator_dna/` (details: `CREATOR_DNA.md`
 
 ## Phase 4 — Research and asset services
 
+Offline library foundations exist and are not wired into the pipeline, with no live providers: `orchestrator/research/` (M-RSR-01) and `orchestrator/assets/` (M-AST-01). The items below describe the full capability and stay open (M-RSR-02, M-AST-02).
+
 - [ ] Implement Research Agent and source-quality rules.
 - [ ] Add topic/trend discovery and research briefs.
 - [ ] Implement Asset Agent.
@@ -103,6 +107,8 @@ Implemented 2026-11-08 in `orchestrator/creator_dna/` (details: `CREATOR_DNA.md`
 - [ ] Create asset library indexing.
 
 ## Phase 5 — Creative planning and edit representation
+
+`orchestrator/creative_director/` (M-CRD-01) is an offline story-brief foundation. It is not the Editor Agent and not the shared edit-plan schema (M-EDT-01).
 
 - [ ] Define validated edit-plan JSON schema.
 - [ ] Build Creative Director workflow.
@@ -137,6 +143,23 @@ Implemented 2026-11-08 in `orchestrator/creator_dna/` (details: `CREATOR_DNA.md`
 - [ ] Add performance and cost measurement.
 - [ ] Add regression tests for Resolve version changes.
 - [ ] Run multiple complete productions and refine from results.
+
+## Milestone index (details, weights and evidence: `PROJECT_STATUS.json`)
+
+| Roadmap section | Milestones |
+|---|---|
+| Governance (added 2026-11-09) | M-INF-01, M-INF-02 |
+| Phase 0 | M-RSV-01 |
+| State foundation | M-STA-01 |
+| Phase 1 | M-RSV-02 |
+| Phase 2 | M-ING-01, M-MED-01, M-MED-02, M-SHT-01 |
+| Phase 3 | M-DNA-01, M-SPK-01, M-DNA-02, M-DNA-03 |
+| Before Phase 4 | M-INT-01, M-INT-02, M-INT-03 |
+| Phase 4 | M-RSR-01, M-RSR-02, M-AST-01, M-AST-02 |
+| Phase 5 | M-CRD-01, M-CRD-02, M-EDT-01, M-EDT-02 |
+| Phase 6 | M-LFE-01, M-LFE-02 |
+| Phase 7 | M-SFE-01 |
+| Phase 8 | M-HRD-01 |
 
 ## Priority rule
 

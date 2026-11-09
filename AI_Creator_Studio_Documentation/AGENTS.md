@@ -1,6 +1,6 @@
 # Agent Roles and Handoffs
 
-**Status:** PROPOSED architecture. Names and responsibilities are design recommendations; these agents have not all been implemented.
+**Status:** PROPOSED architecture. Names and responsibilities are design recommendations; these agents have not all been implemented. Offline library foundations exist for the Research Agent, Asset Agent and Creative Director (`orchestrator/research/`, `assets/`, `creative_director/`); none is wired into an orchestrator and none has live providers, and there is no Editor Agent, Resolve Executor or QC Agent. Status of record: `PROJECT_STATUS.json`.
 
 ## 1. Orchestrator
 

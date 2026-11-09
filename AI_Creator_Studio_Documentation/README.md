@@ -11,6 +11,8 @@ This folder contains the project’s central specification and focused subsystem
 3. When working with Claude Code, ask Claude to read `MASTER.md` first, then only the relevant subsystem documents.
 4. Update the relevant document whenever an architectural decision or implementation changes.
 
+> Project governance lives at the repository root, outside this folder: `PROJECT_OPERATING_PROTOCOL.md` (rules for parallel work), `PROJECT_STATUS.json` (authoritative milestone status and progress), `ACTIVE_TASKS.json` (tasks, leases, package ownership), `SESSION_HANDOFF.md` (generated) and `CHANGELOG.md`.
+
 ## Document map
 
 | File | Purpose |
@@ -27,6 +29,7 @@ This folder contains the project’s central specification and focused subsystem
 | `PROJECT_STATE.md` | Persistent project state, checkpoints, handoff and recovery (implemented) |
 | `INGESTION.md` | Hybrid media ingestion (`Incoming/`, inventory, proxies) and media analysis (analysis copies, transcripts + review, audio/shot measurements, moment index, pipeline) — implemented, synthetic-tested |
 | `SHOT_DETECTION.md` | Shot, transition and candidate detection with CLI (`shots-plan/detect/status/check`) — implemented, verified on synthetic clips only |
+| `ENVIRONMENT.md` | Development environment, Python/test invocation, launcher roles, OmniRoute, Resolve/MCP and Git/GitHub setup (facts labelled VERIFIED/REPORTED; no secrets) |
 | `TRANSCRIPTION_ENGINE_BRIEF.md` | Comparison of transcription approaches for decision Q11 (proposal only; no engine chosen) |
 | `QUALITY_CONTROL.md` | Automated review, validation and export checks |
 | `ROADMAP.md` | Phased implementation plan and current status |

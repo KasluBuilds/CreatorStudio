@@ -2,6 +2,13 @@
 
 Goal: a mostly autonomous video-production system (long-form + shorts) built on DaVinci Resolve Free 21.0.4.5. Most of it is **design, not code yet**. Do not describe anything as working unless it is VERIFIED.
 
+## 0. Multi-agent governance (read before changing any file)
+Several Claude Code and ChatGPT sessions work in parallel. Coordination lives in the repository, not in anyone's memory:
+- Read `PROJECT_OPERATING_PROTOCOL.md` and `SESSION_HANDOFF.md` first. `PROJECT_STATUS.json` is authoritative for milestone status and progress; `ACTIVE_TASKS.json` for who owns what.
+- Work on a task branch in your own Git worktree and claim your files in `ACTIVE_TASKS.json` first. Never push to `main`, never force-push, never stage with `git add .` or `git add -A`.
+- Do not edit a package owned by someone else, or marked UNRESOLVED, without an integration agreement. Only one task may hold Resolve at a time.
+- Code plus tests is at most "implemented": never record anything as VERIFIED without evidence. The repository holds no footage, launchers or credentials; keep it that way.
+
 ## 1. Read, in this order
 1. `AI_Creator_Studio_Documentation/MASTER.md` — always, first (goals, non-negotiables, environment).
 2. Only the subsystem docs your task needs: `WORKFLOW.md` (stages), `PROJECT_STATE.md` (state/handoff/recovery), `INGESTION.md` (new footage, inventory, proxies), `TECHNICAL_ARCHITECTURE.md`, `RESOLVE_INTEGRATION.md`, `AGENTS.md`, `EDITING_ENGINE.md`, `QUALITY_CONTROL.md`, `ASSETS.md`, `RESEARCH.md`, `CREATOR_DNA.md`.
