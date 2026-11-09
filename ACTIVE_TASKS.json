@@ -107,33 +107,12 @@
       "owner": "claude:governance-session",
       "branch": "task/governance-foundation",
       "worktree": "../CreatorStudio-worktrees/task-governance-foundation",
-      "status": "UNDER_REVIEW",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-09T19:20:00+01:00",
-        "expires": "2026-11-10T19:20:00+01:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [],
-      "owned_paths": [
-        "PROJECT_OPERATING_PROTOCOL.md",
-        "PROJECT_STATUS.json",
-        "ACTIVE_TASKS.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md",
-        "CLAUDE.md",
-        "AI_Creator_Studio_Documentation/ENVIRONMENT.md",
-        "AI_Creator_Studio_Documentation/README.md",
-        "AI_Creator_Studio_Documentation/ROADMAP.md",
-        "AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md",
-        "AI_Creator_Studio_Documentation/MASTER.md",
-        "AI_Creator_Studio_Documentation/AGENTS.md",
-        "AI_Creator_Studio_Documentation/RESEARCH.md",
-        "AI_Creator_Studio_Documentation/ASSETS.md",
-        "orchestrator/governance/",
-        "orchestrator/tests/test_governance.py",
-        "AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "PROJECT_STATUS.json and ACTIVE_TASKS.json validate with python -B -m governance validate",
         "SESSION_HANDOFF.md is current (python -B -m governance handoff --check)",
@@ -146,7 +125,7 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_governance.py",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Pushed as a task branch for review. Not to be merged into main without Lukas's explicit approval. After merge: record M-INF-02 verification evidence with the final SHA, set this task to COMPLETED and release its lease."
+      "integration_notes": "Completed 2026-11-09. PR #1 merged into main as merge commit 93a9a829e073595151666f99b0d1a57416db28c3 (head 4eb229645dc054939dea1b1ee4a9e6089671df42) with a merge commit, no squash. Lease released and paths freed by this closing pull request, which cannot itself hold a claim because it only closes this task. Branch task/governance-foundation is merged and may be deleted by Lukas."
     }
   ]
 }

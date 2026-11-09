@@ -4,7 +4,7 @@
 
 # Session handoff
 
-Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`.
+Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`.
 
 ## User-action gates (things Lukas must be told at a milestone)
 
@@ -21,13 +21,13 @@ Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`
 ## Verified baseline
 
 - Command: `cd orchestrator && python -B -I -m unittest discover -s tests`
-- Result: 1069 tests, 0 failures, 0 errors, 1 skipped (2026-11-09; original project and a clean clone; the skip is test_symlink_source_refused (symlinks unavailable)).
+- Result: 1166 tests, 0 failures, 0 errors, 1 skipped (2026-11-09; merged main in the primary folder after PR #1; the skip is test_symlink_source_refused (symlinks unavailable)).
 - This is a point-in-time result tied to the commit above. Re-run before relying on it.
 
 ## Progress (computed from PROJECT_STATUS.json)
 
 - Implementation: **35.4%**  
-- Verification: **12.2%**  
+- Verification: **12.7%**  
 - 29 milestones, total weight 164. Verification never exceeds implementation. Weights are PROPOSED: drafted by an AI session and not yet reviewed by Lukas, so these figures are provisional. 
 - How to read them: *implementation* is the weighted share of milestones whose code exists (half credit if in progress); *verification* is the weighted share demonstrated at the level evidence supports. Neither measures effort, time left, or whether the product works on real footage.
 - Milestones verified on reviewed real input: 0 of 29 (none).
@@ -36,7 +36,7 @@ Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`
 | Phase | Weight | Implemented | Verified |
 |---|---:|---:|---:|
 | Before Phase 4 | 10 | 0.0% | 0.0% |
-| Governance | 6 | 100.0% | 25.0% |
+| Governance | 6 | 100.0% | 37.5% |
 | Phase 0 | 5 | 100.0% | 50.0% |
 | Phase 1 | 10 | 0.0% | 0.0% |
 | Phase 2 | 22 | 59.1% | 29.5% |
@@ -63,7 +63,7 @@ Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`
 | M-EDT-02 | High-level validated Resolve wrapper | 8 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-HRD-01 | Production hardening | 6 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-INF-01 | Canonical private GitHub repository and safety configuration | 3 | IMPLEMENTED | INTEGRATION (IN_PROGRESS) |
-| M-INF-02 | Governance layer and deterministic progress calculation | 3 | UNDER_REVIEW | NONE (NOT_STARTED) |
+| M-INF-02 | Governance layer and deterministic progress calculation | 3 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |
 | M-ING-01 | Hybrid media ingestion and inventory | 5 | IMPLEMENTED | INTEGRATION (IN_PROGRESS) |
 | M-INT-01 | End-to-end Phase 2 to 3 run on one real recording of the creator | 6 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-INT-02 | Resolve the media_analysis and speaker_attribution dependency cycle | 2 | NOT_STARTED | NONE (NOT_STARTED) |
@@ -84,11 +84,7 @@ Status record dated **2026-11-09**. Baseline commit **`5f6925ebf9d4`** on `main`
 
 ## Active tasks
 
-| Task | Owner | Branch | Status | Lease expires | Owns |
-|---|---|---|---|---|---|
-| T-GOV-001 Governance foundation | claude:governance-session | `task/governance-foundation` | UNDER_REVIEW | 2026-11-10T19:20:00+01:00 | PROJECT_OPERATING_PROTOCOL.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, SESSION_HANDOFF.md, CHANGELOG.md, CLAUDE.md, AI_Creator_Studio_Documentation/ENVIRONMENT.md, AI_Creator_Studio_Documentation/README.md, AI_Creator_Studio_Documentation/ROADMAP.md, AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md, AI_Creator_Studio_Documentation/MASTER.md, AI_Creator_Studio_Documentation/AGENTS.md, AI_Creator_Studio_Documentation/RESEARCH.md, AI_Creator_Studio_Documentation/ASSETS.md, orchestrator/governance/, orchestrator/tests/test_governance.py, AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md |
-
-Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
+No active tasks.
 
 ## Package ownership
 
@@ -120,12 +116,12 @@ Unresolved ownership: `creator_state`, `media_analysis`, `speaker_attribution`, 
 
 ## Next actions
 
-1. Lukas reviews and merges pull request task/governance-foundation (or requests changes).
+1. Lukas reviews and merges the small follow-up pull request that closes task T-GOV-001 (task/governance-close).
 2. Lukas reviews the milestone weights and confirms or changes package owners.
 3. Lukas connects ChatGPT's GitHub connector and tests retrieval of PROJECT_STATUS.json (steps are in PROJECT_OPERATING_PROTOCOL.md section 13).
-4. After merge, record verification evidence for M-INF-02 with the final commit SHA and release task T-GOV-001.
-5. Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.
-6. Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.
+4. Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.
+5. Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.
+6. Lukas tests the ChatGPT GitHub connector against main (PROJECT_OPERATING_PROTOCOL.md section 13).
 
 ## Where things live
 

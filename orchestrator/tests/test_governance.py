@@ -833,9 +833,14 @@ class TestCli(unittest.TestCase):
         self.assertEqual(cli_main(["handoff", "--check"]), 0)
 
     def test_leases_exit_codes(self):
-        self.assertEqual(cli_main(["leases", "--now", "2026-11-09T20:00:00+01:00"]), 0)
-        self.assertEqual(cli_main(["leases", "--now", "2030-01-01T00:00:00+00:00"]), 1)
-        self.assertEqual(cli_main(["leases", "--now", "2026-11-09T20:00:00"]), 2)
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:  # self-contained: the live registry may have no active task
+            (Path(tmp) / "ACTIVE_TASKS.json").write_text(json.dumps(tasks_doc()), encoding="utf-8")
+            base = ["--root", tmp, "leases", "--now"]
+            self.assertEqual(cli_main(base + ["2026-11-09T20:00:00+01:00"]), 0)
+            self.assertEqual(cli_main(base + ["2030-01-01T00:00:00+00:00"]), 1)
+            self.assertEqual(cli_main(base + ["2026-11-09T20:00:00"]), 2)
+        self.assertEqual(cli_main(["leases", "--now", "2030-01-01T00:00:00+00:00"]), 0)  # live registry: nothing active
 
     def test_invalid_input_exits_nonzero_without_traceback(self):
         import tempfile
