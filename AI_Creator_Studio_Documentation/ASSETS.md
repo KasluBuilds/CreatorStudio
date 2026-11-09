@@ -1,6 +1,6 @@
 # Asset Agent — Discovery, Generation, Rights and Organization
 
-**Status:** Separate Asset Acquisition service is DECIDED; detailed policy and implementation are PROPOSED.
+**Status:** Separate Asset Acquisition service is DECIDED; detailed policy and implementation are PROPOSED. An offline foundation (`orchestrator/assets/`: metadata schema, fail-closed rights engine, library) is implemented and unit-tested on synthetic data; there is no provider, downloader or automated licence verification (M-AST-01 in `PROJECT_STATUS.json`).
 
 ## 1. Mission
 

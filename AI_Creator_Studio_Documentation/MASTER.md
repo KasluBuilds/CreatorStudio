@@ -211,6 +211,8 @@ CreatorStudio/
     └── davinci-resolve-mcp/
 ```
 
+Added 2026-11-09 and not shown in the tree: repository-root governance files (`PROJECT_OPERATING_PROTOCOL.md`, `PROJECT_STATUS.json`, `ACTIVE_TASKS.json`, `SESSION_HANDOFF.md`, `CHANGELOG.md`, `TOOLS.md`, `.mcp.json.example`) and the `orchestrator/` packages research, assets, creative_director, speaker_attribution and governance.
+
 The repository also has its own `.mcp.json`. The root-level `.mcp.json` is the one intended to be discovered when Claude Code is launched from `CreatorStudio`.
 
 ## 12. Operating principles for Claude Code
@@ -232,6 +234,8 @@ When working in this project:
 - `MASTER.md`: overall goals, constraints and architecture.
 - Each subsystem file: detailed specification for that subsystem.
 - `DECISIONS_AND_OPEN_QUESTIONS.md`: record of what is confirmed, decided, proposed and unresolved.
-- `ROADMAP.md`: implementation order and completion status.
+- `ROADMAP.md`: implementation order and completion narrative.
+- `PROJECT_STATUS.json` (repository root): current milestone status, evidence and progress; authoritative for status. Rules for parallel work: `PROJECT_OPERATING_PROTOCOL.md`.
+- `ACTIVE_TASKS.json` (repository root): task claims, leases and package ownership.
 
 If documents conflict, preserve the more specific verified fact, flag the conflict and update the documents. Never silently overwrite a user decision.

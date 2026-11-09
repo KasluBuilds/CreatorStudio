@@ -1,6 +1,6 @@
 # Research Agent — Topics, Trends, Evidence and References
 
-**Status:** Separate Research service is DECIDED; detailed workflows are PROPOSED.
+**Status:** Separate Research service is DECIDED; detailed workflows are PROPOSED. An offline library foundation (`orchestrator/research/`: provider abstraction, source scoring, claim status, briefs) is implemented and unit-tested on synthetic data; it has no live providers and is not wired into the pipeline (M-RSR-01 in `PROJECT_STATUS.json`).
 
 ## 1. Mission
 
