@@ -80,7 +80,16 @@ def scrub(value: Any, counts: Dict[str, int]) -> Any:
     if isinstance(value, list):
         return [scrub(v, counts) for v in value]
     if isinstance(value, dict):
-        return {k: scrub(v, counts) for k, v in value.items()}
+        out: Dict[Any, Any] = {}
+        for k, v in value.items():
+            new_key = scrub(k, counts)  # keys are copied into the snapshot too, so they are scrubbed like values
+            if new_key in out:
+                # Two different source keys became the same text. Overwriting would silently drop data, so refuse.
+                # The message deliberately does not repeat the keys: they may be the private text being removed.
+                raise SnapshotError("two keys in a source file became identical after scrubbing private text; "
+                                    "rename or remove the offending keys in the source files")
+            out[new_key] = scrub(v, counts)
+        return out
     return value
 
 

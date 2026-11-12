@@ -671,6 +671,60 @@ class TestPathScrubbingRegression(SnapshotCase):
                 self.assertNotIn(frag, text, (name, frag))
             self.assertGreaterEqual(snap["sanitization"]["total"], len(values), name)
 
+    def test_dictionary_keys_are_scrubbed(self):
+        credential = "sk-" + "a1B2c3D4e5F6g7H8i9J0"
+        for key in list(PRIVATE_STRINGS) + [credential]:
+            counts = {}
+            out = bs.scrub({"outer": {key: {"inner": [{key + "/deeper": 1}]}}}, counts)
+            text = json.dumps(out)
+            for frag in PRIVATE_FRAGMENTS + ("sk-a1B2",):
+                self.assertNotIn(frag, text, (key, frag))
+            self.assertGreaterEqual(sum(counts.values()), 2, (key, counts))
+
+    def test_private_and_credential_keys_do_not_reach_the_rendered_snapshot(self):
+        credential = "sk-" + "a1B2c3D4e5F6g7H8i9J0"
+        for key in ["Projects/secretproj/clip01.mov", "/mnt/data/mydata/notes.txt", "../CreatorStudio-worktrees/mydata",
+                    "~/mydata/x", credential]:
+            tr = doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"))
+            tr["tasks"][0]["steps"][0]["evidence"] = [{"type": "observation", "summary": "ok", key: "extra"}]
+            self.put("DEVELOPMENT_TRACKER.json", tr)
+            try:
+                text = bs.render(bs.build(self.root, self.now))
+            except bs.SnapshotError as exc:  # refusing is also safe, but the key must not be echoed
+                for frag in PRIVATE_FRAGMENTS + ("sk-a1B2",):
+                    self.assertNotIn(frag, str(exc), key)
+                continue
+            for frag in PRIVATE_FRAGMENTS + ("sk-a1B2",):
+                self.assertNotIn(frag, text, (key, frag))
+
+    def test_key_collision_is_refused_deterministically_without_dropping_data(self):
+        data = {"/mnt/data/aaa": 1, "/mnt/data/bbb": 2}  # both become "[local-path]"
+        for _ in range(3):
+            with self.assertRaises(bs.SnapshotError) as ctx:
+                bs.scrub(data, {})
+            self.assertEqual(ctx.exception.code, 2)
+            self.assertIn("became identical", str(ctx.exception))
+            self.assertNotIn("aaa", str(ctx.exception))
+            self.assertNotIn("bbb", str(ctx.exception))
+        self.assertEqual(data, {"/mnt/data/aaa": 1, "/mnt/data/bbb": 2})  # the input is untouched
+
+    def test_key_collision_through_the_cli_writes_nothing_and_exits_2(self):
+        tr = doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"))
+        tr["tasks"][0]["steps"][0]["evidence"] = [{"type": "observation", "summary": "ok",
+                                                   "/mnt/data/aaa": 1, "/mnt/data/bbb": 2}]
+        self.put("DEVELOPMENT_TRACKER.json", tr)
+        out = self.root / "snap.json"
+        code, text = self.cli("--out", str(out))
+        self.assertEqual(code, 2, text)
+        self.assertFalse(out.exists())
+        self.assertNotIn("aaa", text)
+
+    def test_ordinary_keys_are_unchanged(self):
+        counts = {}
+        data = {"summary": 1, "orchestrator/tests/test_x.py": 2, "https://github.com/KasluBuilds/CreatorStudio/pull/4": 3}
+        self.assertEqual(bs.scrub(data, counts), data)
+        self.assertEqual(counts, {})
+
     def test_ordinary_strings_survive_in_every_source_field(self):
         for name, mutate in _field_mutators():
             st, tk, tr = status_doc(), tasks_registry(), doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"))
