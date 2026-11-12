@@ -87,7 +87,7 @@
         {
           "id": "S-GOV-002-02",
           "title": "Step 2: snapshot builder (dashboard/build_snapshot.py)",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "Python standard library only; reads PROJECT_STATUS.json, ACTIVE_TASKS.json and DEVELOPMENT_TRACKER.json and writes a snapshot file; never modifies project status",
             "The snapshot records source commit SHA, branch, generation time and working-tree cleanliness",
