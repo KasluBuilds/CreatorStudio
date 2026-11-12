@@ -126,7 +126,7 @@
         {
           "id": "S-GOV-002-03",
           "title": "Step 3: read-only dashboard page (dashboard/index.html)",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Responsive, readable page showing overall implementation and verification progress and milestones grouped by phase",
             "Shows the current task and its steps with status, acceptance criteria and evidence, plus open decisions, blockers and next actions",
@@ -135,7 +135,20 @@
             "Shows the snapshot commit SHA and generation time and states that it is a snapshot",
             "Read-only: no write path to project files, no GitHub credentials in browser JavaScript, no new dependencies"
           ],
-          "evidence": [],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Step 3 implementation: dashboard/index.html (self-contained read-only snapshot viewer) and its tests, committed while the step was IN_PROGRESS",
+              "commit": "afd9f960c63bab9fcdf6bf1696dfffd4d449ce5a"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite run by Claude Code on a clean working tree at the implementation commit (not independently run by ChatGPT). Page logic tests run under Node when installed; the page was not opened in a real browser, only exercised through a fake DOM smoke run that is not part of the repository.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1239 tests in 176.8s: OK (skipped=1); test_development_tracker.py alone: 72 tests OK",
+              "commit": "afd9f960c63bab9fcdf6bf1696dfffd4d449ce5a"
+            }
+          ],
           "completion": null
         },
         {
