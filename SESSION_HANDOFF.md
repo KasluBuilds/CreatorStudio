@@ -84,7 +84,11 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 
 ## Active tasks
 
-No active tasks.
+| Task | Owner | Branch | Status | Lease expires | Owns |
+|---|---|---|---|---|---|
+| T-GOV-002 Creator Studio Development Tracker and mandatory step-completion workflow | claude:development-tracker-session | `task/development-tracker` | ACTIVE | 2026-11-13T11:56:30+00:00 | dashboard/, DEVELOPMENT_TRACKER.json, DEVELOPMENT_STEP_PROTOCOL.md, orchestrator/tests/test_development_tracker.py, PROJECT_STATUS.json, ACTIVE_TASKS.json, PROJECT_OPERATING_PROTOCOL.md, CLAUDE.md, CHANGELOG.md, SESSION_HANDOFF.md |
+
+Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
 ## Package ownership
 
