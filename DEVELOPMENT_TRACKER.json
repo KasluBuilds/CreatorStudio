@@ -87,7 +87,7 @@
         {
           "id": "S-GOV-002-02",
           "title": "Step 2: snapshot builder (dashboard/build_snapshot.py)",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Python standard library only; reads PROJECT_STATUS.json, ACTIVE_TASKS.json and DEVELOPMENT_TRACKER.json and writes a snapshot file; never modifies project status",
             "The snapshot records source commit SHA, branch, generation time and working-tree cleanliness",
@@ -115,7 +115,13 @@
               "commit": "eccac6d16b8f039dcf67af63da76632a8fe2f340"
             }
           ],
-          "completion": null
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-12",
+            "review_basis_commit": "0c91343b493ffe21eb27bb745598fd7edb2ea344",
+            "source": "REPORTED: Lukas's standing instruction authorizes ChatGPT to make technical acceptance decisions and automatically advance between steps. ChatGPT approved Step 2 after independently reviewing the implementation at 0c91343b493ffe21eb27bb745598fd7edb2ea344. This does not claim Lukas independently reviewed the code. Not independently verified by Claude."
+          }
         },
         {
           "id": "S-GOV-002-03",
