@@ -87,7 +87,7 @@
         {
           "id": "S-GOV-002-02",
           "title": "Step 2: snapshot builder (dashboard/build_snapshot.py)",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Python standard library only; reads PROJECT_STATUS.json, ACTIVE_TASKS.json and DEVELOPMENT_TRACKER.json and writes a snapshot file; never modifies project status",
             "The snapshot records source commit SHA, branch, generation time and working-tree cleanliness",
@@ -96,7 +96,20 @@
             "It reuses the progress figures from PROJECT_STATUS.json and does not recalculate them",
             "Tests cover snapshot generation, cleanliness reporting and the exclusions above"
           ],
-          "evidence": [],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Step 2 implementation and the four review corrections (snapshot builder, stronger path scrubbing, regression tests, changelog and exit-code documentation fixes), committed while the step was IN_PROGRESS",
+              "commit": "4404ada9f63169170be50ab705316ccaab07ccb4"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite run by Claude Code on a clean working tree at the implementation commit above (not independently run by ChatGPT). The earlier evidence that cited c2ce7b9 was stale and was removed.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1223 tests in 171.6s: OK (skipped=1); test_development_tracker.py alone: 56 tests OK",
+              "commit": "4404ada9f63169170be50ab705316ccaab07ccb4"
+            }
+          ],
           "completion": null
         },
         {
