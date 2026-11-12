@@ -160,13 +160,30 @@
         {
           "id": "S-GOV-002-04",
           "title": "Step 4: closeout (changelog, final verification, lease release)",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "CHANGELOG.md entry added; milestone weights and computed progress in PROJECT_STATUS.json unchanged by this task",
             "Full suite, governance validate, handoff --check and scope check pass at the final head",
             "The final pull request is opened and merged by Lukas; the lease is released in a follow-up pull request that records the merge commit"
           ],
-          "evidence": [],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Step 4 implementation: protocol contradiction resolved (DEVELOPMENT_STEP_PROTOCOL.md section 3a, PROJECT_OPERATING_PROTOCOL.md, tracker status texts), completion source must begin DIRECT or REPORTED, tests. CLAUDE.md was NOT updated: the edit was denied in the session",
+              "commit": "fd890481bdc4c62999c65ccf96ae0ce7335ae52c"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite run by Claude Code on a clean working tree at the implementation commit (not independently run by ChatGPT)",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1241 tests in 173.1s: OK (skipped=1)",
+              "commit": "fd890481bdc4c62999c65ccf96ae0ce7335ae52c"
+            },
+            {
+              "type": "observation",
+              "summary": "Dashboard checked in the already-installed Chrome (headless, DevTools protocol, nothing installed) against a generated snapshot: all sections rendered at 1280 and 390 px with no horizontal overflow, a malformed file showed an error and hid the page, no page errors, no non-file network requests. Not covered: drag-and-drop, dark mode, other browsers. This does not alter the COMPLETED record of step 3."
+            }
+          ],
           "completion": null
         }
       ]
