@@ -87,7 +87,7 @@
         {
           "id": "S-GOV-002-02",
           "title": "Step 2: snapshot builder (dashboard/build_snapshot.py)",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Python standard library only; reads PROJECT_STATUS.json, ACTIVE_TASKS.json and DEVELOPMENT_TRACKER.json and writes a snapshot file; never modifies project status",
             "The snapshot records source commit SHA, branch, generation time and working-tree cleanliness",
@@ -96,7 +96,19 @@
             "It reuses the progress figures from PROJECT_STATUS.json and does not recalculate them",
             "Tests cover snapshot generation, cleanliness reporting and the exclusions above"
           ],
-          "evidence": [],
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Step 2 implementation (dashboard/build_snapshot.py plus 21 snapshot tests). Run on the working tree before the Step 2 commit, which cannot cite its own SHA; the branch head is in the stop report. Starting point was the Step 1 completion commit.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1217 tests: OK (skipped=1); test_development_tracker.py 50 tests OK; tracker_check.py (plain and --against HEAD), governance validate, handoff --check and scope --base origin/main OK",
+              "commit": "c2ce7b9a686afc03d774b75991616c7506344efa"
+            },
+            {
+              "type": "observation",
+              "summary": "Ran python -B dashboard/build_snapshot.py --out <temp file> on the real sources: wrote a snapshot with source commit, branch, UTC time and working_tree_clean false (uncommitted Step 2 work), progress 35.4 / 12.7 copied from PROJECT_STATUS.json, 5 scrubbed strings (2 private paths, 3 media file names). The temp file was deleted; no snapshot is committed."
+            }
+          ],
           "completion": null
         },
         {
