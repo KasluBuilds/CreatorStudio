@@ -16,6 +16,7 @@ Labels used here: **VERIFIED** (observed), **PROCEDURE** (a rule people follow; 
 | What is the plan and its order? | `AI_Creator_Studio_Documentation/ROADMAP.md` | task owners; checkboxes are narrative and may lag the status file |
 | **What is done, how well is it verified, what progress %?** | **`PROJECT_STATUS.json`** | the task that changed the facts |
 | **Who is working on what, who owns which package?** | **`ACTIVE_TASKS.json`** | any session claiming or releasing work |
+| What are the steps of a task and is a step officially finished? | `DEVELOPMENT_TRACKER.json` (rules: `DEVELOPMENT_STEP_PROTOCOL.md`) | the session working the step; completion only on Lukas's explicit word |
 | Where do I start? | `SESSION_HANDOFF.md` (generated; never edit by hand) | `python -B -m governance handoff --write` |
 | What shipped when? | `CHANGELOG.md` | every merged task |
 | Session rules for Claude Code | `CLAUDE.md` | rarely, via pull request |
@@ -232,6 +233,10 @@ Current gate, from Lukas's brief of 2026-11-09 and his correction of the trigger
 
 **User-action gate `G-FIRST-REAL-VIDEO` (PENDING).** When Phase 6 reaches its first end-to-end long-form editing pipeline ready for real-world validation (readiness milestone `M-LFE-03` implemented: all five readiness criteria evidenced; long-form assembly alone does not fire it), tell Lukas to stop development-only work and start producing real videos, give him `AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md`, explain safe ingestion, start validating long-form editing on the real recordings, and use the resulting long-form videos as the source for Phase 7 short-form repurposing. This is a milestone-triggered action, not an instruction to film now. The in-repository reminder is enforced by `governance validate` failing once the trigger fires, and shown by `SESSION_HANDOFF.md`. A weekly ChatGPT "Phase 6 Readiness Check" is REPORTED by Lukas as scheduled outside the repository (not verified by Claude; no completed check of the private repository is recorded; see `PROJECT_OPERATING_PROTOCOL.md` section 14).
 
-## 15. Change history
+## 15. Development steps (one reviewed step at a time)
+
+Every task is divided into numbered steps recorded in `DEVELOPMENT_TRACKER.json` and governed by `DEVELOPMENT_STEP_PROTOCOL.md` (added by `T-GOV-002`, 2026-11-12). Rules every session follows: work on one step only; at `READY_FOR_REVIEW` stop and report changed files, commands and results, evidence, unresolved issues and terminal safety; ChatGPT reviews the evidence and tells Lukas whether the step is complete; the next step stays blocked until Lukas explicitly says to continue; no automatic task switching or silent progression. `COMPLETED` needs evidence plus a completion record (ChatGPT review, Lukas's confirmation, date, source). The tracker holds steps only: ownership and leases stay in `ACTIVE_TASKS.json`, milestones and percentages in `PROJECT_STATUS.json`. `python -B dashboard/tracker_check.py` validates the tracker (a PROCEDURE to run; the full suite also runs it). A task's claim pull request is step 00; a task that has no tracker steps yet adds them in its claim or first step.
+
+## 16. Change history
 
 This protocol is a shared file. Changes go through a pull request that states what rule changed and why, and add a `CHANGELOG.md` entry.

@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "authority": "Authoritative for the individual development steps of a task and whether each step is officially finished. Task ownership, leases and paths stay in ACTIVE_TASKS.json; milestones, weights and progress percentages stay in PROJECT_STATUS.json and are deliberately not repeated here.",
+  "protocol": "DEVELOPMENT_STEP_PROTOCOL.md",
+  "step_statuses": {
+    "PLANNED": "Defined, not started. May not start until every earlier step is COMPLETED and Lukas has said to continue.",
+    "IN_PROGRESS": "The one step currently being worked on.",
+    "READY_FOR_REVIEW": "Work stopped. Evidence reported; waiting for ChatGPT's review and Lukas's explicit word.",
+    "COMPLETED": "Reviewed and explicitly confirmed by Lukas. Terminal: never edited afterwards.",
+    "BLOCKED": "Cannot proceed; blocked_reason says why."
+  },
+  "tasks": [
+    {
+      "task_id": "T-GOV-002",
+      "title": "Creator Studio Development Tracker and mandatory step-completion workflow",
+      "steps": [
+        {
+          "id": "S-GOV-002-00",
+          "title": "Step 0: claim pull request",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-GOV-002 is registered as ACTIVE on main through a claim pull request with lease, owned paths, acceptance criteria and test requirements",
+            "No overlap with another task and no unapproved edit to a package owned by someone else",
+            "Governance validation, handoff check and scope check pass; the full suite passes",
+            "The pull request is merged by Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "pull_request",
+              "summary": "PR #4 merged into main with a merge commit (merge commit shown); merged head is 16782f226324b7aa00f174c6b5500bdc7460d26a",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/4",
+              "commit": "27685bac2b0bc58c961e4e3d26b57af38f1bc3b2"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite on the claim PR head, including the narrowly agreed fix to test_leases_exit_codes",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1167 tests: OK (skipped=1); governance validate, handoff --check and scope --base origin/main all OK",
+              "commit": "16782f226324b7aa00f174c6b5500bdc7460d26a"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-12",
+            "source": "REPORTED in the session instruction that started Step 1: Lukas explicitly approved the merge of PR #4 and said to continue; not independently verified by Claude beyond the merged state of PR #4 on GitHub"
+          }
+        },
+        {
+          "id": "S-GOV-002-01",
+          "title": "Step 1: canonical tracker, step protocol and enforcement tests",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "DEVELOPMENT_TRACKER.json records every T-GOV-002 step with id, title, status, acceptance criteria, evidence and completion state, linked to the ACTIVE_TASKS task id",
+            "The tracker repeats no milestone state, weight or percentage and no task owner, lease or owned path, and the validator rejects such keys",
+            "DEVELOPMENT_STEP_PROTOCOL.md defines the one-step-at-a-time workflow, the READY_FOR_REVIEW stop, the report contents, ChatGPT's review and Lukas's explicit continue",
+            "CLAUDE.md and PROJECT_OPERATING_PROTOCOL.md require every session to follow the step protocol",
+            "Tests cover tracker structure, task linkage, step states and transitions, and the completion gate",
+            "The expired agreement AGR-GOV-LEASE-TEST is removed from ACTIVE_TASKS.json; orchestrator/governance/ is untouched; PROJECT_STATUS.json is unchanged"
+          ],
+          "evidence": [],
+          "completion": null
+        },
+        {
+          "id": "S-GOV-002-02",
+          "title": "Step 2: snapshot builder (dashboard/build_snapshot.py)",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Python standard library only; reads PROJECT_STATUS.json, ACTIVE_TASKS.json and DEVELOPMENT_TRACKER.json and writes a snapshot file; never modifies project status",
+            "The snapshot records source commit SHA, branch, generation time and working-tree cleanliness",
+            "No secrets, credentials, private local paths or footage in the snapshot",
+            "The snapshot is labelled as a snapshot and is never presented as live GitHub data",
+            "It reuses the progress figures from PROJECT_STATUS.json and does not recalculate them",
+            "Tests cover snapshot generation, cleanliness reporting and the exclusions above"
+          ],
+          "evidence": [],
+          "completion": null
+        },
+        {
+          "id": "S-GOV-002-03",
+          "title": "Step 3: read-only dashboard page (dashboard/index.html)",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Responsive, readable page showing overall implementation and verification progress and milestones grouped by phase",
+            "Shows the current task and its steps with status, acceptance criteria and evidence, plus open decisions, blockers and next actions",
+            "Shows GitHub branch, PR and merge information as recorded in the snapshot",
+            "Shows an explicit completion gate and a terminal-clear status for the current step",
+            "Shows the snapshot commit SHA and generation time and states that it is a snapshot",
+            "Read-only: no write path to project files, no GitHub credentials in browser JavaScript, no new dependencies"
+          ],
+          "evidence": [],
+          "completion": null
+        },
+        {
+          "id": "S-GOV-002-04",
+          "title": "Step 4: closeout (changelog, final verification, lease release)",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "CHANGELOG.md entry added; milestone weights and computed progress in PROJECT_STATUS.json unchanged by this task",
+            "Full suite, governance validate, handoff --check and scope check pass at the final head",
+            "The final pull request is opened and merged by Lukas; the lease is released in a follow-up pull request that records the merge commit"
+          ],
+          "evidence": [],
+          "completion": null
+        }
+      ]
+    }
+  ]
+}

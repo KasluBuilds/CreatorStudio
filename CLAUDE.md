@@ -8,6 +8,7 @@ Several Claude Code and ChatGPT sessions work in parallel. Coordination lives in
 - Work on a task branch in your own Git worktree and claim your files in `ACTIVE_TASKS.json` first. Never push to `main`, never force-push, never stage with `git add .` or `git add -A`.
 - Do not edit a package owned by someone else, or marked UNRESOLVED, without an integration agreement. Only one task may hold Resolve at a time.
 - Milestone-triggered reminder for Lukas: when Phase 6 reaches its first end-to-end long-form pipeline ready for real-world validation, tell him to stop development-only work and start producing real videos (gate `G-FIRST-REAL-VIDEO` in `PROJECT_STATUS.json` → `user_action_gates`, `AI_Creator_Studio_Documentation/FIRST_REAL_VIDEO_CHECKLIST.md`). Check `SESSION_HANDOFF.md` for an "ACTION REQUIRED" gate.
+- Step protocol (`DEVELOPMENT_STEP_PROTOCOL.md`, tracker `DEVELOPMENT_TRACKER.json`): work on ONE step at a time; at `READY_FOR_REVIEW` stop and report (files, commands and results, evidence, unresolved issues, terminal safety). Only Lukas's explicit word completes a step or starts the next; never switch tasks or start the next step on your own.
 - Code plus tests is at most "implemented": never record anything as VERIFIED without evidence. The repository holds no footage, launchers or credentials; keep it that way.
 
 ## 1. Read, in this order

@@ -4,6 +4,13 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — branch `task/development-tracker` (task `T-GOV-002`, step 01: tracker and step protocol, pending review)
+
+- Claim merged earlier as PR #4 (merge commit `27685bac2b0bc58c961e4e3d26b57af38f1bc3b2`), including a narrow fix so `test_leases_exit_codes` uses a fixture registry.
+- Added `DEVELOPMENT_TRACKER.json` (step-level record linked to task ids; holds no milestone, weight, percentage or lease data), `DEVELOPMENT_STEP_PROTOCOL.md` (one reviewed step at a time; stop at `READY_FOR_REVIEW`; Lukas's explicit word completes a step and starts the next), `dashboard/tracker_check.py` (stdlib validator for structure, linkage, transitions and the completion gate) and `orchestrator/tests/test_development_tracker.py`.
+- `CLAUDE.md` and `PROJECT_OPERATING_PROTOCOL.md` (new section 15) now require the step protocol. Removed the expired agreement `AGR-GOV-LEASE-TEST` from `ACTIVE_TASKS.json`.
+- No milestone state, weight, computed progress, evidence or gate changed. The dashboard page and snapshot builder are later steps and do not exist yet.
+
 ## Unreleased — branch `task/governance-housekeeping` (governance wording only, pending review)
 
 - `PROJECT_STATUS.json`: removed `next_actions` that referred to the now-merged PR #2 and to connecting/testing the ChatGPT connector; added the REPORTED connector retrieval and an action to confirm the weekly automation's access.
