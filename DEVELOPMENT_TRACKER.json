@@ -126,7 +126,7 @@
         {
           "id": "S-GOV-002-03",
           "title": "Step 3: read-only dashboard page (dashboard/index.html)",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Responsive, readable page showing overall implementation and verification progress and milestones grouped by phase",
             "Shows the current task and its steps with status, acceptance criteria and evidence, plus open decisions, blockers and next actions",
@@ -149,7 +149,13 @@
               "commit": "afd9f960c63bab9fcdf6bf1696dfffd4d449ce5a"
             }
           ],
-          "completion": null
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-12",
+            "review_basis_commit": "afd9f960c63bab9fcdf6bf1696dfffd4d449ce5a",
+            "source": "REPORTED: Lukas's standing instruction authorizes ChatGPT to make technical acceptance decisions and automatically advance between steps. ChatGPT approved Step 3 after independently reviewing the implementation at afd9f960c63bab9fcdf6bf1696dfffd4d449ce5a and the final branch state at a423abb6023cbc2b567826d4e32f2ecc93018cca. This does not claim Lukas independently reviewed the code. Not independently verified by Claude."
+          }
         },
         {
           "id": "S-GOV-002-04",
