@@ -453,6 +453,20 @@ class TestSnapshotGit(SnapshotCase):
         self.assertIsNone(src["working_tree_clean"])
         self.assertIn("unknown", src["note"])
 
+    def test_unavailable_git_still_writes_a_snapshot_with_null_metadata_and_exit_0(self):
+        original = bs._git
+        bs._git = lambda root, *args: None  # simulates git missing or failing
+        self.addCleanup(setattr, bs, "_git", original)
+        out = Path(self._tmp.name) / "snapshot.json"
+        code, text = self.cli("--out", str(out))
+        self.assertEqual(code, 0, text)
+        src = json.loads(out.read_text(encoding="utf-8"))["source"]
+        self.assertIs(src["git_available"], False)
+        self.assertIsNone(src["commit"])
+        self.assertIsNone(src["working_tree_clean"])
+        self.assertIn("unknown", src["note"])
+        self.assertIn("unknown", text)
+
     def test_cleanliness_is_measured_before_the_output_is_written(self):
         self.init_repo()
         out = self.root / "snap.json"
@@ -563,6 +577,111 @@ class TestSnapshotInputsAndCli(SnapshotCase):
         bs.write_snapshot(self.root, out, self.now)
         self.assertEqual(first, out.read_bytes())
         self.assertTrue(first.endswith(b"\n"))
+
+
+PRIVATE_STRINGS = [
+    r"Projects\secretproj\clip01.mov",
+    r"Incoming\tripday\take.wav",
+    r"tools\privbin\ffmpeg.exe",
+    "Projects/secretproj/clip01.mov",
+    "/mnt/data/mydata/notes.txt",
+    "/tmp/mydata/out",
+    "/root/mydata",
+    "/workspace/worksecret/a",
+    "/home/someone/mydata",
+    "/Users/someone/mydata",
+    r"C:\Users\someone\mydata\x",
+    "file:///tmp/mydata/x",
+    "../CreatorStudio-worktrees/mydata",
+    "~/mydata/x",
+]
+# Every directory name and file name above that must be gone: removing only the media file name is not enough.
+PRIVATE_FRAGMENTS = ("secretproj", "tripday", "privbin", "mydata", "worksecret", "someone", "clip01", "take.wav",
+                     "ffmpeg.exe", "Projects", "Incoming", "CreatorStudio-worktrees")
+
+ORDINARY_STRINGS = [
+    "orchestrator/tests/test_x.py", "dashboard/build_snapshot.py", "AI_Creator_Studio_Documentation/MASTER.md",
+    "https://github.com/KasluBuilds/CreatorStudio/pull/4", "https://example.com/tmp/x", "https://example.com/data/x",
+    "origin/main", "git push -u origin task/x", "and/or", "a/mnt/b", "DEVELOPMENT_TRACKER.json", "Resolve 21.0.4.5",
+]
+
+
+def _field_mutators():
+    """(name, function(status, tasks, tracker, value)) placing a string into one field the snapshot copies out."""
+    return [
+        ("status.open_decisions", lambda s, t, k, v: s["open_decisions"].append(v)),
+        ("status.next_actions", lambda s, t, k, v: s["next_actions"].append(v)),
+        ("status.baseline.scope", lambda s, t, k, v: s["baseline"].update(scope=v)),
+        ("status.repository", lambda s, t, k, v: s.update(repository=v)),
+        ("milestone.title", lambda s, t, k, v: s["milestones"][0].update(title=v)),
+        ("milestone.phase", lambda s, t, k, v: s["milestones"][0].update(phase=v)),
+        ("milestone.open_questions", lambda s, t, k, v: s["milestones"][0]["open_questions"].append(v)),
+        ("milestone.blockers", lambda s, t, k, v: s["milestones"][0]["blockers"].append(v)),
+        ("gate.title", lambda s, t, k, v: s["user_action_gates"][0].update(title=v)),
+        ("gate.message", lambda s, t, k, v: s["user_action_gates"][0].update(message=v)),
+        ("task.title", lambda s, t, k, v: t["tasks"][0].update(title=v)),
+        ("task.integration_notes", lambda s, t, k, v: t["tasks"][0].update(integration_notes=v)),
+        ("task.acceptance_criteria", lambda s, t, k, v: t["tasks"][0]["acceptance_criteria"].append(v)),
+        ("tracker.task.title", lambda s, t, k, v: k["tasks"][0].update(title=v)),
+        ("tracker.step.title", lambda s, t, k, v: k["tasks"][0]["steps"][1].update(title=v)),
+        ("tracker.step.acceptance_criteria", lambda s, t, k, v: k["tasks"][0]["steps"][1]["acceptance_criteria"].append(v)),
+        ("tracker.evidence.summary", lambda s, t, k, v: k["tasks"][0]["steps"][0]["evidence"][0].update(summary=v)),
+        ("tracker.completion.source", lambda s, t, k, v: k["tasks"][0]["steps"][0]["completion"].update(source=v)),
+        ("tracker.step.note", lambda s, t, k, v: k["tasks"][0]["steps"][1].update(note=v)),
+    ]
+
+
+class TestPathScrubbingRegression(SnapshotCase):
+    def test_private_directories_are_removed_not_just_media_names(self):
+        for value in PRIVATE_STRINGS:
+            counts = {}
+            out = bs.scrub("before " + value + " after", counts)
+            for frag in PRIVATE_FRAGMENTS:
+                self.assertNotIn(frag, out, (value, frag))
+            self.assertTrue(out.startswith("before [") and out.endswith("] after"), (value, out))
+            self.assertEqual(sum(counts.values()), 1, (value, counts))
+
+    def test_unc_paths_are_removed(self):
+        value = chr(92) * 2 + "fileserver" + chr(92) + "share" + chr(92) + "mydata"
+        out = bs.scrub("see " + value + " now", {})
+        self.assertNotIn("fileserver", out)
+        self.assertNotIn("mydata", out)
+
+    def test_ordinary_repository_paths_and_urls_are_unchanged(self):
+        for value in ORDINARY_STRINGS:
+            counts = {}
+            self.assertEqual(bs.scrub(value, counts), value)
+            self.assertEqual(counts, {}, value)
+
+    def test_each_source_field_is_scrubbed(self):
+        for name, mutate in _field_mutators():
+            values = PRIVATE_STRINGS
+            if name.startswith("tracker."):  # the tracker validator already refuses Windows/Users/home paths outright
+                values = [v for v in PRIVATE_STRINGS if not tc.LOCAL_PATH.search(v)]
+            self.assertGreater(len(values), 8)
+            st, tk, tr = status_doc(), tasks_registry(), doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"))
+            tr["tasks"][0]["steps"][0]["evidence"] = [{"type": "observation", "summary": "ok"}]
+            mutate(st, tk, tr, " ; ".join(values))  # one build per field; ';' separates tokens like prose does
+            self.put("PROJECT_STATUS.json", st)
+            self.put("ACTIVE_TASKS.json", tk)
+            self.put("DEVELOPMENT_TRACKER.json", tr)
+            snap = bs.build(self.root, self.now)
+            text = bs.render(snap)
+            for frag in PRIVATE_FRAGMENTS:
+                self.assertNotIn(frag, text, (name, frag))
+            self.assertGreaterEqual(snap["sanitization"]["total"], len(values), name)
+
+    def test_ordinary_strings_survive_in_every_source_field(self):
+        for name, mutate in _field_mutators():
+            st, tk, tr = status_doc(), tasks_registry(), doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"))
+            tr["tasks"][0]["steps"][0]["evidence"] = [{"type": "observation", "summary": "ok"}]
+            mutate(st, tk, tr, "see orchestrator/tests/test_x.py and https://github.com/KasluBuilds/CreatorStudio/pull/4")
+            self.put("PROJECT_STATUS.json", st)
+            self.put("ACTIVE_TASKS.json", tk)
+            self.put("DEVELOPMENT_TRACKER.json", tr)
+            text = bs.render(bs.build(self.root, self.now))
+            self.assertIn("orchestrator/tests/test_x.py", text, name)
+            self.assertIn("https://github.com/KasluBuilds/CreatorStudio/pull/4", text, name)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,9 @@ What the snapshot is, and is not:
 - Text from the sources is scrubbed: private local paths, private project/footage paths, media file names and
   credential-looking strings are replaced by placeholders, and the number of replacements is recorded.
 
-Exit codes: 0 written, 1 sources failed validation (nothing written), 2 unusable input, output path or git (nothing written).
+Exit codes: 0 written, 1 sources failed validation (nothing written), 2 unreadable or invalid input file, bad
+arguments or unusable output path (nothing written). Git being unavailable is NOT an error: the snapshot is still
+written, with commit, branch and cleanliness null and a note saying they are unknown.
 """
 import datetime as _dt
 import hashlib
@@ -34,11 +36,25 @@ SOURCES = ("PROJECT_STATUS.json", "ACTIVE_TASKS.json", "DEVELOPMENT_TRACKER.json
 NOTICE = ("SNAPSHOT: a point-in-time copy of the repository's status files taken at 'generated_at' from the commit "
           "in 'source.commit'. It is not live GitHub data and may be out of date; it was not fetched from GitHub.")
 
-# Scrubbing rules, applied to every string that is copied out of a source file.
+# Scrubbing rules, applied to every string that is copied out of a source file. Order matters: whole absolute paths go
+# first so that a private directory name inside them is removed with them, then private project folders, then media names.
+_REST = r"[^\s,;)\"'`]*"  # the rest of a path token: stops at whitespace and ordinary prose punctuation
+_POSIX_ROOTS = ("Users|home|root|mnt|tmp|var|opt|srv|media|private|Volumes|workspace|workspaces|data|usr|etc|proc|snap|"
+                "app|builds|runner|github|Applications")
+_PRIVATE_DIRS = "Incoming|Projects|test_media|tools"
 _PATTERNS: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
-    ("local_path", re.compile(r"((?<![A-Za-z0-9])[A-Za-z]:[\\/](?!/)[^\s,;)\"'`]*|\\\\[^\s,;)\"'`]+|/Users/[^\s,;)\"'`]*|/home/[^\s,;)\"'`]*)"),
-     "[local-path]"),
-    ("private_path", re.compile(r"(?<![A-Za-z0-9_.-])(?:\./)?(?:Incoming|Projects|test_media|tools)/[^\s,;)\"'`]*"),
+    ("local_path", re.compile(
+        r"(?:"
+        r"(?<![A-Za-z0-9])[A-Za-z]:[\\/](?!/)" + _REST +                       # C:\Users\x   C:/x
+        r"|\\\\" + _REST +                                                      # \\server\share
+        r"|file:/{2,3}" + _REST +                                               # file:///tmp/x
+        r"|(?<![A-Za-z0-9_.:/\\-])/(?:" + _POSIX_ROOTS + r")\b(?:/" + _REST + r")?"  # /mnt/data/x  /tmp/y  /root
+        r"|(?<![A-Za-z0-9_.])(?:\.\.[\\/])+" + _REST +                          # ../CreatorStudio-worktrees/x
+        r"|(?<![A-Za-z0-9_.])~[\\/]" + _REST +                                  # ~/x
+        r"|%[A-Za-z]+%[\\/]?" + _REST +                                         # %USERPROFILE%\x
+        r"|\$HOME\b(?:/" + _REST + r")?"                                        # $HOME/x
+        r")"), "[local-path]"),
+    ("private_path", re.compile(r"(?<![A-Za-z0-9_.-])(?:\.[\\/])?(?:" + _PRIVATE_DIRS + r")[\\/]" + _REST),  # either slash style
      "[private-path]"),
     ("media_file", re.compile(r"[^\s,;)\"'`/\\]+\.(?:mp4|mov|mkv|avi|webm|m4a|wav|mp3|flac|aac|braw|mxf|r3d|jpg|jpeg|png|heic|raw)\b",
                               re.IGNORECASE), "[media-file]"),
