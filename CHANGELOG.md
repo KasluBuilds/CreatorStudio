@@ -9,6 +9,7 @@ before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed
 - Claim merged earlier as PR #4 (merge commit `27685bac2b0bc58c961e4e3d26b57af38f1bc3b2`), including a narrow fix so `test_leases_exit_codes` uses a fixture registry.
 - Added `DEVELOPMENT_TRACKER.json` (step-level record linked to task ids; holds no milestone, weight, percentage or lease data), `DEVELOPMENT_STEP_PROTOCOL.md` (one reviewed step at a time; stop at `READY_FOR_REVIEW`; Lukas's explicit word completes a step and starts the next), `dashboard/tracker_check.py` (stdlib validator for structure, linkage, transitions and the completion gate) and `orchestrator/tests/test_development_tracker.py`.
 - `CLAUDE.md` and `PROJECT_OPERATING_PROTOCOL.md` (new section 15) now require the step protocol. Removed the expired agreement `AGR-GOV-LEASE-TEST` from `ACTIVE_TASKS.json`.
+- Review correction (same branch): `tracker_check.py` now has `--against REF`, which compares the tracker with the one committed at REF and rejects illegal transitions, edits to completed steps and removed steps; tests drive it through the real CLI with a throwaway Git repository. Previously only helper functions did this and the CLI did not call them. Without `--against` no history is checked.
 - No milestone state, weight, computed progress, evidence or gate changed. The dashboard page and snapshot builder are later steps and do not exist yet.
 
 ## Unreleased — branch `task/governance-housekeeping` (governance wording only, pending review)

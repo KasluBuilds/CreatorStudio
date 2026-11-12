@@ -13,7 +13,7 @@ Labels: **PROCEDURE** = a rule people follow; nothing but review enforces it. **
 ## 2. Statuses and transitions
 
 `PLANNED` -> `IN_PROGRESS` -> `READY_FOR_REVIEW` -> `COMPLETED`.
-`READY_FOR_REVIEW` -> `IN_PROGRESS` when the reviewer asks for changes. Any unfinished step may become `BLOCKED` (with a `blocked_reason`); a blocked step returns to `PLANNED` or `IN_PROGRESS`. `COMPLETED` is terminal and its record is never edited. Steps are never deleted. (CHECKED, including against the base branch with `transition_problems`.)
+`READY_FOR_REVIEW` -> `IN_PROGRESS` when the reviewer asks for changes. Any unfinished step may become `BLOCKED` (with a `blocked_reason`); a blocked step returns to `PLANNED` or `IN_PROGRESS`. `COMPLETED` is terminal and its record is never edited. Steps are never deleted. The file alone is always checked for valid states. Whether a change from an earlier version is legal (for example `PLANNED` -> `COMPLETED`, an edit to a `COMPLETED` step, a removed step) is checked **only when a base is supplied**: `python -B dashboard/tracker_check.py --against origin/main` compares the file with the one committed at that ref. Without `--against` no history is compared (CHECKED when run with `--against`, PROCEDURE to run it).
 
 ## 3. The workflow
 
@@ -37,8 +37,8 @@ Evidence types: `commit`, `pull_request` (both need a full 40-character SHA), `t
 
 ## 6. Enforcement, honestly
 
-Nothing in GitHub blocks a session from ignoring this protocol (the repository has no branch protection or CI, see `PROJECT_OPERATING_PROTOCOL.md` section 7). What exists: `python -B dashboard/tracker_check.py` validates the tracker file; `orchestrator/tests/test_development_tracker.py` runs it on every full-suite run and checks that `CLAUDE.md` and `PROJECT_OPERATING_PROTOCOL.md` name this protocol; the reviewer reads the pull request. The human gate in sections 3.5 to 3.7 is a PROCEDURE.
+Nothing in GitHub blocks a session from ignoring this protocol (the repository has no branch protection or CI, see `PROJECT_OPERATING_PROTOCOL.md` section 7). What exists: `python -B dashboard/tracker_check.py` validates the tracker file, and `python -B dashboard/tracker_check.py --against origin/main` also checks the history against the tracker committed at that ref (read-only `git`; exit 0 ok, 1 problems, 2 unusable file, ref or git; if the ref has no tracker file yet it says so and compares nothing, so run `git fetch origin` first and read the line that says what was compared). Nothing runs it automatically before a merge, and it can only compare against a ref that already holds the earlier state, so a completion record that was written without Lukas's word is caught by review, not by the tool; `orchestrator/tests/test_development_tracker.py` runs it on every full-suite run and checks that `CLAUDE.md` and `PROJECT_OPERATING_PROTOCOL.md` name this protocol; the reviewer reads the pull request. The human gate in sections 3.5 to 3.7 is a PROCEDURE.
 
 ## 7. Change history
 
-2026-11-12: created by `T-GOV-002` step 01.
+2026-11-12: created by `T-GOV-002` step 01. Same day, after review: historical transition checking added to the CLI as `--against REF`; this document now states that it is only checked when a base is supplied.

@@ -213,5 +213,97 @@ class TestCli(unittest.TestCase):
                 self.assertEqual(tc.main(["--root", tmp]), 1)
 
 
+class TestCliAgainstBase(unittest.TestCase):
+    """The real CLI path (`main --against REF`) over a throwaway Git repository: history is compared, not just helpers."""
+
+    def setUp(self):
+        import shutil
+        import subprocess
+        import tempfile
+        if shutil.which("git") is None:
+            self.skipTest("git not available")
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.git("init", "-q", "-b", "main")
+        (self.root / "ACTIVE_TASKS.json").write_text(json.dumps(REGISTRY), encoding="utf-8")
+
+    def git(self, *args):
+        import subprocess
+        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                        "-c", "commit.gpgsign=false", *args], check=True, capture_output=True)
+
+    def write(self, d):
+        (self.root / "DEVELOPMENT_TRACKER.json").write_text(json.dumps(d), encoding="utf-8")
+
+    def commit(self, d, msg="c"):
+        self.write(d)
+        self.git("add", "DEVELOPMENT_TRACKER.json", "ACTIVE_TASKS.json")
+        self.git("commit", "-q", "-m", msg)
+
+    def run_cli(self, *extra):
+        import contextlib
+        import io
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = tc.main(["--root", str(self.root), *extra])
+        return code, out.getvalue() + err.getvalue()
+
+    def test_valid_transition_passes(self):
+        self.commit(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"), step(2)))
+        self.write(doc(step(0, "COMPLETED"), step(1, "READY_FOR_REVIEW"), step(2)))
+        code, out = self.run_cli("--against", "HEAD")
+        self.assertEqual(code, 0, out)
+        self.assertIn("transitions checked against HEAD", out)
+
+    def test_illegal_transition_fails_through_the_cli(self):
+        self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED")))
+        # PLANNED -> COMPLETED, with a fully valid-looking completion record: only the history check can catch it
+        self.write(doc(step(0, "COMPLETED"), step(1, "COMPLETED")))
+        self.assertEqual(self.run_cli()[0], 0)  # ordinary validation alone accepts the file
+        code, out = self.run_cli("--against", "HEAD")
+        self.assertEqual(code, 1)
+        self.assertIn("PLANNED -> COMPLETED is not allowed", out)
+
+    def test_editing_a_completed_step_and_removing_a_step_fail(self):
+        self.commit(doc(step(0, "COMPLETED"), step(1)))
+        self.write(doc(step(0, "COMPLETED", title="rewritten"), step(1)))
+        code, out = self.run_cli("--against", "HEAD")
+        self.assertEqual(code, 1)
+        self.assertIn("must not change", out)
+        self.write(doc(step(0, "COMPLETED")))
+        code, out = self.run_cli("--against", "HEAD")
+        self.assertEqual(code, 1)
+        self.assertIn("may not be removed", out)
+
+    def test_no_base_ref_still_validates_the_current_file(self):
+        self.write(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS")))
+        self.assertEqual(self.run_cli()[0], 0)
+        self.write(doc(step(0, "COMPLETED", completion=None)))
+        self.assertEqual(self.run_cli()[0], 1)
+
+    def test_base_without_a_tracker_file_compares_nothing(self):
+        (self.root / "x.txt").write_text("x", encoding="utf-8")
+        self.git("add", "x.txt", "ACTIVE_TASKS.json")
+        self.git("commit", "-q", "-m", "no tracker")
+        self.write(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS")))
+        code, out = self.run_cli("--against", "HEAD")
+        self.assertEqual(code, 0, out)
+        self.assertIn("nothing to compare", out)
+
+    def test_bad_refs_and_missing_values_exit_2(self):
+        self.commit(doc(step(0)))
+        self.assertEqual(self.run_cli("--against", "no-such-ref")[0], 2)
+        self.assertEqual(self.run_cli("--against", "--output=x")[0], 2)  # option-looking ref refused
+        self.assertEqual(self.run_cli("--against")[0], 2)
+
+    def test_check_is_read_only(self):
+        self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED")))
+        self.write(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS")))
+        before = {p.name: p.read_bytes() for p in self.root.iterdir() if p.is_file()}
+        self.run_cli("--against", "HEAD")
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.root.iterdir() if p.is_file()})
+
+
 if __name__ == "__main__":
     unittest.main()

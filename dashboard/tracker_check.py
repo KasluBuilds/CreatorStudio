@@ -2,10 +2,16 @@
 
 Standard library only. Read-only: it never writes any project file. The tracker records *steps*; it must not
 duplicate milestone states or percentages (PROJECT_STATUS.json) or task ownership and leases (ACTIVE_TASKS.json).
-Usage from the repository root:  python -B dashboard/tracker_check.py [--root DIR]   (exit 1 if problems)
+Usage from the repository root:
+    python -B dashboard/tracker_check.py [--root DIR] [--against REF]
+Without --against it validates the current file only. With --against REF (for example origin/main) it also reads
+DEVELOPMENT_TRACKER.json as committed at REF (`git show`, read-only) and rejects illegal historical changes: a
+disallowed status transition, an edit to a COMPLETED step, or a removed step. If REF has no tracker file yet, there
+is nothing to compare and that is reported. Exit codes: 0 ok, 1 problems found, 2 files, REF or git unusable.
 """
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -188,20 +194,69 @@ def load(root: Path):
     return doc, at
 
 
+class BaseError(Exception):
+    """The base ref could not be used (unknown ref, git missing, unreadable tracker)."""
+
+
+def load_base(root: Path, ref: str) -> Optional[Dict[str, Any]]:
+    """The tracker as committed at `ref`, or None if that commit has no tracker file. Read-only (rev-parse, cat-file, show)."""
+    if not ref or ref.startswith("-"):
+        raise BaseError(f"invalid ref {ref!r}")
+
+    def git(*args: str) -> subprocess.CompletedProcess:
+        try:
+            return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8",
+                                  timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise BaseError(f"git unavailable: {exc}")
+
+    if git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode != 0:
+        raise BaseError(f"unknown ref {ref!r}")
+    spec = f"{ref}:DEVELOPMENT_TRACKER.json"
+    if git("cat-file", "-e", spec).returncode != 0:
+        return None
+    shown = git("show", spec)
+    if shown.returncode != 0:
+        raise BaseError(f"cannot read {spec}")
+    try:
+        return json.loads(shown.stdout)
+    except ValueError as exc:
+        raise BaseError(f"{spec} is not valid JSON: {exc}")
+
+
 def main(argv: List[str]) -> int:
     root = Path(__file__).resolve().parents[1]
-    if "--root" in argv:
-        root = Path(argv[argv.index("--root") + 1])
+    against = None
+    try:
+        if "--root" in argv:
+            root = Path(argv[argv.index("--root") + 1])
+        if "--against" in argv:
+            against = argv[argv.index("--against") + 1]
+    except IndexError:
+        print("ERROR: --root and --against need a value", file=sys.stderr)
+        return 2
     try:
         doc, at = load(root)
     except (OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     problems = validate(doc, at)
+    note = ""
+    if against is not None:
+        try:
+            base = load_base(root, against)
+        except BaseError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+        if base is None:
+            note = f" (no tracker at {against}: nothing to compare)"
+        else:
+            problems = sorted(set(problems + transition_problems(base, doc)))
+            note = f" (transitions checked against {against})"
     for p in problems:
         print("PROBLEM:", p)
     if not problems:
-        print("OK: DEVELOPMENT_TRACKER.json is valid")
+        print("OK: DEVELOPMENT_TRACKER.json is valid" + note)
     return 1 if problems else 0
 
 
