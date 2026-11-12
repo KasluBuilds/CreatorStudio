@@ -126,7 +126,7 @@
         {
           "id": "S-GOV-002-03",
           "title": "Step 3: read-only dashboard page (dashboard/index.html)",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "Responsive, readable page showing overall implementation and verification progress and milestones grouped by phase",
             "Shows the current task and its steps with status, acceptance criteria and evidence, plus open decisions, blockers and next actions",
