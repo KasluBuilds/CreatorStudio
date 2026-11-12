@@ -87,7 +87,7 @@
         {
           "id": "S-GOV-002-02",
           "title": "Step 2: snapshot builder (dashboard/build_snapshot.py)",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Python standard library only; reads PROJECT_STATUS.json, ACTIVE_TASKS.json and DEVELOPMENT_TRACKER.json and writes a snapshot file; never modifies project status",
             "The snapshot records source commit SHA, branch, generation time and working-tree cleanliness",
@@ -99,15 +99,20 @@
           "evidence": [
             {
               "type": "commit",
-              "summary": "Step 2 implementation and the four review corrections (snapshot builder, stronger path scrubbing, regression tests, changelog and exit-code documentation fixes), committed while the step was IN_PROGRESS",
+              "summary": "Step 2 implementation and the four first-round review corrections (snapshot builder, stronger path scrubbing, regression tests, changelog and exit-code documentation fixes), committed while the step was IN_PROGRESS",
               "commit": "4404ada9f63169170be50ab705316ccaab07ccb4"
             },
             {
+              "type": "commit",
+              "summary": "Second review correction: dictionary keys are now scrubbed like values; two keys that become identical after scrubbing are refused (exit 2, keys not echoed) instead of overwritten; regression tests added. Committed while the step was IN_PROGRESS",
+              "commit": "eccac6d16b8f039dcf67af63da76632a8fe2f340"
+            },
+            {
               "type": "test_run",
-              "summary": "Full suite run by Claude Code on a clean working tree at the implementation commit above (not independently run by ChatGPT). The earlier evidence that cited c2ce7b9 was stale and was removed.",
+              "summary": "Full suite run by Claude Code on a clean working tree at the second implementation commit (not independently run by ChatGPT). The earlier run at 4404ada (1223 tests) is superseded.",
               "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
-              "result": "Ran 1223 tests in 171.6s: OK (skipped=1); test_development_tracker.py alone: 56 tests OK",
-              "commit": "4404ada9f63169170be50ab705316ccaab07ccb4"
+              "result": "Ran 1228 tests in 183.7s: OK (skipped=1); test_development_tracker.py alone: 61 tests OK",
+              "commit": "eccac6d16b8f039dcf67af63da76632a8fe2f340"
             }
           ],
           "completion": null
