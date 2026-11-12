@@ -160,7 +160,7 @@
         {
           "id": "S-GOV-002-04",
           "title": "Step 4: closeout (changelog, final verification, lease release)",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "CHANGELOG.md entry added; milestone weights and computed progress in PROJECT_STATUS.json unchanged by this task",
             "Full suite, governance validate, handoff --check and scope check pass at the final head",
