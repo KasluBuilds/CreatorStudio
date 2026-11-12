@@ -49,7 +49,7 @@
         {
           "id": "S-GOV-002-01",
           "title": "Step 1: canonical tracker, step protocol and enforcement tests",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "DEVELOPMENT_TRACKER.json records every T-GOV-002 step with id, title, status, acceptance criteria, evidence and completion state, linked to the ACTIVE_TASKS task id",
             "The tracker repeats no milestone state, weight or percentage and no task owner, lease or owned path, and the validator rejects such keys",
@@ -69,9 +69,20 @@
               "summary": "After the correction (--against REF added to dashboard/tracker_check.py, CLI-path tests with a throwaway Git repository). Run on the working tree before the correction commit, which cannot cite its own SHA; the branch head is in the stop report",
               "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
               "result": "Ran 1196 tests: OK (skipped=1); test_development_tracker.py 29 tests OK; tracker_check.py (plain and --against origin/main), governance validate (also --against origin/main), handoff --check and scope --base origin/main all OK"
+            },
+            {
+              "type": "commit",
+              "summary": "Review basis: ChatGPT technical review approved this commit (REPORTED; the review text is not stored in the repository). Technical acceptance criteria reported satisfied. The full-suite figure (1196 passed, 1 skipped) is as reported by Claude Code and was not independently rerun by ChatGPT.",
+              "commit": "871f152f128cb697f453dc4803e1acbc590f6733"
             }
           ],
-          "completion": null
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-12",
+            "review_basis_commit": "871f152f128cb697f453dc4803e1acbc590f6733",
+            "source": "REPORTED: ChatGPT technical review approved commit 871f152f128cb697f453dc4803e1acbc590f6733 and Lukas relayed it, instructing that S-GOV-002-01 be marked COMPLETED (chosen by Lukas as the confirmation for this gate). Lukas did NOT independently review or approve the code; this records his instruction to mark the step complete, not a code review by him. Not independently verified by Claude."
+          }
         },
         {
           "id": "S-GOV-002-02",
