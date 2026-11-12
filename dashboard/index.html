@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<title>Creator Studio Development Dashboard (snapshot viewer)</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2230;--mute:#5b6577;--line:#d9dde5;--ok:#1a7f4b;--warn:#a15c00;--bad:#b3261e;--info:#2456b3;--bar:#2456b3;--bar2:#6b3fb3;--banner:#fff4d6;--bannerline:#e0b94a}
+@media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1b2030;--ink:#e6e9f0;--mute:#9aa3b5;--line:#2c3348;--ok:#4cc38a;--warn:#e8a64a;--bad:#ff8a80;--info:#8ab4ff;--bar:#6c9bff;--bar2:#b490ff;--banner:#3a3014;--bannerline:#8a7022}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:1.4rem;margin:.2rem 0 .6rem}
+h2{font-size:1.1rem;margin:0 0 .6rem}
+h3{font-size:1rem;margin:.8rem 0 .3rem}
+section,.banner{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin:14px 0}
+.banner{background:var(--banner);border-color:var(--bannerline)}
+.mute{color:var(--mute)}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:2px 12px;margin:0}
+.kv dt{color:var(--mute)}.kv dd{margin:0;overflow-wrap:anywhere}
+.bar{height:14px;background:var(--line);border-radius:7px;overflow:hidden}
+.bar>div{height:100%;background:var(--bar)}.bar.v>div{background:var(--bar2)}
+.badge{display:inline-block;padding:0 8px;border-radius:10px;border:1px solid var(--line);font-size:.8rem;margin-right:4px;white-space:nowrap}
+.COMPLETED,.IMPLEMENTED,.ok{color:var(--ok);border-color:var(--ok)}
+.IN_PROGRESS,.READY_FOR_REVIEW,.warn{color:var(--warn);border-color:var(--warn)}
+.BLOCKED,.bad{color:var(--bad);border-color:var(--bad)}
+.PLANNED,.NOT_STARTED{color:var(--mute)}
+ul{margin:.2rem 0 .6rem 1.2rem;padding:0}
+li{margin:.15rem 0;overflow-wrap:anywhere}
+details{border:1px solid var(--line);border-radius:6px;padding:6px 10px;margin:6px 0}
+summary{cursor:pointer}
+#drop{border:2px dashed var(--line);border-radius:8px;padding:18px;text-align:center}
+#drop.over{border-color:var(--info)}
+#errors .err{border:1px solid var(--bad);color:var(--bad);border-radius:6px;padding:8px;margin:6px 0}
+#errors .wrn{border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:8px;margin:6px 0}
+.gate{border-left:4px solid var(--line);padding-left:10px;margin:.5rem 0}
+.gate.ok{border-left-color:var(--ok)}.gate.warn{border-left-color:var(--warn)}.gate.bad{border-left-color:var(--bad)}
+a{color:var(--info)}
+</style>
+</head>
+<body>
+<main>
+<h1>Creator Studio Development Dashboard</h1>
+<p class="mute">Read-only viewer for a snapshot file made by <code>dashboard/build_snapshot.py</code>. It reads only the file you give it, makes no network requests, holds no credentials and writes nothing.</p>
+
+<section id="loader">
+  <h2>Load a snapshot</h2>
+  <div id="drop"><p>Drop a snapshot JSON file here, or choose one:</p>
+  <input type="file" id="file" accept=".json,application/json" aria-label="Snapshot JSON file"></div>
+  <p class="mute">Create one with: <code>python dashboard/build_snapshot.py --out snapshot.json</code></p>
+  <div id="errors" role="alert"></div>
+</section>
+
+<div id="app" hidden></div>
+</main>
+
+<script>
+"use strict";
+/* ---------- pure logic (no DOM): tested under Node ---------- */
+(function (root) {
+  var SUPPORTED_SCHEMA = 1;
+  var STOP_STATES = ["READY_FOR_REVIEW", "COMPLETED"];
+  var WORKING_STATES = ["IN_PROGRESS", "READY_FOR_REVIEW", "BLOCKED"];
+
+  function isObj(x) { return x !== null && typeof x === "object" && !Array.isArray(x); }
+  function arr(x) { return Array.isArray(x) ? x : []; }
+  function str(x) { return typeof x === "string" ? x : (x === null || x === undefined ? "" : String(x)); }
+
+  /* Returns {errors, warnings, model}. model is null when the snapshot is unusable. Nothing is invented:
+     fields that are absent stay null/empty and are shown as "not recorded". */
+  function analyze(text) {
+    var errors = [], warnings = [], snap;
+    if (typeof text !== "string" || text.trim() === "") return { errors: ["The file is empty."], warnings: [], model: null };
+    try { snap = JSON.parse(text); } catch (e) { return { errors: ["The file is not valid JSON."], warnings: [], model: null }; }
+    if (!isObj(snap)) return { errors: ["The file is JSON but not a snapshot object."], warnings: [], model: null };
+    if (snap.is_snapshot !== true) errors.push("This file does not declare itself a snapshot (is_snapshot is not true); it was not made by build_snapshot.py.");
+    if (typeof snap.snapshot_schema_version !== "number") errors.push("snapshot_schema_version is missing.");
+    else if (snap.snapshot_schema_version > SUPPORTED_SCHEMA) errors.push("Snapshot schema " + snap.snapshot_schema_version + " is newer than this page understands (" + SUPPORTED_SCHEMA + "). Use a newer dashboard/index.html.");
+    else if (snap.snapshot_schema_version < SUPPORTED_SCHEMA) warnings.push("Snapshot schema " + snap.snapshot_schema_version + " is older than " + SUPPORTED_SCHEMA + "; some sections may be missing.");
+    if (!isObj(snap.source)) errors.push("The 'source' block (commit, time, cleanliness) is missing.");
+    if (!isObj(snap.progress) || !isObj(snap.progress.computed)) errors.push("The 'progress.computed' block is missing; progress is never recalculated here.");
+    if (errors.length) return { errors: errors, warnings: warnings, model: null };
+
+    var src = snap.source, comp = snap.progress.computed;
+    function pct(v, name) {
+      if (typeof v !== "number" || !isFinite(v) || v < 0 || v > 100) { warnings.push(name + " is missing or out of range; not shown."); return null; }
+      return v;
+    }
+    if (snap.live_github_data !== false) warnings.push("live_github_data is not false in this file; this page still treats everything as a point-in-time snapshot.");
+    if (!src.generated_at) warnings.push("The generation time is not recorded.");
+    if (src.commit === null || src.commit === undefined) warnings.push("The source commit is unknown (git was unavailable when the snapshot was made).");
+
+    var phases = [], byPhase = {};
+    arr(snap.milestones).forEach(function (m) {
+      if (!isObj(m)) return;
+      var p = str(m.phase) || "(no phase recorded)";
+      if (!byPhase[p]) { byPhase[p] = { phase: p, milestones: [] }; phases.push(byPhase[p]); }
+      byPhase[p].milestones.push(m);
+    });
+
+    var dt = isObj(snap.development_tracker) ? snap.development_tracker : {};
+    var trackerTasks = arr(dt.tasks).filter(isObj);
+    if (!trackerTasks.length) warnings.push("No development tracker tasks are recorded in this snapshot.");
+    var current = null;
+    trackerTasks.forEach(function (t) {
+      arr(t.steps).forEach(function (s) {
+        if (!current && isObj(s) && WORKING_STATES.indexOf(s.status) >= 0) current = { task: t, step: s };
+      });
+    });
+
+    var blockers = [];
+    phases.forEach(function (g) { g.milestones.forEach(function (m) { arr(m.blockers).forEach(function (b) { blockers.push({ from: str(m.id) + " " + str(m.title), text: str(b) }); }); }); });
+    trackerTasks.forEach(function (t) { arr(t.steps).forEach(function (s) { if (isObj(s) && s.status === "BLOCKED") blockers.push({ from: str(s.id), text: str(s.blocked_reason || "blocked (no reason recorded)") }); }); });
+
+    return {
+      errors: [], warnings: warnings,
+      model: {
+        schema: snap.snapshot_schema_version, notice: str(snap.notice), source: src,
+        implementation: pct(comp.implementation_percent, "implementation_percent"),
+        verification: pct(comp.verification_percent, "verification_percent"),
+        progress: snap.progress, phases: phases, tasks: arr(snap.tasks).filter(isObj),
+        trackerTasks: trackerTasks, current: current, gate: current ? gateFor(current.step) : null,
+        terminal: current ? terminalFor(current.step, src) : null,
+        openDecisions: arr(snap.open_decisions).map(str), nextActions: arr(snap.next_actions).map(str),
+        blockers: blockers, userGates: arr(snap.user_action_gates).filter(isObj),
+        github: isObj(snap.github) ? snap.github : {}, sanitization: isObj(snap.sanitization) ? snap.sanitization : null
+      }
+    };
+  }
+
+  /* The completion gate, evaluated only from what the snapshot records about the step. */
+  function gateFor(step) {
+    var c = isObj(step.completion) ? step.completion : null;
+    var checks = [
+      { label: "Evidence recorded", ok: arr(step.evidence).length > 0 },
+      { label: "Reviewed by ChatGPT", ok: !!(c && c.reviewed_by_chatgpt === true) },
+      { label: "Lukas confirmation recorded", ok: !!(c && c.lukas_confirmed === true) },
+      { label: "Completion date and source recorded", ok: !!(c && str(c.date) && str(c.source)) }
+    ];
+    var status = str(step.status), allOk = checks.every(function (k) { return k.ok; });
+    var state, text;
+    if (status === "COMPLETED") { state = allOk ? "ok" : "bad"; text = allOk ? "Gate passed: step is COMPLETED with a full completion record." : "INCONSISTENT: step is COMPLETED but the completion record is incomplete."; }
+    else if (status === "READY_FOR_REVIEW") { state = "warn"; text = "Gate closed: work has stopped and the step is waiting for review. It is not complete."; }
+    else if (status === "BLOCKED") { state = "bad"; text = "Gate closed: the step is BLOCKED."; }
+    else { state = "warn"; text = "Gate closed: the step is " + (status || "of unknown status") + " and is not complete."; }
+    return { state: state, text: text, checks: checks, completion: c };
+  }
+
+  /* "Terminal-clear" is stated only when the snapshot supports it, and says what it cannot know. */
+  function terminalFor(step, src) {
+    var status = str(step.status);
+    var stopped = STOP_STATES.indexOf(status) >= 0;
+    var clean = src.working_tree_clean;
+    var caveat = "A snapshot cannot show whether the branch is pushed or whether background processes are running; confirm that in the step report.";
+    if (!stopped) return { state: "bad", text: "NOT clear: the step is " + (status || "of unknown status") + ", not stopped at READY_FOR_REVIEW or COMPLETED." };
+    if (clean === true) return { state: "ok", text: "Snapshot shows a clean working tree and a stopped step. " + caveat };
+    if (clean === false) return { state: "bad", text: "NOT clear: the snapshot recorded uncommitted changes (" + str(src.uncommitted_file_count) + " files)." };
+    return { state: "warn", text: "Unknown: working-tree cleanliness was not recorded. " + caveat };
+  }
+
+  function safeGithubUrl(u) { return typeof u === "string" && /^https:\/\/github\.com\/[A-Za-z0-9_.\-\/]+$/.test(u) ? u : null; }
+
+  root.Dash = { analyze: analyze, gateFor: gateFor, terminalFor: terminalFor, safeGithubUrl: safeGithubUrl };
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+/* ---------- rendering: text is only ever set with textContent ---------- */
+(function () {
+  if (typeof document === "undefined") return;
+  var D = globalThis.Dash;
+
+  function el(tag, text, cls, kids) {
+    var n = document.createElement(tag);
+    if (text !== null && text !== undefined && text !== "") n.textContent = String(text);
+    if (cls) n.className = cls;
+    (kids || []).forEach(function (k) { if (k) n.appendChild(k); });
+    return n;
+  }
+  function badge(status) { return el("span", status || "unknown", "badge " + String(status || "").replace(/[^A-Z_]/g, "")); }
+  function list(items, empty) {
+    if (!items.length) return el("p", empty, "mute");
+    return el("ul", "", "", items.map(function (t) { return el("li", t); }));
+  }
+  function kv(pairs) {
+    var dl = el("dl", "", "kv");
+    pairs.forEach(function (p) {
+      dl.appendChild(el("dt", p[0]));
+      var v = p[1], dd;
+      if (v === null || v === undefined || v === "") dd = el("dd", "not recorded", "mute");
+      else if (p[2] && D.safeGithubUrl(v)) { dd = el("dd"); var a = el("a", v); a.href = D.safeGithubUrl(v); a.rel = "noopener noreferrer"; a.target = "_blank"; dd.appendChild(a); }
+      else dd = el("dd", v);
+      dl.appendChild(dd);
+    });
+    return dl;
+  }
+  function section(title, kids) { return el("section", "", "", [el("h2", title)].concat(kids)); }
+  function bar(label, value, cls) {
+    var wrap = el("div");
+    wrap.appendChild(el("div", label + ": " + (value === null ? "not shown" : value + "%")));
+    var b = el("div", "", "bar " + cls), f = el("div");
+    f.style.width = (value === null ? 0 : value) + "%";
+    b.setAttribute("role", "progressbar"); b.setAttribute("aria-label", label);
+    b.setAttribute("aria-valuemin", "0"); b.setAttribute("aria-valuemax", "100");
+    if (value !== null) b.setAttribute("aria-valuenow", String(value));
+    b.appendChild(f); wrap.appendChild(b);
+    return wrap;
+  }
+
+  function stepNode(step, isCurrent) {
+    var d = el("details");
+    if (isCurrent) d.open = true;
+    d.appendChild(el("summary", "", "", [badge(step.status), el("strong", " " + step.id + " "), el("span", step.title)]));
+    d.appendChild(el("h3", "Acceptance criteria"));
+    d.appendChild(list((step.acceptance_criteria || []).map(String), "None recorded."));
+    d.appendChild(el("h3", "Evidence"));
+    var ev = (step.evidence || []);
+    d.appendChild(ev.length ? el("ul", "", "", ev.map(function (e) {
+      var li = el("li");
+      li.appendChild(el("strong", String(e.type || "evidence") + ": "));
+      li.appendChild(document.createTextNode(String(e.summary || "")));
+      if (e.command) li.appendChild(el("div", "command: " + e.command, "mute"));
+      if (e.result) li.appendChild(el("div", "result: " + e.result, "mute"));
+      if (e.commit) li.appendChild(el("div", "commit: " + e.commit, "mute"));
+      return li;
+    })) : el("p", "No evidence recorded.", "mute"));
+    if (step.completion) {
+      d.appendChild(el("h3", "Completion record"));
+      d.appendChild(kv([["reviewed by ChatGPT", String(step.completion.reviewed_by_chatgpt)], ["Lukas confirmed", String(step.completion.lukas_confirmed)],
+        ["date", step.completion.date], ["review basis commit", step.completion.review_basis_commit], ["source", step.completion.source]]));
+    }
+    return d;
+  }
+
+  function render(m) {
+    var app = document.getElementById("app");
+    app.textContent = "";
+    var s = m.source;
+    app.appendChild(el("div", "", "banner", [
+      el("strong", "SNAPSHOT, NOT LIVE DATA. "),
+      el("span", m.notice || "This is a point-in-time copy of repository status files. It is not live GitHub data and may be out of date.")
+    ]));
+    app.appendChild(section("Snapshot", [kv([
+      ["generated at (UTC)", s.generated_at], ["source commit", s.commit], ["branch", s.branch],
+      ["working tree clean when taken", s.working_tree_clean === null || s.working_tree_clean === undefined ? null : (s.working_tree_clean ? "yes" : "NO (" + s.uncommitted_file_count + " uncommitted files)")],
+      ["snapshot schema", String(m.schema)]])]));
+
+    app.appendChild(section("Progress", [
+      el("div", "", "grid", [bar("Implementation", m.implementation, ""), bar("Verification", m.verification, "v")]),
+      el("p", "Copied unchanged from PROJECT_STATUS.json (" + (m.progress.computed.milestone_count || "?") + " milestones); weights are " + (m.progress.weights_status || "of unrecorded status") + ". Status file date: " + (m.progress.status_updated || "not recorded") + ". This page never recalculates progress.", "mute")]));
+
+    var cur = m.current;
+    var curKids = [];
+    if (!cur) curKids.push(el("p", "No step is IN_PROGRESS, READY_FOR_REVIEW or BLOCKED in this snapshot.", "mute"));
+    else {
+      curKids.push(kv([["task", cur.task.task_id + " " + (cur.task.title || "")], ["current step", cur.step.id + " " + (cur.step.title || "")], ["step status", cur.step.status]]));
+      curKids.push(el("h3", "Completion gate"));
+      curKids.push(el("div", "", "gate " + m.gate.state, [el("div", m.gate.text, "", []),
+        el("ul", "", "", m.gate.checks.map(function (k) { return el("li", (k.ok ? "yes: " : "no: ") + k.label); }))]));
+      curKids.push(el("h3", "Terminal-clear status"));
+      curKids.push(el("div", m.terminal.text, "gate " + m.terminal.state));
+    }
+    app.appendChild(section("Current step", curKids));
+
+    var tasksKids = [];
+    m.trackerTasks.forEach(function (t) {
+      tasksKids.push(el("h3", t.task_id + " " + (t.title || "")));
+      (t.steps || []).forEach(function (st) { tasksKids.push(stepNode(st, !!cur && cur.step === st)); });
+    });
+    if (!tasksKids.length) tasksKids.push(el("p", "No tracker tasks recorded.", "mute"));
+    app.appendChild(section("Task steps", tasksKids));
+
+    var ph = m.phases.map(function (g) {
+      var d = el("details");
+      d.appendChild(el("summary", g.phase + " (" + g.milestones.length + " milestones)"));
+      g.milestones.forEach(function (x) {
+        var box = el("div", "", "", [el("div", "", "", [el("strong", x.id + " "), el("span", x.title || ""), el("span", " weight " + (x.weight === undefined ? "?" : x.weight), "mute")]),
+          el("div", "", "", [el("span", "implementation ", "mute"), badge(x.implementation_state), el("span", "verification ", "mute"), badge(x.verification_state)])]);
+        (x.blockers || []).forEach(function (b) { box.appendChild(el("div", "blocker: " + b, "bad")); });
+        (x.open_questions || []).forEach(function (q) { box.appendChild(el("div", "open question: " + q, "mute")); });
+        box.style.margin = "8px 0";
+        d.appendChild(box);
+      });
+      return d;
+    });
+    app.appendChild(section("Milestones by phase", ph.length ? ph : [el("p", "No milestones recorded.", "mute")]));
+
+    app.appendChild(section("Open decisions", [list(m.openDecisions, "None recorded.")]));
+    app.appendChild(section("Blockers", [m.blockers.length ? el("ul", "", "", m.blockers.map(function (b) { return el("li", b.from + ": " + b.text); })) : el("p", "No blockers recorded.", "mute")]));
+    app.appendChild(section("Next actions", [list(m.nextActions, "None recorded.")]));
+    if (m.userGates.length) app.appendChild(section("User action gates", m.userGates.map(function (g) {
+      return el("div", "", "", [el("strong", g.id + " "), badge(g.status), el("div", g.message || "", "mute")]);
+    })));
+
+    var gh = m.github, prs = Array.isArray(gh.pull_requests_recorded_in_tracker) ? gh.pull_requests_recorded_in_tracker : [];
+    app.appendChild(section("GitHub (as recorded in the snapshot)", [
+      el("p", "Not live: pull request state is not queried. Check GitHub for the current state.", "mute"),
+      kv([["repository", gh.repository, true], ["snapshot branch", gh.branch], ["snapshot commit", gh.commit], ["baseline branch", gh.baseline_branch], ["baseline commit", gh.baseline_commit]]),
+      el("h3", "Pull requests recorded in the tracker"),
+      prs.length ? el("ul", "", "", prs.map(function (p) {
+        var li = el("li", (p.step_id || "") + ": " + (p.summary || "") + " ");
+        if (D.safeGithubUrl(p.ref)) { var a = el("a", p.ref); a.href = D.safeGithubUrl(p.ref); a.rel = "noopener noreferrer"; a.target = "_blank"; li.appendChild(a); }
+        else if (p.ref) li.appendChild(el("span", p.ref, "mute"));
+        if (p.merge_or_head_commit) li.appendChild(el("div", "recorded commit: " + p.merge_or_head_commit, "mute"));
+        return li;
+      })) : el("p", "None recorded.", "mute")]));
+
+    if (m.sanitization) app.appendChild(section("Sanitization", [el("p", m.sanitization.total + " private strings were replaced when the snapshot was made.", "mute")]));
+    app.hidden = false;
+  }
+
+  function show(errors, warnings) {
+    var box = document.getElementById("errors");
+    box.textContent = "";
+    errors.forEach(function (e) { box.appendChild(el("div", e, "err")); });
+    warnings.forEach(function (w) { box.appendChild(el("div", w, "wrn")); });
+  }
+  function handle(text) {
+    var r = D.analyze(text);
+    show(r.errors, r.warnings);
+    var app = document.getElementById("app");
+    if (r.model) render(r.model); else { app.hidden = true; app.textContent = ""; }
+  }
+  function readFile(file) {
+    if (!file) return;
+    var rd = new FileReader();
+    rd.onload = function () { handle(String(rd.result)); };
+    rd.onerror = function () { show(["The file could not be read."], []); };
+    rd.readAsText(file);
+  }
+  var input = document.getElementById("file"), drop = document.getElementById("drop");
+  input.addEventListener("change", function () { readFile(input.files && input.files[0]); });
+  ["dragenter", "dragover"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
+  drop.addEventListener("drop", function (e) { readFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); });
+  window.addEventListener("dragover", function (e) { e.preventDefault(); });
+  window.addEventListener("drop", function (e) { e.preventDefault(); });
+})();
+</script>
+</body>
+</html>

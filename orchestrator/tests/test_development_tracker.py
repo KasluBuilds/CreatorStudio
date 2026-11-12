@@ -738,5 +738,191 @@ class TestPathScrubbingRegression(SnapshotCase):
             self.assertIn("https://github.com/KasluBuilds/CreatorStudio/pull/4", text, name)
 
 
+
+INDEX_HTML = Path(__file__).resolve().parents[2] / "dashboard" / "index.html"
+
+NODE_DRIVER = """
+const vm = require('vm'), fs = require('fs');
+const code = fs.readFileSync(process.argv[2], 'utf8');
+const ctx = vm.createContext({});
+vm.runInContext(code, ctx);
+const out = {};
+const cases = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+for (const k of Object.keys(cases)) {
+  const r = ctx.Dash.analyze(cases[k]);
+  out[k] = {errors: r.errors, warnings: r.warnings, model: r.model && {
+    impl: r.model.implementation, ver: r.model.verification, phases: r.model.phases.map(p => p.phase),
+    current: r.model.current && r.model.current.step.id, gate: r.model.gate && r.model.gate.state,
+    gateText: r.model.gate && r.model.gate.text,
+    terminal: r.model.terminal && r.model.terminal.state, terminalText: r.model.terminal && r.model.terminal.text,
+    blockers: r.model.blockers.length}};
+}
+out.url_ok = ctx.Dash.safeGithubUrl('https://github.com/KasluBuilds/CreatorStudio/pull/4');
+out.url_bad = [ctx.Dash.safeGithubUrl('javascript:alert(1)'), ctx.Dash.safeGithubUrl('https://evil.example/x'),
+               ctx.Dash.safeGithubUrl('https://github.com.evil.example/x'), ctx.Dash.safeGithubUrl(null)];
+console.log(JSON.stringify(out));
+"""
+
+
+class TestDashboardPage(SnapshotCase):
+    """dashboard/index.html: static safety checks, plus its pure logic run under Node when Node is installed.
+    The visual rendering in a real browser is not tested here."""
+
+    @staticmethod
+    def html():
+        return INDEX_HTML.read_text(encoding="utf-8")
+
+    @classmethod
+    def script(cls):
+        import re
+        return "\n".join(re.findall(r"<script>(.*?)</script>", cls.html(), re.S))
+
+    def test_page_is_self_contained_and_dependency_free(self):
+        import re
+        html = self.html()
+        self.assertIn("<!doctype html>", html.lower())
+        self.assertNotRegex(html, r"<script[^>]*\bsrc=")
+        self.assertNotRegex(html, r"<link[^>]*\bhref=")
+        self.assertNotRegex(html, r"@import|url\(")
+        self.assertEqual(re.findall(r"""(?:src|action)\s*=\s*["']https?://""", html), [])
+        self.assertIn("Content-Security-Policy", html)
+        self.assertIn("default-src 'none'", html)  # blocks every network connection
+        self.assertNotIn("connect-src", html)
+
+    def test_page_has_no_network_write_or_credential_paths(self):
+        everything = self.html()
+        for banned in ("fetch(", "XMLHttpRequest", "WebSocket", "sendBeacon", "EventSource", "importScripts",
+                       "innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function",
+                       "localStorage", "sessionStorage", "indexedDB", "document.cookie", "Authorization", "Bearer",
+                       "password", "api_key", "apikey", "showSaveFilePicker", "showDirectoryPicker",
+                       "navigator.clipboard", "<form", "require("):
+            self.assertNotIn(banned, everything, banned)
+
+    def test_page_states_it_is_a_snapshot_and_read_only(self):
+        html = self.html()
+        for needle in ("SNAPSHOT, NOT LIVE DATA", "not live GitHub data", "Read-only viewer", "never recalculates progress",
+                       "Not live: pull request state is not queried"):
+            self.assertIn(needle, html)
+
+    def test_page_has_required_sections_and_a_file_loader(self):
+        html = self.html()
+        for needle in ('type="file"', "dragover", "FileReader", "Completion gate", "Terminal-clear status", "Milestones by phase",
+                       "Open decisions", "Blockers", "Next actions", "Task steps", "Acceptance criteria", "Evidence",
+                       "source commit", "generated at (UTC)", "viewport"):
+            self.assertIn(needle, html)
+
+    def _node(self, cases):
+        import shutil
+        import subprocess
+        import tempfile
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node not available")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "page.js").write_text(self.script(), encoding="utf-8")
+            (tmp / "driver.js").write_text(NODE_DRIVER, encoding="utf-8")
+            (tmp / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
+            r = subprocess.run([node, str(tmp / "driver.js"), str(tmp / "page.js"), str(tmp / "cases.json")],
+                               capture_output=True, text=True, encoding="utf-8", cwd=str(tmp), timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def _snap(self, mutate=None):
+        snap = bs.build(self.root, self.now)
+        if mutate:
+            mutate(snap)
+        return json.dumps(snap)
+
+    @staticmethod
+    def _steps(snap):
+        return snap["development_tracker"]["tasks"][0]["steps"]
+
+    def test_real_snapshot_is_understood_and_progress_is_copied(self):
+        text = self._snap()
+        out = self._node({"ok": text})["ok"]
+        self.assertEqual(out["errors"], [])
+        snap = json.loads(text)
+        self.assertEqual(out["model"]["impl"], snap["progress"]["computed"]["implementation_percent"])
+        self.assertEqual(out["model"]["ver"], snap["progress"]["computed"]["verification_percent"])
+        self.assertEqual(out["model"]["current"], snap["development_tracker"]["tasks"][0]["steps"][1]["id"])
+        self.assertEqual(out["model"]["gate"], "warn")
+
+    def test_bad_input_gives_useful_errors_not_a_blank_page(self):
+        good = json.loads(self._snap())
+        no_progress = {k: v for k, v in good.items() if k != "progress"}
+        out = self._node({"empty": "", "garbage": "{not json", "array": "[1,2]", "number": "5", "null": "null",
+                          "newer": json.dumps(dict(good, snapshot_schema_version=99)),
+                          "older": json.dumps(dict(good, snapshot_schema_version=0)),
+                          "no_progress": json.dumps(no_progress),
+                          "not_snapshot": json.dumps(dict(good, is_snapshot=False))})
+        for name in ("empty", "garbage", "array", "number", "null", "newer", "no_progress", "not_snapshot"):
+            self.assertTrue(out[name]["errors"], name)
+            self.assertIsNone(out[name]["model"], name)
+        self.assertTrue(any("newer" in e for e in out["newer"]["errors"]))
+        self.assertEqual(out["older"]["errors"], [])
+        self.assertTrue(any("older" in w for w in out["older"]["warnings"]))
+
+    def test_missing_optional_sections_degrade_gracefully(self):
+        good = json.loads(self._snap())
+        for key in ("milestones", "tasks", "open_decisions", "next_actions", "user_action_gates", "github",
+                    "development_tracker", "sanitization"):
+            good.pop(key)
+        good["progress"]["computed"] = {"implementation_percent": "lots", "verification_percent": 140}
+        out = self._node({"x": json.dumps(good)})["x"]
+        self.assertEqual(out["errors"], [])
+        self.assertIsNone(out["model"]["impl"])  # invalid figures are not shown or invented
+        self.assertIsNone(out["model"]["ver"])
+        self.assertIsNone(out["model"]["current"])
+        self.assertTrue(out["warnings"])
+
+    def test_terminal_status_follows_the_snapshot(self):
+        def case(status, clean, count=None):
+            def f(snap):
+                self._steps(snap)[1]["status"] = status
+                snap["source"]["working_tree_clean"] = clean
+                snap["source"]["uncommitted_file_count"] = count
+            return self._snap(f)
+        out = self._node({"working": case("IN_PROGRESS", True), "ready_clean": case("READY_FOR_REVIEW", True),
+                          "ready_dirty": case("READY_FOR_REVIEW", False, 3), "ready_unknown": case("READY_FOR_REVIEW", None)})
+        self.assertEqual(out["working"]["model"]["terminal"], "bad")  # still working: never "clear"
+        self.assertEqual(out["ready_clean"]["model"]["terminal"], "ok")
+        self.assertIn("pushed", out["ready_clean"]["model"]["terminalText"])  # says what a snapshot cannot know
+        self.assertEqual(out["ready_dirty"]["model"]["terminal"], "bad")
+        self.assertEqual(out["ready_unknown"]["model"]["terminal"], "warn")
+
+    def test_completion_gate_is_never_passed_early_or_without_a_record(self):
+        def case(status, completion, evidence=True):
+            def f(snap):
+                st = self._steps(snap)[1]
+                st["status"] = status
+                st["completion"] = completion
+                st["evidence"] = [{"type": "observation", "summary": "x"}] if evidence else []
+            return self._snap(f)
+        full = {"reviewed_by_chatgpt": True, "lukas_confirmed": True, "date": "2026-11-12", "source": "REPORTED: x"}
+        out = self._node({"ready": case("READY_FOR_REVIEW", None), "blocked": case("BLOCKED", None),
+                          "done_full": case("COMPLETED", full), "done_partial": case("COMPLETED", {"reviewed_by_chatgpt": True}),
+                          "done_no_evidence": case("COMPLETED", full, evidence=False)})
+        # a COMPLETED step is not a "working" step, so the current step is whichever is still working (none here)
+        self.assertEqual(out["ready"]["model"]["gate"], "warn")
+        self.assertEqual(out["blocked"]["model"]["gate"], "bad")
+        self.assertEqual(out["blocked"]["model"]["blockers"], 1)
+        for name in ("done_full", "done_partial", "done_no_evidence"):
+            self.assertIsNone(out[name]["model"]["gate"], name)
+
+    def test_github_links_are_limited_to_github_https_urls(self):
+        out = self._node({})
+        self.assertEqual(out["url_ok"], "https://github.com/KasluBuilds/CreatorStudio/pull/4")
+        self.assertEqual(out["url_bad"], [None, None, None, None])
+
+    def test_milestones_are_grouped_by_phase_in_first_seen_order(self):
+        def f(snap):
+            base = snap["milestones"][0]
+            snap["milestones"] = [dict(base, id="A", phase="Phase 2"), dict(base, id="B", phase="Phase 1"),
+                                  dict(base, id="C", phase="Phase 2")]
+        out = self._node({"x": self._snap(f)})["x"]
+        self.assertEqual(out["model"]["phases"], ["Phase 2", "Phase 1"])
+
+
 if __name__ == "__main__":
     unittest.main()
