@@ -16,7 +16,7 @@ import tracker_check as tc  # noqa: E402
 
 SHA = "a" * 40
 GOOD_COMPLETION = {"reviewed_by_chatgpt": True, "lukas_confirmed": True, "date": "2026-11-12",
-                   "source": "Lukas said so in the session"}
+                   "source": "DIRECT: Lukas said so in the session"}
 
 
 def step(n, status="PLANNED", **extra):
@@ -78,6 +78,30 @@ class TestRealTracker(unittest.TestCase):
         proto = (ROOT / "DEVELOPMENT_STEP_PROTOCOL.md").read_text(encoding="utf-8")
         for needle in ("READY_FOR_REVIEW", "explicitly", "ChatGPT", "terminal"):
             self.assertIn(needle, proto)
+
+    def test_protocol_authority_rules_do_not_contradict_the_standing_instruction(self):
+        proto = (ROOT / "DEVELOPMENT_STEP_PROTOCOL.md").read_text(encoding="utf-8")
+        self.assertIn("## 3a. Who decides what", proto)
+        section = proto.split("## 3a. Who decides what", 1)[1].split("\n## ", 1)[0]
+        for needle in ("standing instruction", "Technically approve", "forbidden", "Lukas only", "DIRECT", "REPORTED",
+                       "must not claim that Lukas reviewed the code", "READY_FOR_REVIEW"):
+            self.assertIn(needle, section)
+        # The old contradictory rules are gone.
+        self.assertNotIn("only Lukas starts the next step", proto)
+        self.assertNotIn("stays `PLANNED` and blocked until Lukas explicitly says to continue", proto)
+        # Claude still stops, never self-approves; merging and lease release stay with Lukas.
+        self.assertIn("**stop**", proto)
+        self.assertIn("never approves its own step", proto)
+        pop = (ROOT / "PROJECT_OPERATING_PROTOCOL.md").read_text(encoding="utf-8")
+        self.assertIn("Lukas alone opens or merges pull requests and releases leases", pop)
+        self.assertIn("never approves its own step", pop)
+
+    def test_real_completion_sources_are_labelled(self):
+        real = json.loads((ROOT / "DEVELOPMENT_TRACKER.json").read_text(encoding="utf-8"))
+        completed = [s for t in real["tasks"] for s in t["steps"] if s["status"] == "COMPLETED"]
+        self.assertTrue(completed)
+        for s in completed:
+            self.assertRegex(s["completion"]["source"], r"^(DIRECT|REPORTED)\b", s["id"])
 
 
 class TestStructure(unittest.TestCase):
@@ -172,6 +196,15 @@ class TestTransitionsAndGate(unittest.TestCase):
         s = step(0, "COMPLETED")
         s["evidence"] = []
         self.assertTrue(any("evidence record" in p for p in tc.validate(doc(s))))
+        # The source must honestly say whether the confirmation was direct or reported.
+        for bad in ("Lukas said so in the session", "approved", "reported earlier", "DIRECTLY maybe"):
+            s = step(0, "COMPLETED")
+            s["completion"]["source"] = bad
+            self.assertTrue(any("DIRECT" in p and "REPORTED" in p for p in tc.validate(doc(s))), bad)
+        for good in ("DIRECT: yes", "REPORTED: standing instruction; Lukas did not review the code", "REPORTED"):
+            s = step(0, "COMPLETED")
+            s["completion"]["source"] = good
+            self.assertEqual(tc.validate(doc(s)), [], good)
         s = step(0, "COMPLETED")
         s["completion"] = None
         self.assertTrue(any("'completion' record" in p for p in tc.validate(doc(s))))
@@ -626,7 +659,7 @@ def _field_mutators():
         ("tracker.step.title", lambda s, t, k, v: k["tasks"][0]["steps"][1].update(title=v)),
         ("tracker.step.acceptance_criteria", lambda s, t, k, v: k["tasks"][0]["steps"][1]["acceptance_criteria"].append(v)),
         ("tracker.evidence.summary", lambda s, t, k, v: k["tasks"][0]["steps"][0]["evidence"][0].update(summary=v)),
-        ("tracker.completion.source", lambda s, t, k, v: k["tasks"][0]["steps"][0]["completion"].update(source=v)),
+        ("tracker.completion.source", lambda s, t, k, v: k["tasks"][0]["steps"][0]["completion"].update(source="REPORTED: " + v)),
         ("tracker.step.note", lambda s, t, k, v: k["tasks"][0]["steps"][1].update(note=v)),
     ]
 

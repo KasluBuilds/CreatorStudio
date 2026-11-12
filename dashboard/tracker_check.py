@@ -74,6 +74,9 @@ def completion_problems(step: Dict[str, Any]) -> List[str]:
         out.append(f"{sid}: completion needs a YYYY-MM-DD date")
     if not (isinstance(c.get("source"), str) and c["source"].strip()):
         out.append(f"{sid}: completion needs a source saying where Lukas's confirmation came from")
+    elif not re.match(r"(DIRECT|REPORTED)\b", c["source"]):
+        out.append(f"{sid}: completion source must begin with DIRECT (Lukas said so in the session) or REPORTED "
+                   "(relayed, or Lukas's standing instruction); see DEVELOPMENT_STEP_PROTOCOL.md section 3a")
     return out
 
 

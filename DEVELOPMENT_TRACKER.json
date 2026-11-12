@@ -3,10 +3,10 @@
   "authority": "Authoritative for the individual development steps of a task and whether each step is officially finished. Task ownership, leases and paths stay in ACTIVE_TASKS.json; milestones, weights and progress percentages stay in PROJECT_STATUS.json and are deliberately not repeated here.",
   "protocol": "DEVELOPMENT_STEP_PROTOCOL.md",
   "step_statuses": {
-    "PLANNED": "Defined, not started. May not start until every earlier step is COMPLETED and Lukas has said to continue.",
+    "PLANNED": "Defined, not started. May not start until every earlier step is COMPLETED and ChatGPT (under Lukas's standing instruction) or Lukas has authorized it.",
     "IN_PROGRESS": "The one step currently being worked on.",
-    "READY_FOR_REVIEW": "Work stopped. Evidence reported; waiting for ChatGPT's review and Lukas's explicit word.",
-    "COMPLETED": "Reviewed and explicitly confirmed by Lukas. Terminal: never edited afterwards.",
+    "READY_FOR_REVIEW": "Work stopped. Evidence reported; waiting for ChatGPT's review. Claude does not approve its own step.",
+    "COMPLETED": "Technically approved by ChatGPT with Lukas's confirmation recorded as DIRECT or REPORTED (see the protocol, section 3a). Terminal: never edited afterwards.",
     "BLOCKED": "Cannot proceed; blocked_reason says why."
   },
   "tasks": [
