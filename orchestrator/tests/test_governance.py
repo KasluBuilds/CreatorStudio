@@ -849,7 +849,11 @@ class TestCli(unittest.TestCase):
             self.assertEqual(cli_main(base + ["2026-11-09T20:00:00+01:00"]), 0)
             self.assertEqual(cli_main(base + ["2030-01-01T00:00:00+00:00"]), 1)
             self.assertEqual(cli_main(base + ["2026-11-09T20:00:00"]), 2)
-        self.assertEqual(cli_main(["leases", "--now", "2030-01-01T00:00:00+00:00"]), 0)  # live registry: nothing active
+        with tempfile.TemporaryDirectory() as tmp:  # nothing active (only a COMPLETED task): no lease can be expired
+            doc = tasks_doc()
+            doc["tasks"] = [task("T-AAA-001", "claude:research", "task/a", [], status_="COMPLETED", lease=None)]
+            (Path(tmp) / "ACTIVE_TASKS.json").write_text(json.dumps(doc), encoding="utf-8")
+            self.assertEqual(cli_main(["--root", tmp, "leases", "--now", "2030-01-01T00:00:00+00:00"]), 0)
 
     def test_invalid_input_exits_nonzero_without_traceback(self):
         import tempfile
