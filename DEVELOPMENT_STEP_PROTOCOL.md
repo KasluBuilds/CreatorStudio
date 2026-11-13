@@ -35,7 +35,7 @@ Lukas has given ChatGPT a standing instruction to make technical acceptance deci
 | Technically approve a step and authorize the next one to start | ChatGPT (standing instruction from Lukas), or Lukas |
 | Self-approve a step, set one's own step `COMPLETED`, or start the next step unprompted | **Nobody on the Claude side: forbidden** |
 | Review, open or merge a task pull request; release its lease (follow-up pull request recording the merge commit) | **ChatGPT under Lukas's explicit standing delegation**; Claude never does these. Lukas retains final authority and may revoke or reserve any action |
-| Change this protocol, milestone weights or progress | A pull request that Lukas merges |
+| Change this protocol, milestone weights or progress | A pull request reviewed and merged by ChatGPT under Lukas's explicit delegation; Lukas retains final authority |
 
 ChatGPT's delegated integration authority is not a review by Lukas. A completion record must say which of these it is: its `source` begins with `DIRECT` when Lukas said directly in the session that the step is complete, or `REPORTED` when the confirmation was relayed or comes from the standing instruction. A `REPORTED` source must not claim that Lukas reviewed the code, and must not claim that ChatGPT re-ran tests unless the evidence shows it did (CHECKED for the prefix, PROCEDURE for the honesty of the rest). If ChatGPT's approval cannot be seen in the session, record it as REPORTED and say it was not independently verified.
 
