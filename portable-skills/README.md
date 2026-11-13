@@ -7,15 +7,16 @@ This folder contains portable, version-controlled setup assets. It is deliberate
 - `lean-engineering/SKILL.md`: combines Ponytail's minimal-but-complete engineering with Caveman's concise, accurate communication.
 - `github-sync/SKILL.md`: safe Git/GitHub inspection, synchronization, branching, review and reporting.
 
-To install a skill globally for the current Windows user, copy its folder into:
+For a global install on Windows, run the included safe installer from this directory:
 
-`$HOME\.claude\skills\<skill-name>\SKILL.md`
+```powershell
+.\Install-PortableSkills.ps1 -WhatIf
+.\Install-PortableSkills.ps1
+```
 
-For a single repository, copy it into:
+It installs both skills into `$HOME\.claude\skills\`. Existing files are never overwritten; identical installs are skipped and differing existing skills are left untouched.
 
-`<repo>\.claude\skills\<skill-name>\SKILL.md`
-
-Claude Code discovers skills from those locations. Global skills apply across repositories; project skills are shared with that project when committed. See the official [Claude Code skills documentation](https://docs.anthropic.com/en/docs/claude-code/skills).
+For a single repository, copy a skill folder into `<repo>\.claude\skills\<skill-name>\SKILL.md`. Claude Code discovers skills from personal and project skill directories. See the official [Claude Code skills documentation](https://docs.anthropic.com/en/docs/claude-code/skills).
 
 ## Separate CLI: RTK
 
