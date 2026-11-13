@@ -169,7 +169,7 @@
           "evidence": [
             {
               "type": "commit",
-              "summary": "Step 4 implementation: protocol contradiction resolved (DEVELOPMENT_STEP_PROTOCOL.md section 3a, PROJECT_OPERATING_PROTOCOL.md, tracker status texts), completion source must begin DIRECT or REPORTED, tests. CLAUDE.md was NOT updated: the edit was denied in the session",
+              "summary": "Step 4 implementation: protocol contradiction resolved (DEVELOPMENT_STEP_PROTOCOL.md section 3a, PROJECT_OPERATING_PROTOCOL.md, tracker status texts), completion source must begin DIRECT or REPORTED, tests. CLAUDE.md is not part of this commit (Claude's edit was denied in the session); ChatGPT aligned it afterwards in ca6d802db725d2b8457fd81a10ae57ae5641095c and the changelog wording in 93b13349300341b6aa3372a3dee69688b0139e8d",
               "commit": "fd890481bdc4c62999c65ccf96ae0ce7335ae52c"
             },
             {
