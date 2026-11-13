@@ -84,7 +84,11 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 
 ## Active tasks
 
-No active tasks.
+| Task | Owner | Branch | Status | Lease expires | Owns |
+|---|---|---|---|---|---|
+| T-GOV-003 Per-task development step limit and stale authority test repair | claude:governance | `task/per-task-step-limit` | ACTIVE | 2026-11-14T17:58:03+00:00 | dashboard/tracker_check.py, orchestrator/tests/test_development_tracker.py, DEVELOPMENT_STEP_PROTOCOL.md, PROJECT_OPERATING_PROTOCOL.md, DEVELOPMENT_TRACKER.json, ACTIVE_TASKS.json, CHANGELOG.md, SESSION_HANDOFF.md |
+
+Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
 ## Package ownership
 

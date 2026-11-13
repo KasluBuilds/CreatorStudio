@@ -282,7 +282,7 @@
           "evidence": [
             {
               "type": "pull_request",
-              "summary": "ChatGPT reviewed and merged PR #9 (merge commit shown). This follow-up pull request is the closeout (merge evidence, lease release). The step stays IN_PROGRESS here because tracker_check.py does not allow PLANNED -> COMPLETED in one pull request; the integrator completes it after this pull request is reviewed",
+              "summary": "PR #9 reviewed and merged by ChatGPT (merge commit shown). The closeout is under way: pull request #10 records the PR #9 merge and completes S-GOV-003-00 but is not merged. A final closeout pull request, after PR #10 is merged, completes this step, records PR #10's merge commit and releases the lease and owned paths",
               "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/9",
               "commit": "67b70dc251a4708957f1952d6032b3a4e1735043"
             }

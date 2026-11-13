@@ -166,15 +166,27 @@
       "owner": "claude:governance",
       "branch": "task/per-task-step-limit",
       "worktree": "../CreatorStudio-worktrees/per-task-step-limit",
-      "status": "COMPLETED",
+      "status": "ACTIVE",
       "depends_on": [
         "T-GOV-001",
         "T-GOV-002"
       ],
-      "lease": null,
+      "lease": {
+        "acquired": "2026-11-13T17:58:03+00:00",
+        "expires": "2026-11-14T17:58:03+00:00"
+      },
       "exclusive_resources": [],
       "integration_agreements": [],
-      "owned_paths": [],
+      "owned_paths": [
+        "dashboard/tracker_check.py",
+        "orchestrator/tests/test_development_tracker.py",
+        "DEVELOPMENT_STEP_PROTOCOL.md",
+        "PROJECT_OPERATING_PROTOCOL.md",
+        "DEVELOPMENT_TRACKER.json",
+        "ACTIVE_TASKS.json",
+        "CHANGELOG.md",
+        "SESSION_HANDOFF.md"
+      ],
       "acceptance_criteria": [
         "tracker_check.py allows at most one IN_PROGRESS or READY_FOR_REVIEW step per task; different tasks may each have one; the error names the task; ordering stays sequential within each task; an unregistered task is still rejected",
         "DEVELOPMENT_STEP_PROTOCOL.md and PROJECT_OPERATING_PROTOCOL.md state the limit is per task; one task branch/worktree per task, one writer to main, one PR integrated at a time, claims and leases and stopping at READY_FOR_REVIEW are unchanged; the bootstrap is documented as a one-time exception",
@@ -191,7 +203,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Completed 2026-11-13. PR #9 merged into main by ChatGPT as delegated integrator as merge commit 67b70dc251a4708957f1952d6032b3a4e1735043 (reviewed head c9b1a6010e894fe181cbd77060d4291913249250) under the one-time bootstrap exception (claim and implementation in one pull request). Lease released and paths freed by this closing pull request, which cannot itself hold a claim because it only closes this task. Branch task/per-task-step-limit is merged and may be deleted by Lukas."
+      "integration_notes": "One-time bootstrap exception approved by ChatGPT as delegated integrator: the claim and the implementation are in the same pull request because the global tracker limit and two stale authority tests blocked a separate claim pull request. Applies to T-GOV-003 only; later tasks need their own claim pull request. Branch created from origin/main bd33aa11f54cd94ce75baf228b32640fd7a351a4 on 2026-11-13. Stops at READY_FOR_REVIEW; the integrator merges, records the merge commit and releases the lease. T-AST-001 also lists the shared registry, tracker, handoff and changelog files, so merge order matters there. PR #9 merged by ChatGPT as merge commit 67b70dc251a4708957f1952d6032b3a4e1735043 (reviewed head c9b1a6010e894fe181cbd77060d4291913249250). The task stays ACTIVE, with its lease and owned paths, until a final closeout pull request (after PR #10 is merged) completes S-GOV-003-01 and releases them."
     }
   ]
 }
