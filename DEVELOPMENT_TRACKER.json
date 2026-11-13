@@ -163,7 +163,7 @@
           "status": "COMPLETED",
           "acceptance_criteria": [
             "CHANGELOG.md entry added; milestone weights and computed progress in PROJECT_STATUS.json unchanged by this task",
-            "Full suite, governance validate, handoff --check and scope check pass at the final head",
+            "Full suite passed at the final implementation head; governance validate, handoff --check and scope check passed at the tested correction head; closeout-only registry and generated-handoff updates are reviewed in the follow-up PR",
             "The final pull request is opened and merged by Lukas or by ChatGPT under Lukas's explicit delegation; the lease is released in a follow-up pull request that records the merge commit"
           ],
           "evidence": [
