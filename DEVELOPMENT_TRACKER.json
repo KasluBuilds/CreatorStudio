@@ -160,7 +160,7 @@
         {
           "id": "S-GOV-002-04",
           "title": "Step 4: closeout (changelog, final verification, lease release)",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "CHANGELOG.md entry added; milestone weights and computed progress in PROJECT_STATUS.json unchanged by this task",
             "Full suite, governance validate, handoff --check and scope check pass at the final head",
@@ -185,6 +185,18 @@
               "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
               "result": "Ran 1241 tests in 175.8s: OK (skipped=1)",
               "commit": "7db8d11e313a7345a1696efc3e165613aadb6f9c"
+            },
+            {
+              "type": "commit",
+              "summary": "Third review corrections: the lukas_confirmed diagnostic in tracker_check.py now says Lukas's standing instruction (REPORTED source) is an allowed confirmation, per protocol section 3a; ACTIVE_TASKS.json T-GOV-002 description and acceptance criterion reworded to match section 3a (lease and ownership untouched); 3 tests added. Committed while the step was IN_PROGRESS",
+              "commit": "751e6e415004fe03c66e55b920a0ef956670cf68"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite run by Claude Code on a clean working tree at the correction commit above (not independently run by ChatGPT); test_development_tracker.py alone: 77 tests OK",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1244 tests in 171.8s: OK (skipped=1)",
+              "commit": "751e6e415004fe03c66e55b920a0ef956670cf68"
             },
             {
               "type": "observation",
