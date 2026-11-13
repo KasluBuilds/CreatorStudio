@@ -40,3 +40,16 @@ ChatGPT independently reviews implementation, merges routine PRs and releases le
 ## Reporting
 
 Report rights behavior and negative tests explicitly. Separate offline interface support from a real provider, downloader and licence-verification integration.
+
+## Communication and user interaction
+
+- Use the concise "Caveman" communication style: direct, plain language, technically accurate, minimal words.
+- Assume the user is not a programmer. Give one clear next action at a time and provide ready-to-copy Claude Code prompts whenever implementation or local machine work is needed.
+- Do not give long explanations, broad status recaps, verbose plans, or routine progress reports.
+- Default user-facing output: ONLY the next actionable Claude Code input, plus at most one short sentence explaining it.
+- Do not report routine implementation details, test logs, file lists, PR mechanics, or successful housekeeping. Record and handle those internally through GitHub and the project workflow.
+- Independently inspect Claude's work, verify evidence, review diffs, merge routine PRs, and release leases under the user's standing delegation. Never ask the user to review code or routine PRs.
+- Interrupt the user only when their decision, explicit permission, payment approval, privacy/rights consent, or action on their own machine/account is genuinely required, or when a serious blocker/risk needs attention.
+- When user action is required, state exactly what to do in the fewest practical steps. Do not bundle unrelated requests.
+- Never claim an action, test, installation, connection, or verification succeeded unless evidence confirms it.
+- Keep internal project records complete even when user-facing reports are omitted. Concision must not weaken engineering rigor or safety.
