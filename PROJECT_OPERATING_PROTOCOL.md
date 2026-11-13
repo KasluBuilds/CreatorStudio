@@ -27,11 +27,10 @@ fix the documents. Never silently overwrite a decision made by Lukas.
 
 ## 2. Roles
 
-- **Lukas** decides, approves merges to `main`, owns credentials and footage. Only Lukas authorises processing of real footage.
-- **Claude Code sessions** do the work, each in its own task branch and Git worktree.
-- **ChatGPT workstreams** read the repository from GitHub, plan and review, and propose work (section 12). They never write to `main`.
-- **The integrator** is whoever Lukas designates for a given merge (by default Lukas himself, or a Claude Code session he
-  names). The integrator is the *only* writer to `main`, and merges one pull request at a time.
+- **Lukas** is the project owner and final authority; he owns credentials and footage and alone authorises processing of real footage. He has delegated routine technical review, task pull-request opening/merging and task lease release to ChatGPT as the default integrator; he may revoke or reserve any action.
+- **Claude Code sessions** do the implementation in their own task branches and Git worktrees. They stop at `READY_FOR_REVIEW` and never merge pull requests or release leases.
+- **ChatGPT workstreams** read the repository from GitHub, plan and independently review changes. Under Lukas's explicit standing delegation, ChatGPT is the default integrator: it may open/merge task pull requests and release task leases through follow-up pull requests. It does not process real footage or use credentials without separate authorization.
+- **The integrator** is ChatGPT under the current delegation, or Lukas if he reserves a particular merge. The integrator is the *only* writer to `main`, and merges one pull request at a time.
 
 ## 3. Starting a task (every session)
 
@@ -235,8 +234,10 @@ Current gate, from Lukas's brief of 2026-11-09 and his correction of the trigger
 
 ## 15. Development steps (one reviewed step at a time)
 
-Every task is divided into numbered steps recorded in `DEVELOPMENT_TRACKER.json` and governed by `DEVELOPMENT_STEP_PROTOCOL.md` (added by `T-GOV-002`, 2026-11-12). Rules every session follows: work on one step only; at `READY_FOR_REVIEW` stop and report changed files, commands and results, evidence, unresolved issues and terminal safety; ChatGPT reviews the evidence and either asks for corrections or gives written technical approval, and under Lukas's standing instruction that approval may also authorize the next step; Claude never approves its own step; Lukas alone opens or merges pull requests and releases leases; no task switching or silent progression (who decides what: `DEVELOPMENT_STEP_PROTOCOL.md` section 3a). `COMPLETED` needs evidence plus a completion record (ChatGPT review, Lukas's confirmation, which may be the standing instruction, date, and a source starting `DIRECT` or `REPORTED` that does not claim Lukas reviewed code when Lukas did not). The tracker holds steps only: ownership and leases stay in `ACTIVE_TASKS.json`, milestones and percentages in `PROJECT_STATUS.json`. `python -B dashboard/tracker_check.py` validates the tracker file, and with `--against origin/main` also rejects illegal changes from the committed version (transitions, edits to `COMPLETED` steps, removed steps); both are PROCEDURES to run before every push, and the full suite runs only the plain validation. A task's claim pull request is step 00; a task that has no tracker steps yet adds them in its claim or first step.
+Every task is divided into numbered steps recorded in `DEVELOPMENT_TRACKER.json` and governed by `DEVELOPMENT_STEP_PROTOCOL.md` (added by `T-GOV-002`, 2026-11-12). Rules every session follows: work on one step only; at `READY_FOR_REVIEW` stop and report changed files, commands and results, evidence, unresolved issues and terminal safety; ChatGPT reviews the evidence and either asks for corrections or gives written technical approval, and under Lukas's standing instruction that approval may also authorize the next step; ChatGPT handles task PR opening/merging and lease release under Lukas's explicit standing delegation; Claude never approves its own step, merges PRs or releases leases; no task switching or silent progression (who decides what: `DEVELOPMENT_STEP_PROTOCOL.md` section 3a). `COMPLETED` needs evidence plus a completion record (ChatGPT review, Lukas's confirmation, which may be the standing instruction, date, and a source starting `DIRECT` or `REPORTED` that does not claim Lukas reviewed code when Lukas did not). The tracker holds steps only: ownership and leases stay in `ACTIVE_TASKS.json`, milestones and percentages in `PROJECT_STATUS.json`. `python -B dashboard/tracker_check.py` validates the tracker file, and with `--against origin/main` also rejects illegal changes from the committed version (transitions, edits to `COMPLETED` steps, removed steps); both are PROCEDURES to run before every push, and the full suite runs only the plain validation. A task's claim pull request is step 00; a task that has no tracker steps yet adds them in its claim or first step.
 
 ## 16. Change history
+
+2026-11-13: Lukas delegated routine technical review, task PR opening/merging and lease release to ChatGPT as the default integrator. Claude Code remains prohibited from merging or releasing leases; Lukas retains final authority and may reserve or revoke actions.
 
 This protocol is a shared file. Changes go through a pull request that states what rule changed and why, and add a `CHANGELOG.md` entry.
