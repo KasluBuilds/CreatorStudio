@@ -4,8 +4,9 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
-## 2026-11-13 — T-GOV-003 Per-task development step limit (READY_FOR_REVIEW; not merged)
+## 2026-11-13 — T-GOV-003 Per-task development step limit (PR #9 merged; follow-up lease release)
 
+- PR #9 merged by ChatGPT as delegated integrator (merge commit `67b70dc251a4708957f1952d6032b3a4e1735043`, reviewed head `c9b1a6010e894fe181cbd77060d4291913249250`). This follow-up pull request records the merge evidence, completes S-GOV-003-00 with a REPORTED completion record, sets T-GOV-003 `COMPLETED` and releases its lease and paths. S-GOV-003-01 is left `IN_PROGRESS` because `tracker_check.py --against` rejects `PLANNED` -> `COMPLETED` in a single pull request; the integrator completes it after review. The bootstrap exception (claim and implementation in one pull request) applied to T-GOV-003 only.
 - `dashboard/tracker_check.py`: the limit of one `IN_PROGRESS`/`READY_FOR_REVIEW` step is now counted per task, so different tasks may each have one; steps stay sequential within each task, the error names the task, unregistered tasks are still rejected.
 - `DEVELOPMENT_STEP_PROTOCOL.md` (section 3 item 1, history) and `PROJECT_OPERATING_PROTOCOL.md` (section 15, history) say the limit is per task. Claims, leases, one writer to `main`, one pull request integrated at a time and stopping at `READY_FOR_REVIEW` are unchanged.
 - Repaired `test_protocol_authority_rules_do_not_contradict_the_standing_instruction` and `test_active_tasks_wording_matches_protocol_section_3a`, which still expected Lukas alone to merge pull requests; they now assert the delegated-integrator wording. Added per-task tests.
