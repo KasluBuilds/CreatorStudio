@@ -27,17 +27,17 @@ Labels: **PROCEDURE** = a rule people follow; nothing but review enforces it. **
 
 ## 3a. Who decides what
 
-Lukas has given ChatGPT a standing instruction to make technical acceptance decisions and to move automatically between steps once a step is approved. This section records how that works, so the protocol and the instruction do not contradict each other.
+Lukas has given ChatGPT a standing instruction to make technical acceptance decisions, move automatically between steps once a step is approved, and act as the default integrator: review, open and merge task pull requests and release task leases through follow-up pull requests. This section records how that works, so the protocol and the instruction do not contradict each other.
 
 | Decision | Who |
 |---|---|
 | Declare a step finished and stop at `READY_FOR_REVIEW` | Claude, which must stop there |
 | Technically approve a step and authorize the next one to start | ChatGPT (standing instruction from Lukas), or Lukas |
 | Self-approve a step, set one's own step `COMPLETED`, or start the next step unprompted | **Nobody on the Claude side: forbidden** |
-| Open or merge a pull request; release a lease (follow-up pull request recording the merge commit) | **Lukas only**; a standing instruction never covers these |
+| Review, open or merge a task pull request; release its lease (follow-up pull request recording the merge commit) | **ChatGPT under Lukas's explicit standing delegation**; Claude never does these. Lukas retains final authority and may revoke or reserve any action |
 | Change this protocol, milestone weights or progress | A pull request that Lukas merges |
 
-A standing instruction is not a review by Lukas. A completion record must say which of these it is: its `source` begins with `DIRECT` when Lukas said directly in the session that the step is complete, or `REPORTED` when the confirmation was relayed or comes from the standing instruction. A `REPORTED` source must not claim that Lukas reviewed the code, and must not claim that ChatGPT re-ran tests unless the evidence shows it did (CHECKED for the prefix, PROCEDURE for the honesty of the rest). If ChatGPT's approval cannot be seen in the session, record it as REPORTED and say it was not independently verified.
+ChatGPT's delegated integration authority is not a review by Lukas. A completion record must say which of these it is: its `source` begins with `DIRECT` when Lukas said directly in the session that the step is complete, or `REPORTED` when the confirmation was relayed or comes from the standing instruction. A `REPORTED` source must not claim that Lukas reviewed the code, and must not claim that ChatGPT re-ran tests unless the evidence shows it did (CHECKED for the prefix, PROCEDURE for the honesty of the rest). If ChatGPT's approval cannot be seen in the session, record it as REPORTED and say it was not independently verified.
 
 ## 4. The completion gate (CHECKED)
 
@@ -56,4 +56,5 @@ Nothing in GitHub blocks a session from ignoring this protocol (the repository h
 ## 7. Change history
 
 2026-11-12: created by `T-GOV-002` step 01. Same day, after review: historical transition checking added to the CLI as `--against REF`; this document now states that it is only checked when a base is supplied.
-2026-11-12: `T-GOV-002` step 04 resolved a contradiction. The protocol reserved starting the next step to Lukas alone, while Lukas had given ChatGPT a standing instruction to approve technical acceptance and advance between steps. Section 3a now states who decides what; Claude still stops at `READY_FOR_REVIEW`, never self-approves, and Lukas keeps pull request merging, lease release and protocol changes. The completion gate was not weakened: it additionally requires the `source` to begin with `DIRECT` or `REPORTED`.
+2026-11-12: `T-GOV-002` step 04 resolved a contradiction. The protocol reserved starting the next step to Lukas alone, while Lukas had given ChatGPT a standing instruction to approve technical acceptance and advance between steps. Section 3a now states who decides what; Claude still stops at `READY_FOR_REVIEW` and never self-approves. The completion gate was not weakened: it additionally requires the `source` to begin with `DIRECT` or `REPORTED`.
+2026-11-13: Lukas explicitly delegated routine technical review, task PR opening/merging and lease release to ChatGPT as the default integrator. Section 3a records this standing delegation; Claude remains prohibited from merging PRs or releasing leases, and Lukas retains final authority.
