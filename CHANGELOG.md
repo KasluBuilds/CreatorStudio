@@ -4,6 +4,13 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## 2026-11-13 — T-GOV-003 Per-task development step limit (READY_FOR_REVIEW; not merged)
+
+- `dashboard/tracker_check.py`: the limit of one `IN_PROGRESS`/`READY_FOR_REVIEW` step is now counted per task, so different tasks may each have one; steps stay sequential within each task, the error names the task, unregistered tasks are still rejected.
+- `DEVELOPMENT_STEP_PROTOCOL.md` (section 3 item 1, history) and `PROJECT_OPERATING_PROTOCOL.md` (section 15, history) say the limit is per task. Claims, leases, one writer to `main`, one pull request integrated at a time and stopping at `READY_FOR_REVIEW` are unchanged.
+- Repaired `test_protocol_authority_rules_do_not_contradict_the_standing_instruction` and `test_active_tasks_wording_matches_protocol_section_3a`, which still expected Lukas alone to merge pull requests; they now assert the delegated-integrator wording. Added per-task tests.
+- Claim and implementation share one pull request as a **one-time bootstrap exception** approved by ChatGPT as delegated integrator; later tasks need their own claim pull request.
+
 ## 2026-11-13 — T-GOV-002 Development Tracker (PR #5 merged; follow-up lease release)
 
 - Claim merged earlier as PR #4 (merge commit `27685bac2b0bc58c961e4e3d26b57af38f1bc3b2`), including a narrow fix so `test_leases_exit_codes` uses a fixture registry.
