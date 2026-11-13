@@ -130,7 +130,7 @@
     {
       "id": "T-GOV-002",
       "title": "Creator Studio Development Tracker and mandatory step-completion workflow",
-      "description": "Build a read-only visual development dashboard (dashboard/index.html fed by a stdlib-only snapshot builder) and a persistent step-level tracker (DEVELOPMENT_TRACKER.json) with a mandatory step-completion protocol: one step at a time, stop at READY_FOR_REVIEW, ChatGPT reviews the evidence, and the next step starts only after ChatGPT's written technical approval under Lukas's standing instruction (or Lukas's word); Claude never approves its own step, and Lukas alone opens or merges pull requests and releases leases (DEVELOPMENT_STEP_PROTOCOL.md section 3a). Update PROJECT_OPERATING_PROTOCOL.md and CLAUDE.md so every future session follows it. Does not change milestone weights, scores or the governance package.",
+      "description": "Build a read-only visual development dashboard, snapshot builder, canonical step-level tracker and mandatory reviewed-step protocol. ChatGPT reviews steps and, under Lukas's explicit standing delegation, handles routine task PR opening/merging and lease release; Claude never self-approves, merges PRs or releases leases; Lukas retains final authority. Does not change milestone weights, scores or the governance package.",
       "owner": "claude:development-tracker-session",
       "branch": "task/development-tracker",
       "worktree": "../CreatorStudio-worktrees/development-tracker",
