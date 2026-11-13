@@ -4,6 +4,11 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-AST-001` claim (branch `task/asset-required-uses-fail-closed`, pending review)
+
+- Claim only: registers `T-AST-001` (owner `claude:asset-stream`, 24-hour lease) and its steps `S-AST-001-00` (claim, `READY_FOR_REVIEW`) and `S-AST-001-01` (implementation, `PLANNED`, not started). No source, test, status or milestone change.
+- Planned fix, not yet made: `evaluate_rights` currently passes a required use silently when a record's `allowed_uses` is empty; Step 1 will quarantine that case. `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## 2026-11-13 — T-GOV-002 Development Tracker (PR #5 merged; follow-up lease release)
 
 - Claim merged earlier as PR #4 (merge commit `27685bac2b0bc58c961e4e3d26b57af38f1bc3b2`), including a narrow fix so `test_leases_exit_codes` uses a fixture registry.
