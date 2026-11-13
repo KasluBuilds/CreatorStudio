@@ -233,7 +233,7 @@
         {
           "id": "S-GOV-003-00",
           "title": "Step 0: claim and implementation (one-time bootstrap exception)",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-GOV-003 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements in the same pull request as the implementation, under the one-time bootstrap exception approved by ChatGPT",
             "tracker_check.py enforces at most one working step per task, names the task in the error and keeps in-order steps within each task",
@@ -251,19 +251,42 @@
               "summary": "Run by Claude Code on the working tree before the commit (the commit cannot cite its own SHA; not independently run by ChatGPT). Known skip: test_symlink_source_refused. test_development_tracker.py alone: 83 tests OK. governance validate, handoff --check, scope --base origin/main and tracker_check --against origin/main all OK.",
               "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
               "result": "Ran 1250 tests: OK (skipped=1)"
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #9 merged into main by ChatGPT with a merge commit (merge commit shown); reviewed head is c9b1a6010e894fe181cbd77060d4291913249250",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/9",
+              "commit": "67b70dc251a4708957f1952d6032b3a4e1735043"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed implementation head of PR #9 (claim and implementation, one-time bootstrap exception)",
+              "commit": "c9b1a6010e894fe181cbd77060d4291913249250"
             }
           ],
-          "completion": null
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-13",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, reviewed and merged PR #9 and instructed this closeout; relayed to Claude in the session and not independently verified beyond the merged state of PR #9 on GitHub. Does not claim Lukas reviewed the code or that ChatGPT re-ran the tests."
+          }
         },
         {
           "id": "S-GOV-003-01",
           "title": "Step 1: review, merge and closeout by the delegated integrator",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "ChatGPT reviews the pull request and gives written technical approval naming the reviewed commit",
             "The merge commit is recorded and the T-GOV-003 lease is released by the integrator through a follow-up pull request"
           ],
-          "evidence": [],
+          "evidence": [
+            {
+              "type": "pull_request",
+              "summary": "PR #9 reviewed and merged by ChatGPT (merge commit shown). The closeout is under way: pull request #10 records the PR #9 merge and completes S-GOV-003-00 but is not merged. A final closeout pull request, after PR #10 is merged, completes this step, records PR #10's merge commit and releases the lease and owned paths",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/9",
+              "commit": "67b70dc251a4708957f1952d6032b3a4e1735043"
+            }
+          ],
           "completion": null
         }
       ]
