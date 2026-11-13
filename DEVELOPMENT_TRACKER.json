@@ -180,6 +180,13 @@
               "commit": "fd890481bdc4c62999c65ccf96ae0ce7335ae52c"
             },
             {
+              "type": "test_run",
+              "summary": "Final full-suite rerun by Claude Code on a clean working tree at the head that includes ChatGPT's two direct documentation commits (ca6d802, 93b1334) and the removal of the stale CLAUDE.md note (not independently run by ChatGPT)",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1241 tests in 175.8s: OK (skipped=1)",
+              "commit": "7db8d11e313a7345a1696efc3e165613aadb6f9c"
+            },
+            {
               "type": "observation",
               "summary": "Dashboard checked in the already-installed Chrome (headless, DevTools protocol, nothing installed) against a generated snapshot: all sections rendered at 1280 and 390 px with no horizontal overflow, a malformed file showed an error and hid the page, no page errors, no non-file network requests. Not covered: drag-and-drop, dark mode, other browsers. This does not alter the COMPLETED record of step 3."
             }
