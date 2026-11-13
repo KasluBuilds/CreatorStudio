@@ -169,6 +169,35 @@ class TestTransitionsAndGate(unittest.TestCase):
             self.assertTrue(tc.can_transition(a, b), (a, b))
         for a, b in bad:
             self.assertFalse(tc.can_transition(a, b), (a, b))
+
+    def test_lukas_confirmed_diagnostic_matches_protocol_section_3a(self):
+        s = step(0, "COMPLETED")
+        s["completion"]["lukas_confirmed"] = False
+        problems = [p for p in tc.validate(doc(s)) if "lukas_confirmed" in p]
+        self.assertEqual(len(problems), 1)
+        text = problems[0]
+        # The standing instruction is an allowed confirmation: the message must say so and must not demand an
+        # explicit statement or describe a REPORTED standing instruction as inference.
+        for needle in ("standing instruction", "REPORTED", "section 3a"):
+            self.assertIn(needle, text)
+        for banned in ("explicit word", "never inferred"):
+            self.assertNotIn(banned, text)
+
+    def test_standing_instruction_confirmation_is_accepted_without_a_separate_statement(self):
+        s = step(0, "COMPLETED")
+        s["completion"]["lukas_confirmed"] = True
+        s["completion"]["source"] = ("REPORTED: Lukas's standing instruction authorizes ChatGPT to approve technical "
+                                     "acceptance and advance between steps. This does not claim Lukas reviewed the code.")
+        self.assertEqual(tc.validate(doc(s)), [])
+
+    def test_active_tasks_wording_matches_protocol_section_3a(self):
+        registry = json.loads((ROOT / "ACTIVE_TASKS.json").read_text(encoding="utf-8"))
+        task = [t for t in registry["tasks"] if t["id"] == "T-GOV-002"][0]
+        text = task["description"] + " " + " ".join(task["acceptance_criteria"])
+        self.assertNotIn("blocked until Lukas explicitly says to continue", text)
+        self.assertIn("standing instruction", text)
+        self.assertIn("Lukas alone opens or merges pull requests and releases leases", text)
+        self.assertIn("never", text.lower())  # Claude never approves its own step
         self.assertEqual(set(tc.TRANSITIONS), set(tc.STATUSES))
 
     def test_transition_problems_against_base(self):

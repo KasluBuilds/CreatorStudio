@@ -69,7 +69,7 @@ def completion_problems(step: Dict[str, Any]) -> List[str]:
     if c.get("reviewed_by_chatgpt") is not True:
         out.append(f"{sid}: completion needs reviewed_by_chatgpt true")
     if c.get("lukas_confirmed") is not True:
-        out.append(f"{sid}: completion needs lukas_confirmed true (Lukas's explicit word, never inferred)")
+        out.append(f"{sid}: completion needs lukas_confirmed true (Lukas's confirmation: Lukas's direct word, or Lukas's standing instruction to ChatGPT recorded with a REPORTED source; see DEVELOPMENT_STEP_PROTOCOL.md section 3a)")
     if not (isinstance(c.get("date"), str) and DATE.match(c["date"])):
         out.append(f"{sid}: completion needs a YYYY-MM-DD date")
     if not (isinstance(c.get("source"), str) and c["source"].strip()):
