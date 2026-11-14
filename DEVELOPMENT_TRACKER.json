@@ -354,7 +354,7 @@
         {
           "id": "S-AST-001-01",
           "title": "Step 1: required-use fail-closed fix and regression tests",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Non-empty required_uses with empty allowed_uses returns QUARANTINE (new reason code, no other severity change)",
             "Explicitly allowed uses still reach PERMITTED when all other checks pass",
@@ -362,7 +362,12 @@
             "Synthetic regression tests for all three cases are added to orchestrator/tests/test_assets.py",
             "Only orchestrator/assets/rights.py and orchestrator/tests/test_assets.py change besides the shared registry files; the full suite passes"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Implemented in orchestrator/assets/rights.py (new quarantine reason USE_NOT_DECLARED) with three regression tests in orchestrator/tests/test_assets.py. With the fix reverted, the empty-allowed_uses test fails; with it applied, test_assets.py passes (149 tests, 1 skipped). Full command results are in the stop report; the commit cannot cite its own SHA."
+            }
+          ]
         }
       ]
     }

@@ -4,6 +4,12 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-AST-001` Step 1 (branch `task/asset-required-uses-fail-closed`, pending review)
+
+- `S-AST-001-01` (`IN_PROGRESS` since PR #14, merge commit `34020d898cf720bd27731a1efd89f20420fc2f42`) implemented and set `READY_FOR_REVIEW`.
+- `orchestrator/assets/rights.py`: `evaluate_rights` now quarantines (new reason code `USE_NOT_DECLARED`) when `UseContext.required_uses` is non-empty and the record's `allowed_uses` is empty. A required use missing from a non-empty `allowed_uses` is still `USE_NOT_ALLOWED` (quarantine); explicitly allowed uses still pass. No other rights-policy change.
+- `orchestrator/tests/test_assets.py`: three synthetic regression tests, one per case.
+
 ## Unreleased — task `T-AST-001` start and registry agreement (branch `task/asset-required-uses-start`, pending review)
 
 - Governance-only: records claim PR #13 merged (merge commit `12c5964781261fcc49ce6e62030636aad4b64fce`) with `S-AST-001-00` `COMPLETED`, and sets `S-AST-001-01` `IN_PROGRESS`. No Asset code or tests.
