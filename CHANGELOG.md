@@ -4,8 +4,9 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
-## 2026-11-13 — T-GOV-003 Per-task development step limit (PR #9 merged; closeout in progress)
+## 2026-11-13 — T-GOV-003 Per-task development step limit (complete; lease and owned paths released)
 
+- T-GOV-003 is complete. PR #11 was reviewed by ChatGPT and merged into `main` (merge commit `232172e62f3f7c7d1ba04d5a438d03689b9483d2`; reviewed head `e4dd01cd62c3e382e5fc79bffd1387402323b677`). Final closeout PR #12 moves S-GOV-003-01 to `COMPLETED` with a `REPORTED` completion record (ChatGPT reviewed and merged under Lukas's standing delegation; this does not claim Lukas reviewed the code), sets T-GOV-003 to `COMPLETED`, and releases its lease and owned paths.
 - PR #10 reviewed by ChatGPT and merged into `main` (merge commit `cd6412bc4d207adc238b4f400c33870e2f3b1b9f`; reviewed head `c05fb31bd19c6fd97463407edfd397857285e4d2`). S-GOV-003-01 is now `READY_FOR_REVIEW`; a final closeout PR will record this PR's merge, complete the step and release the lease and owned paths.
 
 - PR #9 merged by ChatGPT as delegated integrator (merge commit `67b70dc251a4708957f1952d6032b3a4e1735043`, reviewed head `c9b1a6010e894fe181cbd77060d4291913249250`). Pull request #10 records the merge evidence and completes S-GOV-003-00 with a REPORTED completion record. T-GOV-003 stays `ACTIVE` with its lease and owned paths and S-GOV-003-01 is now `READY_FOR_REVIEW`; a final closeout pull request after PR #11 is merged will complete the step and release the lease. The bootstrap exception (claim and implementation in one pull request) applied to T-GOV-003 only.
