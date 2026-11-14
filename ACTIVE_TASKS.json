@@ -248,6 +248,53 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Claim branch created from origin/main bd33aa1 on 2026-11-13, refreshed by merging origin/main adc0f9976b9929f18f06bebe5530d2ce697a603f on 2026-11-14 (lease restarted at refresh); Step 00 is the claim and Step 01 (implementation and tests) is not started and needs ChatGPT's written authorization after the claim is merged. Owner identity claude:asset-stream was assigned by Lukas for this task. Shared registry, tracker, generated handoff and changelog files are owned for the duration of the task as the governance protocol requires. Synthetic data only; no real footage."
+    },
+    {
+      "id": "T-DNA-001",
+      "title": "Make evidence revocation and restoration safe and replay-consistent",
+      "description": "In orchestrator/creator_dna/store.py, separate creator rejection from attribution revocation. Today revoke_attribution() and reject_evidence() both write evidence_review/reject, _apply() treats every action other than reject as a restore, and restore_evidence() can make evidence from a withdrawn attribution eligible again (also after replay); a revocation of already creator-rejected evidence is not recorded at all. Fix: independent creator_rejected and attribution_revoked state with rejected kept as a read-only compatibility property; a distinct attribution_revoked event (decision ID and reason, schema v4); strict evidence_review actions (reject, restore only); restore clears only creator rejection and is refused for revoked or flagged possible-legacy-revoked evidence; revocation is recorded even for creator-rejected evidence and is idempotent per decision. Legacy v1-v3 logs replay with their original semantics; a note-prefix heuristic may only set read-only warning flags. Synthetic regression tests and a documentation update. No change to speaker_attribution/ or any cross-package test; no real footage.",
+      "owner": "claude:creator-dna-stream",
+      "branch": "task/t-dna-001-claim",
+      "worktree": "../CreatorStudio-worktrees/t-dna-001-claim",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-14T09:38:12+00:00",
+        "expires": "2026-11-15T09:38:12+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/creator_dna/",
+        "orchestrator/tests/test_creator_dna.py",
+        "AI_Creator_Studio_Documentation/CREATOR_DNA.md",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "Creator rejection and attribution revocation are independent state; EvidenceItem.rejected stays a read-only property true for either, and existing readers of rejected and review_note are unchanged",
+        "Revocation is written as a distinct attribution_revoked event with decision ID and reason (schema v4); evidence_review accepts only reject and restore and any other action fails replay",
+        "restore_evidence clears only creator rejection, never undoes a current revocation, and is refused for revoked evidence and for evidence flagged as a possible legacy revocation",
+        "revoke_attribution records a revocation for creator-rejected evidence; repeated revoke_attribution/sync_revocations for the same decision emit no new events",
+        "Legacy v1-v3 logs replay with original semantics; ambiguous historical rejects are only flagged (read-only warnings), never migrated or reinterpreted",
+        "Exports keep rejected_by_creator creator-specific and expose attribution revocation, decision ID and reason separately",
+        "Synthetic regression tests cover revoke then restore, creator reject then revoke, unknown actions, reload/replay equivalence, repeated synchronization and legacy replay/reporting; test_speaker_attribution.py passes unmodified",
+        "CREATOR_DNA.md documents the event model, legacy handling and restore rules; the full suite passes with python -B -I"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creator_dna.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_speaker_attribution.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Claim branch created from origin/main 12c5964 (T-AST-001 claim PR #13 merged) on 2026-11-14. Step 00 is the claim only; Step 01 (implementation, tests, documentation) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved in principle by Lukas with eight safeguards (independent state, strict evidence_review, restore never undoes revocation, idempotent revocation, exact legacy v1-v3 replay, heuristic only sets warning flags, creator-specific exports, unchanged cross-package readers). Documentation file added to owned_paths by Lukas. orchestrator/speaker_attribution/ (caller sync_revocations), cross-package tests and UNRESOLVED packages are NOT claimed and must not change; test_speaker_attribution.py is run unchanged as a compatibility check only. T-AST-001 also lists the shared registry, tracker, handoff and changelog files, so merge order matters there. Synthetic data only; no real footage."
     }
   ]
 }

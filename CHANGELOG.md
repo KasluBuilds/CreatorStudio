@@ -4,6 +4,11 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-DNA-001` claim (branch `task/t-dna-001-claim`, pending review)
+
+- Claim only: registers `T-DNA-001` (owner `claude:creator-dna-stream`, 24-hour lease) and its steps `S-DNA-001-00` (claim, `READY_FOR_REVIEW`) and `S-DNA-001-01` (implementation, `PLANNED`, not started). Owned paths include `orchestrator/creator_dna/`, `orchestrator/tests/test_creator_dna.py` and `AI_Creator_Studio_Documentation/CREATOR_DNA.md`. No source, test, documentation, status or milestone change.
+- Planned fix, not yet made: `revoke_attribution()` and `reject_evidence()` both write `evidence_review/reject` and `restore_evidence()` can make revoked evidence eligible again, also on replay; Step 1 separates creator rejection from attribution revocation. `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## Unreleased — task `T-AST-001` start and registry agreement (branch `task/asset-required-uses-start`, pending review)
 
 - Governance-only: records claim PR #13 merged (merge commit `12c5964781261fcc49ce6e62030636aad4b64fce`) with `S-AST-001-00` `COMPLETED`, and sets `S-AST-001-01` `IN_PROGRESS`. No Asset code or tests.

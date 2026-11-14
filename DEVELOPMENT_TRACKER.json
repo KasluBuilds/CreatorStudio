@@ -365,6 +365,43 @@
           "evidence": []
         }
       ]
+    },
+    {
+      "task_id": "T-DNA-001",
+      "title": "Make evidence revocation and restoration safe and replay-consistent",
+      "steps": [
+        {
+          "id": "S-DNA-001-00",
+          "title": "Step 0: claim branch",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-DNA-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "No overlap with another task and no edit to a package owned by someone else",
+            "Governance validate, handoff check, scope check and tracker check pass",
+            "The claim pull request is opened and merged by ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 12c5964 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            }
+          ]
+        },
+        {
+          "id": "S-DNA-001-01",
+          "title": "Step 1: revocation/restore event model, regression tests and documentation",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Independent creator_rejected and attribution_revoked state; rejected remains a read-only compatibility property",
+            "Distinct attribution_revoked event (schema v4); evidence_review strict to reject and restore",
+            "Restore never undoes a revocation and is refused for revoked or possible-legacy-revoked evidence; revocation recorded for creator-rejected evidence and idempotent per decision",
+            "Legacy v1-v3 logs replay unchanged with read-only warning flags only",
+            "Synthetic regression tests in test_creator_dna.py; test_speaker_attribution.py passes unmodified; CREATOR_DNA.md updated; the full suite passes",
+            "Only orchestrator/creator_dna/, test_creator_dna.py and CREATOR_DNA.md change besides the shared registry files"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }
