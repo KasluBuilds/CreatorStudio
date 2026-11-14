@@ -4,6 +4,11 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-AST-001` claim (branch `task/asset-required-uses-fail-closed`, pending review)
+
+- Claim only: registers `T-AST-001` (owner `claude:asset-stream`, 24-hour lease, restarted 2026-11-14 when the branch was refreshed with `origin/main` adc0f99) and its steps `S-AST-001-00` (claim, `READY_FOR_REVIEW`) and `S-AST-001-01` (implementation, `PLANNED`, not started). No source, test, status or milestone change.
+- Planned fix, not yet made: `evaluate_rights` currently passes a required use silently when a record's `allowed_uses` is empty; Step 1 will quarantine that case. `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## 2026-11-14 — T-GOV-003 Per-task development step limit (complete; lease and owned paths released)
 
 - T-GOV-003 is complete. PR #11 was reviewed by ChatGPT and merged into `main` (merge commit `232172e62f3f7c7d1ba04d5a438d03689b9483d2`; reviewed head `e4dd01cd62c3e382e5fc79bffd1387402323b677`). Final closeout PR #12 moves S-GOV-003-01 to `COMPLETED` with a `REPORTED` completion record (ChatGPT reviewed and merged under Lukas's standing delegation; this does not claim Lukas reviewed the code), sets T-GOV-003 to `COMPLETED`, and releases its lease and owned paths.

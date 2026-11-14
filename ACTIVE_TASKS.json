@@ -192,6 +192,46 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "One-time bootstrap exception approved by ChatGPT as delegated integrator: the claim and the implementation are in the same pull request because the global tracker limit and two stale authority tests blocked a separate claim pull request. Applies to T-GOV-003 only; later tasks need their own claim pull request. Branch created from origin/main bd33aa11f54cd94ce75baf228b32640fd7a351a4 on 2026-11-13. Stops at READY_FOR_REVIEW; the integrator merges, records the merge commit and releases the lease. T-AST-001 also lists the shared registry, tracker, handoff and changelog files, so merge order matters there. PR #9 merged by ChatGPT as merge commit 67b70dc251a4708957f1952d6032b3a4e1735043 (reviewed head c9b1a6010e894fe181cbd77060d4291913249250). PR #10 merged by ChatGPT as merge commit cd6412bc4d207adc238b4f400c33870e2f3b1b9f (reviewed head c05fb31bd19c6fd97463407edfd397857285e4d2). PR #11 merged by ChatGPT as merge commit 232172e62f3f7c7d1ba04d5a438d03689b9483d2 (reviewed head e4dd01cd62c3e382e5fc79bffd1387402323b677). Final closeout: this follow-up PR (#12) completes S-GOV-003-01 and releases the lease and owned paths, which it cannot itself claim because it only closes this task. Branches task/per-task-step-limit and task/t-gov-003-review-closeout are merged and may be deleted by Lukas."
+    },
+    {
+      "id": "T-AST-001",
+      "title": "Make required-use rights checks fail closed",
+      "description": "In orchestrator/assets/rights.py, when UseContext.required_uses is non-empty and the record's allowed_uses is empty, evaluate_rights must quarantine instead of passing silently (found in the read-only Asset Agent rights audit of 2026-11-13). Explicitly allowed uses keep working and a missing required use stays quarantined. Synthetic regression tests for all three cases. No other rights-policy change; no providers, downloader, licence automation or external calls.",
+      "owner": "claude:asset-stream",
+      "branch": "task/asset-required-uses-fail-closed",
+      "worktree": "../CreatorStudio-worktrees/task-asset-required-uses-fail-closed",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-14T09:23:38+00:00",
+        "expires": "2026-11-15T09:23:38+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [
+        "orchestrator/assets/rights.py",
+        "orchestrator/tests/test_assets.py",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "When UseContext.required_uses is non-empty but AssetRecord.allowed_uses is empty, evaluate_rights returns QUARANTINE",
+        "Explicitly allowed uses (required_uses a subset of a non-empty allowed_uses) continue to be permitted when every other check passes",
+        "A required use missing from a non-empty allowed_uses remains QUARANTINE",
+        "Synthetic regression tests cover all three cases in orchestrator/tests/test_assets.py",
+        "No unrelated rights-policy change; the full suite passes with python -B -I"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Claim branch created from origin/main bd33aa1 on 2026-11-13, refreshed by merging origin/main adc0f9976b9929f18f06bebe5530d2ce697a603f on 2026-11-14 (lease restarted at refresh); Step 00 is the claim and Step 01 (implementation and tests) is not started and needs ChatGPT's written authorization after the claim is merged. Owner identity claude:asset-stream was assigned by Lukas for this task. Shared registry, tracker, generated handoff and changelog files are owned for the duration of the task as the governance protocol requires. Synthetic data only; no real footage."
     }
   ]
 }
