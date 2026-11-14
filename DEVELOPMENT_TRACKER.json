@@ -274,7 +274,7 @@
         {
           "id": "S-GOV-003-01",
           "title": "Step 1: review, merge and closeout by the delegated integrator",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "ChatGPT reviews the pull request and gives written technical approval naming the reviewed commit",
             "The merge commit is recorded and the T-GOV-003 lease is released by the integrator through a follow-up pull request"
@@ -296,9 +296,25 @@
               "type": "commit",
               "summary": "PR #10 reviewed head approved by ChatGPT before merge",
               "commit": "c05fb31bd19c6fd97463407edfd397857285e4d2"
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #11 reviewed by ChatGPT and merged into main (merge commit shown). It recorded the PR #10 merge and moved this step to READY_FOR_REVIEW. Reviewed head e4dd01cd62c3e382e5fc79bffd1387402323b677.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/11",
+              "commit": "232172e62f3f7c7d1ba04d5a438d03689b9483d2"
+            },
+            {
+              "type": "commit",
+              "summary": "PR #11 reviewed head approved by ChatGPT before merge",
+              "commit": "e4dd01cd62c3e382e5fc79bffd1387402323b677"
             }
           ],
-          "completion": null
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-14",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, reviewed and merged PR #11 (reviewed head e4dd01cd62c3e382e5fc79bffd1387402323b677, merge commit 232172e62f3f7c7d1ba04d5a438d03689b9483d2) and instructed this final closeout; relayed to Claude in the session and not independently verified beyond the merged state of PR #11 on GitHub. Does not claim Lukas reviewed the code or that ChatGPT re-ran the tests."
+          }
         }
       ]
     }
