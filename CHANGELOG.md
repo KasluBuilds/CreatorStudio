@@ -4,6 +4,11 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-CRD-001` claim (branch `task/t-crd-001-claim`, pending review)
+
+- Claim only: registers `T-CRD-001` (owner `claude:creative-director-stream`, 24-hour lease, references `AGR-GOV-REGISTRY-01`) and its steps `S-CRD-001-00` (claim, `READY_FOR_REVIEW`) and `S-CRD-001-01` (implementation, `PLANNED`, not started). Owned paths: `orchestrator/creative_director/` (includes the new `README.md`), `orchestrator/tests/test_creative_director.py` and the four shared registry files. No source, test, documentation, status or milestone change.
+- Planned fix, not yet made: `ResearchContext.from_packet()` accepts any `research->creative_director/` prefix and ignores `safety_critical`, `unresolved_safety_warning` and producer `usage`; Step 1 requires exactly `research->creative_director/0.3`, preserves the original claim status and safety metadata, fails closed on missing or malformed safety metadata, caps unresolved safety claims below verified, forbids safety-critical claims as hooks and adds a research digest (integrity consistency check, not authentication). `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## Unreleased — extend AGR-GOV-REGISTRY-01 to T-CRD-001 (integrator change)
 
 - Extends the shared-registry integration agreement to include T-CRD-001. The four covered paths and per-task record ownership rules are unchanged; the Creative Director claim must still be registered in its own claim pull request before implementation.

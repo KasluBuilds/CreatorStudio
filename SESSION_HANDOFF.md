@@ -88,6 +88,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 |---|---|---|---|---|---|
 | T-AST-001 Make required-use rights checks fail closed | claude:asset-stream | `task/asset-required-uses-fail-closed` | ACTIVE | 2026-11-15T09:23:38+00:00 | orchestrator/assets/rights.py, orchestrator/tests/test_assets.py, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 | T-DNA-001 Make evidence revocation and restoration safe and replay-consistent | claude:creator-dna-stream | `task/t-dna-001-claim` | ACTIVE | 2026-11-15T09:38:12+00:00 | orchestrator/creator_dna/, orchestrator/tests/test_creator_dna.py, AI_Creator_Studio_Documentation/CREATOR_DNA.md, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
+| T-CRD-001 Enforce Research contract version and safety-critical signals | claude:creative-director-stream | `task/t-crd-001-claim` | ACTIVE | 2026-11-15T10:08:13+00:00 | orchestrator/creative_director/, orchestrator/tests/test_creative_director.py, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 

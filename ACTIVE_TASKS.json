@@ -296,6 +296,52 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Claim branch created from origin/main 12c5964 (T-AST-001 claim PR #13 merged) on 2026-11-14. Step 00 is the claim only; Step 01 (implementation, tests, documentation) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved in principle by Lukas with eight safeguards (independent state, strict evidence_review, restore never undoes revocation, idempotent revocation, exact legacy v1-v3 replay, heuristic only sets warning flags, creator-specific exports, unchanged cross-package readers). Documentation file added to owned_paths by Lukas. orchestrator/speaker_attribution/ (caller sync_revocations), cross-package tests and UNRESOLVED packages are NOT claimed and must not change; test_speaker_attribution.py is run unchanged as a compatibility check only. T-AST-001 also lists the shared registry, tracker, handoff and changelog files, so merge order matters there. Synthetic data only; no real footage."
+    },
+    {
+      "id": "T-CRD-001",
+      "title": "Enforce Research contract version and safety-critical signals",
+      "description": "In orchestrator/creative_director/, ResearchContext.from_packet() checks only the prefix research->creative_director/ and the safety fields the Research producer emits (safety_critical, unresolved_safety_warning, usage) are never read, so an unresolved safety-critical claim can be treated as ordinary research guidance. Fix: require the exact contract research->creative_director/0.3 (missing, malformed, non-string or unsupported versions give no partial Research context); preserve the original Research claim status, safety_critical, unresolved_safety_warning and producer usage as typed metadata kept separate from the Creative Director derived usage; fail closed on missing or malformed safety metadata; validate producer usage against a mirrored canonical producer rule; cap unverified safety-critical and warned claims below verified; a verified safety-critical claim may stay verified but can never be a hook; add a deterministic research digest (integrity consistency check, not authentication) covering contract, original status, safety metadata and usage; validation catches tampering and rejects hooks relying on unresolved, safety-critical or warned claims. Synthetic regression tests and orchestrator/creative_director/README.md. No Research producer, Editor schema, Asset package, unresolved package or cross-package test change, and no private import of Research internals; no real footage.",
+      "owner": "claude:creative-director-stream",
+      "branch": "task/t-crd-001-claim",
+      "worktree": "../CreatorStudio-worktrees/t-crd-001-claim",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-14T10:08:13+00:00",
+        "expires": "2026-11-15T10:08:13+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/creative_director/",
+        "orchestrator/tests/test_creative_director.py",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "Only the exact contract research->creative_director/0.3 is accepted; a missing, malformed, non-string or unsupported version yields an unusable Research context with no partial items and a recorded issue",
+        "ResearchItem preserves the original Research claim status, safety_critical, unresolved_safety_warning and producer usage as typed metadata, separate from the Creative Director derived usage; producer values are never silently replaced or discarded",
+        "Missing or malformed safety metadata on a fact fails closed (capped below verified, issue recorded)",
+        "An unverified safety-critical claim or any claim with an unresolved safety warning is capped below verified and never becomes ordinary factual guidance; a verified safety-critical claim may stay verified",
+        "Producer usage is validated against mirrored canonical producer rules covered by explicit expected-case tests in test_creative_director.py; the manual synchronization risk is documented; no import of Research internals and no cross-package test",
+        "A deterministic research digest covers the contract, original claim status, safety metadata, producer usage and derived category/usage; it is documented as an integrity consistency check, not authentication or proof of packet authorship",
+        "Validation detects tampering with digest-covered fields and rejects hooks that rely on unresolved, safety-critical, warned, metadata-missing or non-verified claims",
+        "Synthetic tests cover missing, malformed, unsupported and valid contract versions and the safety-critical, unresolved-warning, producer-usage, digest and hook cases; existing fixtures migrate to 0.3; the full suite passes with python -B -I",
+        "orchestrator/creative_director/README.md documents the fail-closed behavior, the digest limits and the producer-rule synchronization risk"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creative_director.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage."
     }
   ]
 }
