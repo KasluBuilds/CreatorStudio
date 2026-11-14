@@ -402,7 +402,7 @@
         {
           "id": "S-DNA-001-01",
           "title": "Step 1: revocation/restore event model, regression tests and documentation",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Independent creator_rejected and attribution_revoked state; rejected remains a read-only compatibility property",
             "Distinct attribution_revoked event (schema v4); evidence_review strict to reject and restore",
@@ -411,7 +411,24 @@
             "Synthetic regression tests in test_creator_dna.py; test_speaker_attribution.py passes unmodified; CREATOR_DNA.md updated; the full suite passes",
             "Only orchestrator/creator_dna/, test_creator_dna.py and CREATOR_DNA.md change besides the shared registry files"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Run by Claude Code on the working tree before the commit (the commit cannot cite its own SHA; not independently run by ChatGPT). Known skip: test_symlink_source_refused. test_creator_dna.py has 17 new tests in class RevocationAndRestore; run against the old store.py and schema.py the same file gave 8 failures and 9 errors, so the new tests exercise the fix. Synthetic data only.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1267 tests: OK (skipped=1)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Compatibility check: test_speaker_attribution.py run unmodified (sync_revocations and the readers of rejected and review_note are unchanged).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_speaker_attribution.py",
+              "result": "Ran 56 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "Changed only orchestrator/creator_dna/store.py, orchestrator/creator_dna/schema.py, orchestrator/tests/test_creator_dna.py, AI_Creator_Studio_Documentation/CREATOR_DNA.md and the shared registry files. speaker_attribution/, cross-package tests and unresolved packages are untouched. Implemented but not VERIFIED on real data; no real footage was used."
+            }
+          ]
         }
       ]
     }

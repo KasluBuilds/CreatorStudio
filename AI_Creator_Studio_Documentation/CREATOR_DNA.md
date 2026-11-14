@@ -34,7 +34,7 @@ Do not assume all traits are stable across every topic or mood.
 
 IMPLEMENTED: a trait must belong to one of a **closed list of categories** (`vocabulary, language, humor, speech_rhythm, pauses, delivery, gesture, expression, camera_presence, editing_preference, topic, other_production`). This keeps the profile on observable production behaviour and prevents unrelated personal inferences.
 
-## 4. Evidence model (IMPLEMENTED, schema v3)
+## 4. Evidence model (IMPLEMENTED, schema v4)
 
 A **trait** is a short statement about observable creative behaviour. It never contains the creator’s words itself; those live in its **evidence**. Each evidence item points at a source recording with timecodes, an optional exact quote, context tags, and either supports or counters (counterexample) the trait.
 
@@ -178,11 +178,33 @@ Visual behaviour is decided on the visual channel, independently of speech. Ever
 ### Independent of transcript review
 Attribution says whose speech it is, not what was said. A decision records `transcript_review` (`reviewed` / `unverified`) and `max_evidence_grade` (`verbatim` only for a reviewed transcript, otherwise `asr_unverified_only`). Creator-attributed speech with an unreviewed transcript is still only `asr_unverified` evidence (hypothesis layer); nothing here promotes it.
 
-### Enforcement inside Creator DNA (schema v3)
+### Enforcement inside Creator DNA (schema v3; revocation model v4)
 - `Evidence.attribution` is an `EvidenceAttribution` stamp. **It can only describe an eligible creator attribution** (subject `creator`, decision `eligible`, confidence in (0, 1], cites the attribution evidence); no stamp can be built for an unknown or other person. It must match the evidence's modality (speech/visual), time range, media and upstream record.
 - `DNAStore.add_evidence()` and `ingest()` **refuse footage-derived evidence without a stamp** (`unattributed footage evidence refused`). There is no bypass option. Creator statements (self-report) are exempt.
 - Footage evidence found without a stamp (e.g. in an older log) is listed but never counted in confidence (`unattributed_examples`).
-- `DNAStore.revoke_attribution(decision_id, reason, actor)` and `speaker_attribution.sync_revocations()` reject (not delete) evidence whose decision was later withdrawn or corrected, with a traceable note.
+- `DNAStore.revoke_attribution(decision_id, reason, actor)` and `speaker_attribution.sync_revocations()` revoke (not delete) evidence whose decision was later withdrawn or corrected. See *Evidence exclusion: creator rejection versus attribution revocation* below.
+
+#### Evidence exclusion: creator rejection versus attribution revocation (schema v4, T-DNA-001)
+An example stops counting for one of two independent reasons, each its own state on the evidence item and its own event:
+
+| | Creator rejection | Attribution revocation |
+|---|---|---|
+| Event | `evidence_review` with action `reject` | `attribution_revoked` (`trait_id`, `evidence_id`, `decision_id`, `reason`) |
+| State | `creator_rejected` | `revoked_decision_id` and `revocation_reason` |
+| Written by | `reject_evidence()` (creator) | `revoke_attribution()` (upstream attribution sync) |
+| Undone by | `restore_evidence()` (`evidence_review/restore`) | nothing: it is permanent for that decision |
+
+- `EvidenceItem.rejected` is a **read-only** compatibility property: true if either state is set. Confidence and existing readers of `rejected` and `review_note` are unchanged. `review_note` holds the note of the latest review or revocation event.
+- `evidence_review` accepts only `reject` and `restore`. Any other action refuses to replay (`DNALogError`); it used to be read as a restore.
+- `restore_evidence()` clears only the creator's rejection. It raises `DNAError` for revoked evidence and for evidence flagged as a possible legacy revocation (below). A `restore` event found in a log never touches a revocation.
+- `revoke_attribution()` records a revocation for every item stamped with the decision, including items the creator had already rejected. It skips only items already revoked, so repeated calls (and repeated `sync_revocations()`) write nothing. A revocation event that names a decision the item is not stamped with, has no reason, or revokes an item twice refuses to replay.
+- Exports: `rejected_by_creator` is true only for creator rejection. `attribution_revoked`, `revocation_decision_id` and `revocation_reason` describe revocation separately. Before v4, revoked items appeared as `rejected_by_creator`; that is no longer so for items revoked through the new event.
+
+**Legacy logs (schema v1 to v3).** Before v4 a revocation was written as an ordinary `evidence_review/reject` whose note began `attribution revoked (`, and a restore could undo it. Replay keeps the original semantics exactly: those events are creator rejections (and restores) as written. Nothing is migrated or reinterpreted, because the note text alone cannot prove who wrote the event. Only read-only warning flags are added:
+- `legacy_possible_revocation`: a pre-v4 `reject` whose note starts with `attribution revoked (`.
+- `legacy_restored_after_possible_revocation`: such an item was restored by a pre-v4 event (the evidence counted again, as it did under the old code).
+- `DNAStore.legacy_warnings()` and the export key `legacy_evidence_warnings` list them; new `restore_evidence()` calls on flagged items are refused. Calling `revoke_attribution()` for the decision records an explicit v4 revocation on a flagged item. Flags never change what counts in confidence. A v4 `reject` with a similar note is an ordinary creator rejection and gets no flag.
+- Not a legacy-preservation case: a pre-v4 log whose `evidence_review` carries an action other than `reject` or `restore` now fails to load rather than being read as a restore. None is known; no code ever wrote one.
 
 ### Human review and correction
 Library calls on `AttributionStore`: `human_confirm_span`, `human_correct_span`, `project_metadata`, `map_cluster`. Corrections never delete anything; the decision history and the overridden evidence remain. There is **no CLI or UI yet** (OPEN, Q39).
@@ -204,5 +226,6 @@ Not implemented: analysis of any real recording; any learning rule beyond the si
 
 - Source of truth: an append-only JSONL event log `events.jsonl` (strict: a torn last line, bad sequence number or unreadable event refuses to load; a size check refuses to append if another writer changed the file). The profile is rebuilt by replay; `profile.json` is a derived export written next to it.
 - The store takes any directory. The earlier suggestion (`AI/CreatorDNA/` with `profile.md`, `vocabulary.json`, …) is **not implemented**; where the real profile will live is OPEN (Q31). Avoid storing sensitive personal inferences unrelated to video production.
+- **Schema version 4 (T-DNA-001).** New since v3: the `attribution_revoked` event, independent `creator_rejected` and revocation state on evidence items (with `rejected` kept as a read-only property), strict `evidence_review` actions, legacy warning flags and the `legacy_evidence_warnings` export key. v1 to v3 logs still replay with their original semantics; new events appended to them carry `v: 4`. A reader older than v4 refuses a log that contains a v4 event (unknown event type or newer schema version).
 - **Schema version 3 (2026-11-09).** New since v2: `Evidence.attribution` (`EvidenceAttribution`), and the store **requires** it for footage-derived evidence on write. Reading older logs still works, but v2 footage evidence has no stamp: it stays visible, is never counted in confidence and is reported as `unattributed_examples`. Consumers that build evidence by hand must attach a valid stamp (the Creative Director test already does). `creator_statement` evidence is unchanged.
 - **Schema version 2.** Compared with the first version: new `asr_unverified` method, `self_report` layer, `unassessed` scope, `reviewed_by` and `origin` on evidence, optional `strength`. A v1 log containing `verbatim` evidence without a reviewer is **refused on load** (`DNALogError`); no such real log is known (the subsystem has only run on synthetic data). `AudioWindow` rejects metric names outside the contract (e.g. the earlier `pause_before_s`). Creator statements no longer back `observed` traits, and creator corrections default to the `self_report` layer.
