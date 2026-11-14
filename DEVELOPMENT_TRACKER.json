@@ -325,7 +325,7 @@
         {
           "id": "S-AST-001-00",
           "title": "Step 0: claim branch",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-AST-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
             "No overlap with another task and no edit to a package owned by someone else",
@@ -336,13 +336,25 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main bd33aa11f54cd94ce75baf228b32640fd7a351a4 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #13 merged into main (merge commit shown); reviewed head is 9dd04d766c8b037b32ed8811b730861d23639795. Merge confirmed on GitHub by Claude (state MERGED).",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/13",
+              "commit": "12c5964781261fcc49ce6e62030636aad4b64fce"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-14",
+            "source": "REPORTED: the delegated integrator told Claude in this session that claim PR #13 was merged and authorized Step 1; Claude verified only that PR #13 is MERGED on GitHub (merge commit 12c5964). Does not claim Lukas reviewed the claim or that ChatGPT re-ran any command."
+          }
         },
         {
           "id": "S-AST-001-01",
           "title": "Step 1: required-use fail-closed fix and regression tests",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "Non-empty required_uses with empty allowed_uses returns QUARANTINE (new reason code, no other severity change)",
             "Explicitly allowed uses still reach PERMITTED when all other checks pass",
