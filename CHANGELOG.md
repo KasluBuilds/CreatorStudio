@@ -4,6 +4,10 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — extend AGR-GOV-REGISTRY-01 to T-CRD-001 (integrator change)
+
+- Extends the shared-registry integration agreement to include T-CRD-001. The four covered paths and per-task record ownership rules are unchanged; the Creative Director claim must still be registered in its own claim pull request before implementation.
+
 ## Unreleased — task `T-DNA-001` claim (branch `task/t-dna-001-claim`, pending review)
 
 - Claim only: registers `T-DNA-001` (owner `claude:creator-dna-stream`, 24-hour lease) and its steps `S-DNA-001-00` (claim, `READY_FOR_REVIEW`) and `S-DNA-001-01` (implementation, `PLANNED`, not started). Owned paths include `orchestrator/creator_dna/`, `orchestrator/tests/test_creator_dna.py` and `AI_Creator_Studio_Documentation/CREATOR_DNA.md`. No source, test, documentation, status or milestone change.

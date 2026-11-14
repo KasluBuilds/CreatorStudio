@@ -100,10 +100,11 @@
   },
   "integration_agreements": {
     "AGR-GOV-REGISTRY-01": {
-      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-001 and T-DNA-001 may both edit the shared registry files at the same time. Each task may edit only its own task and step records in these files; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time.",
+      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-001, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time.",
       "task_ids": [
         "T-AST-001",
-        "T-DNA-001"
+        "T-DNA-001",
+        "T-CRD-001"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
