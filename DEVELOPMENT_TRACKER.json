@@ -4,7 +4,7 @@
   "protocol": "DEVELOPMENT_STEP_PROTOCOL.md",
   "step_statuses": {
     "PLANNED": "Defined, not started. May not start until every earlier step is COMPLETED and ChatGPT (under Lukas's standing instruction) or Lukas has authorized it.",
-    "IN_PROGRESS": "The one step currently being worked on.",
+    "IN_PROGRESS": "The one step of its task currently being worked on (the limit is per task).",
     "READY_FOR_REVIEW": "Work stopped. Evidence reported; waiting for ChatGPT's review. Claude does not approve its own step.",
     "COMPLETED": "Technically approved by ChatGPT with Lukas's confirmation recorded as DIRECT or REPORTED (see the protocol, section 3a). Terminal: never edited afterwards.",
     "BLOCKED": "Cannot proceed; blocked_reason says why."
@@ -222,6 +222,98 @@
             "date": "2026-11-13",
             "review_basis_commit": "23953857ddeda5a02f7c991a32d5ea0af464b0f1",
             "source": "REPORTED: Lukas explicitly delegated technical review, PR opening/merging and lease release to ChatGPT in this session. ChatGPT approved the final implementation head, opened and merged PR #5, and this follow-up PR records the closeout. Lukas did not independently review the code; the full-suite result is reported by Lukas and was not independently run by ChatGPT."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-GOV-003",
+      "title": "Per-task development step limit and stale authority test repair",
+      "steps": [
+        {
+          "id": "S-GOV-003-00",
+          "title": "Step 0: claim and implementation (one-time bootstrap exception)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-GOV-003 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements in the same pull request as the implementation, under the one-time bootstrap exception approved by ChatGPT",
+            "tracker_check.py enforces at most one working step per task, names the task in the error and keeps in-order steps within each task",
+            "The two stale authority tests assert the current delegated-integrator wording and the new per-task tests pass",
+            "governance validate, handoff --check, scope, tracker_check --against origin/main and the full suite pass with zero failures and zero errors",
+            "The pull request is reviewed and merged by ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Branch task/per-task-step-limit created from origin/main bd33aa11f54cd94ce75baf228b32640fd7a351a4 in a fresh worktree. Validation results are in the stop report and pull request; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by Claude Code on the working tree before the commit (the commit cannot cite its own SHA; not independently run by ChatGPT). Known skip: test_symlink_source_refused. test_development_tracker.py alone: 83 tests OK. governance validate, handoff --check, scope --base origin/main and tracker_check --against origin/main all OK.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1250 tests: OK (skipped=1)"
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #9 merged into main by ChatGPT with a merge commit (merge commit shown); reviewed head is c9b1a6010e894fe181cbd77060d4291913249250",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/9",
+              "commit": "67b70dc251a4708957f1952d6032b3a4e1735043"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed implementation head of PR #9 (claim and implementation, one-time bootstrap exception)",
+              "commit": "c9b1a6010e894fe181cbd77060d4291913249250"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-13",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, reviewed and merged PR #9 and instructed this closeout; relayed to Claude in the session and not independently verified beyond the merged state of PR #9 on GitHub. Does not claim Lukas reviewed the code or that ChatGPT re-ran the tests."
+          }
+        },
+        {
+          "id": "S-GOV-003-01",
+          "title": "Step 1: review, merge and closeout by the delegated integrator",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "ChatGPT reviews the pull request and gives written technical approval naming the reviewed commit",
+            "The merge commit is recorded and the T-GOV-003 lease is released by the integrator through a follow-up pull request"
+          ],
+          "evidence": [
+            {
+              "type": "pull_request",
+              "summary": "PR #9 reviewed and merged by ChatGPT (merge commit shown). The closeout is under way: pull request #10 records the PR #9 merge and completes S-GOV-003-00 but is not merged. A final closeout pull request, after PR #10 is merged, completes this step, records PR #10's merge commit and releases the lease and owned paths",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/9",
+              "commit": "67b70dc251a4708957f1952d6032b3a4e1735043"
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #10 reviewed by ChatGPT and merged into main. It records the PR #9 merge and completes S-GOV-003-00. This closeout step is now READY_FOR_REVIEW; a final closeout pull request will record this merge, complete S-GOV-003-01 and release the T-GOV-003 lease and owned paths.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/10",
+              "commit": "cd6412bc4d207adc238b4f400c33870e2f3b1b9f"
+            },
+            {
+              "type": "commit",
+              "summary": "PR #10 reviewed head approved by ChatGPT before merge",
+              "commit": "c05fb31bd19c6fd97463407edfd397857285e4d2"
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #11 reviewed by ChatGPT and merged into main (merge commit shown). It recorded the PR #10 merge and moved this step to READY_FOR_REVIEW. Reviewed head e4dd01cd62c3e382e5fc79bffd1387402323b677.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/11",
+              "commit": "232172e62f3f7c7d1ba04d5a438d03689b9483d2"
+            },
+            {
+              "type": "commit",
+              "summary": "PR #11 reviewed head approved by ChatGPT before merge",
+              "commit": "e4dd01cd62c3e382e5fc79bffd1387402323b677"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-14",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, reviewed and merged PR #11 (reviewed head e4dd01cd62c3e382e5fc79bffd1387402323b677, merge commit 232172e62f3f7c7d1ba04d5a438d03689b9483d2) and instructed this final closeout; relayed to Claude in the session and not independently verified beyond the merged state of PR #11 on GitHub. Does not claim Lukas reviewed the code or that ChatGPT re-ran the tests."
           }
         }
       ]

@@ -1,4 +1,5 @@
 """Validation of DEVELOPMENT_TRACKER.json: step structure, task linkage, transitions and the completion gate.
+The working-step limit (at most one IN_PROGRESS or READY_FOR_REVIEW step) and the in-order rule apply per task.
 
 Standard library only. Read-only: it never writes any project file. The tracker records *steps*; it must not
 duplicate milestone states or percentages (PROJECT_STATUS.json) or task ownership and leases (ACTIVE_TASKS.json).
@@ -25,7 +26,7 @@ TRANSITIONS = {
     "BLOCKED": {"PLANNED", "IN_PROGRESS"},
     "COMPLETED": set(),
 }
-WORKING = ("IN_PROGRESS", "READY_FOR_REVIEW")  # at most one such step per tracker
+WORKING = ("IN_PROGRESS", "READY_FOR_REVIEW")  # at most one such step per task (different tasks may each have one)
 EVIDENCE_TYPES = ("commit", "pull_request", "test_run", "observation", "document")
 # Keys that would duplicate another authoritative file. Rejected at any depth.
 FORBIDDEN_KEYS = {"weight", "weights", "percent", "percentage", "implementation_percent", "verification_percent",
@@ -130,7 +131,6 @@ def validate(doc: Any, active_tasks: Optional[Dict[str, Any]] = None) -> List[st
     if active_tasks is not None:
         known = {t.get("id") for t in active_tasks.get("tasks", []) if isinstance(t, dict)}
     seen_steps = set()
-    working: List[str] = []
     for t in tasks:
         tid = t.get("task_id") if isinstance(t, dict) else None
         if not (isinstance(tid, str) and TASK_ID.match(tid)):
@@ -143,6 +143,7 @@ def validate(doc: Any, active_tasks: Optional[Dict[str, Any]] = None) -> List[st
             problems.append(f"{tid}: needs a non-empty 'steps' list")
             continue
         prev_complete = True
+        working: List[str] = []  # the limit is per task, so it restarts for every task
         for idx, s in enumerate(steps):
             sid = s.get("id") if isinstance(s, dict) else None
             if not (isinstance(sid, str) and STEP_ID.match(sid)):
@@ -186,8 +187,8 @@ def validate(doc: Any, active_tasks: Optional[Dict[str, Any]] = None) -> List[st
             if st not in ("PLANNED", "BLOCKED") and not prev_complete:
                 problems.append(f"{sid}: {st} while an earlier step is not COMPLETED (steps run one at a time, in order)")
             prev_complete = prev_complete and st == "COMPLETED"
-    if len(working) > 1:
-        problems.append(f"only one step may be IN_PROGRESS or READY_FOR_REVIEW at a time (found {working})")
+        if len(working) > 1:
+            problems.append(f"{tid}: only one step may be IN_PROGRESS or READY_FOR_REVIEW at a time per task (found {working})")
     return sorted(set(problems))
 
 

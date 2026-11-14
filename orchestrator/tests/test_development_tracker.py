@@ -54,16 +54,16 @@ class TestRealTracker(unittest.TestCase):
         self.assertTrue(any(e["type"] == "pull_request" and e["commit"] == "27685bac2b0bc58c961e4e3d26b57af38f1bc3b2"
                             for e in s0["evidence"]))
 
-    def test_at_most_one_working_step_and_later_steps_are_blocked_from_starting(self):
-        gov = next(t for t in self.tracker["tasks"] if t["task_id"] == "T-GOV-002")
-        working = [s for s in gov["steps"] if s["status"] in tc.WORKING]
-        self.assertLessEqual(len(working), 1)
-        seen_unfinished = False
-        for s in gov["steps"]:
-            if seen_unfinished:
-                self.assertIn(s["status"], ("PLANNED", "BLOCKED"), s["id"])
-            if s["status"] != "COMPLETED":
-                seen_unfinished = True
+    def test_at_most_one_working_step_per_task_and_later_steps_are_blocked_from_starting(self):
+        for task in self.tracker["tasks"]:
+            working = [s for s in task["steps"] if s["status"] in tc.WORKING]
+            self.assertLessEqual(len(working), 1, task["task_id"])
+            seen_unfinished = False
+            for s in task["steps"]:
+                if seen_unfinished:
+                    self.assertIn(s["status"], ("PLANNED", "BLOCKED"), s["id"])
+                if s["status"] != "COMPLETED":
+                    seen_unfinished = True
 
     def test_tracker_holds_no_milestone_or_lease_data(self):
         keys = {k.lower() for _, k, _ in tc._walk(self.tracker)}
@@ -83,18 +83,34 @@ class TestRealTracker(unittest.TestCase):
         proto = (ROOT / "DEVELOPMENT_STEP_PROTOCOL.md").read_text(encoding="utf-8")
         self.assertIn("## 3a. Who decides what", proto)
         section = proto.split("## 3a. Who decides what", 1)[1].split("\n## ", 1)[0]
-        for needle in ("standing instruction", "Technically approve", "forbidden", "Lukas only", "DIRECT", "REPORTED",
+        for needle in ("standing instruction", "Technically approve", "forbidden", "default integrator",
+                       "ChatGPT under Lukas's explicit standing delegation", "Claude never does these",
+                       "Lukas retains final authority", "DIRECT", "REPORTED",
                        "must not claim that Lukas reviewed the code", "READY_FOR_REVIEW"):
             self.assertIn(needle, section)
         # The old contradictory rules are gone.
         self.assertNotIn("only Lukas starts the next step", proto)
         self.assertNotIn("stays `PLANNED` and blocked until Lukas explicitly says to continue", proto)
-        # Claude still stops, never self-approves; merging and lease release stay with Lukas.
+        # Claude still stops, never self-approves; merging and lease release belong to the delegated integrator.
+        self.assertNotIn("Lukas alone opens or merges", proto)
         self.assertIn("**stop**", proto)
         self.assertIn("never approves its own step", proto)
         pop = (ROOT / "PROJECT_OPERATING_PROTOCOL.md").read_text(encoding="utf-8")
-        self.assertIn("Lukas alone opens or merges pull requests and releases leases", pop)
+        self.assertNotIn("Lukas alone opens or merges", pop)
+        self.assertIn("Claude never approves its own step, merges PRs or releases leases", pop)
+        self.assertIn("ChatGPT handles task PR opening/merging and lease release under Lukas's explicit standing delegation", pop)
         self.assertIn("never approves its own step", pop)
+
+    def test_protocol_says_the_working_step_limit_is_per_task(self):
+        proto = (ROOT / "DEVELOPMENT_STEP_PROTOCOL.md").read_text(encoding="utf-8")
+        item = next(l for l in proto.splitlines() if l.startswith("1. **One step at a time"))
+        for needle in ("per task", "Different tasks may each have one", "one writer to `main`", "claims and leases"):
+            self.assertIn(needle, item)
+        self.assertNotIn("At most one step is `IN_PROGRESS`", item)  # the old global wording
+        pop = (ROOT / "PROJECT_OPERATING_PROTOCOL.md").read_text(encoding="utf-8")
+        self.assertIn("the working-step limit is per task", pop)
+        for text in (proto, pop):
+            self.assertIn("one-time bootstrap exception", text)
 
     def test_real_completion_sources_are_labelled(self):
         real = json.loads((ROOT / "DEVELOPMENT_TRACKER.json").read_text(encoding="utf-8"))
@@ -196,7 +212,9 @@ class TestTransitionsAndGate(unittest.TestCase):
         text = task["description"] + " " + " ".join(task["acceptance_criteria"])
         self.assertNotIn("blocked until Lukas explicitly says to continue", text)
         self.assertIn("standing instruction", text)
-        self.assertIn("Lukas alone opens or merges pull requests and releases leases", text)
+        self.assertNotIn("Lukas alone opens or merges", text)
+        self.assertIn("Claude never self-approves, merges PRs or releases leases", text)
+        self.assertIn("Lukas retains final authority", text)
         self.assertIn("never", text.lower())  # Claude never approves its own step
         self.assertEqual(set(tc.TRANSITIONS), set(tc.STATUSES))
 
@@ -259,6 +277,68 @@ class TestTransitionsAndGate(unittest.TestCase):
         d2 = copy.deepcopy(d)
         d2["tasks"][0]["steps"][2]["status"] = "IN_PROGRESS"  # starting the next step without Lukas's completion record
         self.assertTrue(tc.validate(d2))
+
+
+def task(task_id, *steps):
+    return {"task_id": task_id, "title": task_id, "steps": list(steps)}
+
+
+def astep(n, status="PLANNED", prefix="AST-001", **extra):
+    s = step(n, status, **extra)
+    s["id"] = f"S-{prefix}-{n:02d}"
+    return s
+
+
+def multi(*tasks):
+    return {"schema_version": 1, "authority": "a", "protocol": "DEVELOPMENT_STEP_PROTOCOL.md", "tasks": list(tasks)}
+
+
+MULTI_REGISTRY = {"tasks": [{"id": "T-GOV-002"}, {"id": "T-AST-001"}]}
+
+
+class TestPerTaskLimit(unittest.TestCase):
+    def test_two_tasks_may_each_have_one_working_step(self):
+        for a, b in (("IN_PROGRESS", "IN_PROGRESS"), ("READY_FOR_REVIEW", "IN_PROGRESS"),
+                     ("READY_FOR_REVIEW", "READY_FOR_REVIEW")):
+            d = multi(task("T-GOV-002", step(0, "COMPLETED"), step(1, a), step(2)),
+                      task("T-AST-001", astep(0, b), astep(1)))
+            self.assertEqual(tc.validate(d, MULTI_REGISTRY), [], (a, b))
+
+    def test_two_working_steps_in_one_task_are_rejected_and_name_the_task(self):
+        d = multi(task("T-GOV-002", step(0, "COMPLETED"), step(1, "IN_PROGRESS"), step(2, "READY_FOR_REVIEW")),
+                  task("T-AST-001", astep(0, "IN_PROGRESS"), astep(1)))
+        problems = [p for p in tc.validate(d, MULTI_REGISTRY) if "only one step" in p]
+        self.assertEqual(len(problems), 1)
+        self.assertTrue(problems[0].startswith("T-GOV-002:"), problems[0])
+        self.assertNotIn("T-AST-001", problems[0])
+        # the second task breaking the limit is reported for that task instead
+        d = multi(task("T-GOV-002", step(0, "IN_PROGRESS")),
+                  task("T-AST-001", astep(0, "COMPLETED"), astep(1, "IN_PROGRESS"), astep(2, "IN_PROGRESS")))
+        problems = [p for p in tc.validate(d, MULTI_REGISTRY) if "only one step" in p]
+        self.assertEqual(len(problems), 1)
+        self.assertTrue(problems[0].startswith("T-AST-001:"), problems[0])
+
+    def test_ordering_is_enforced_independently_per_task(self):
+        # task B starting step 1 over an unfinished step 0 fails even though task A is perfectly fine
+        d = multi(task("T-GOV-002", step(0, "COMPLETED"), step(1, "IN_PROGRESS")),
+                  task("T-AST-001", astep(0, "PLANNED"), astep(1, "IN_PROGRESS")))
+        problems = tc.validate(d, MULTI_REGISTRY)
+        self.assertTrue(any("S-AST-001-01" in p and "earlier step is not COMPLETED" in p for p in problems), problems)
+        self.assertFalse(any("S-GOV-002" in p for p in problems), problems)
+        # an unfinished step in task A does not hold back task B's steps
+        d = multi(task("T-GOV-002", step(0, "IN_PROGRESS"), step(1)),
+                  task("T-AST-001", astep(0, "COMPLETED"), astep(1, "IN_PROGRESS")))
+        self.assertEqual(tc.validate(d, MULTI_REGISTRY), [])
+
+    def test_unregistered_task_is_still_rejected(self):
+        d = multi(task("T-GOV-002", step(0, "IN_PROGRESS")), task("T-AST-001", astep(0, "IN_PROGRESS")))
+        problems = tc.validate(d, REGISTRY)
+        self.assertTrue(any(p.startswith("T-AST-001:") and "not registered" in p for p in problems), problems)
+        self.assertEqual([p for p in problems if "only one step" in p], [])
+
+    def test_real_tracker_validates_under_the_per_task_rule(self):
+        tracker, registry = tc.load(ROOT)
+        self.assertEqual(tc.validate(tracker, registry), [])
 
 
 class TestCli(unittest.TestCase):

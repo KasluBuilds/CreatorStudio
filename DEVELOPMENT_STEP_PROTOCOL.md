@@ -1,6 +1,6 @@
 # Development Step Protocol
 
-Mandatory for every Claude Code session. Established by task `T-GOV-002`. It sits under `PROJECT_OPERATING_PROTOCOL.md` (which governs branches, claims, leases, merging) and adds one rule: **work advances one reviewed step at a time; Claude never approves its own step or starts the next one on its own authority.** Who may approve and advance is set out in section 3a.
+Mandatory for every Claude Code session. Established by task `T-GOV-002`. It sits under `PROJECT_OPERATING_PROTOCOL.md` (which governs branches, claims, leases, merging) and adds one rule: **within each task, work advances one reviewed step at a time; Claude never approves its own step or starts the next one on its own authority.** Who may approve and advance is set out in section 3a.
 
 Labels: **PROCEDURE** = a rule people follow; nothing but review enforces it. **CHECKED** = `dashboard/tracker_check.py` and the tests reject a tracker file that breaks it.
 
@@ -17,13 +17,13 @@ Labels: **PROCEDURE** = a rule people follow; nothing but review enforces it. **
 
 ## 3. The workflow
 
-1. **One step at a time.** At most one step is `IN_PROGRESS` or `READY_FOR_REVIEW`; steps run in order, and none starts while an earlier one is not `COMPLETED` (CHECKED).
+1. **One step at a time, per task.** Within each task at most one step is `IN_PROGRESS` or `READY_FOR_REVIEW`; steps run in order, and none starts while an earlier step of the same task is not `COMPLETED` (CHECKED per task). Different tasks may each have one working step at the same time. This changes only the step limit: one task branch and worktree per Claude task, claims and leases (`PROJECT_OPERATING_PROTOCOL.md` section 6), one writer to `main` and one pull request integrated at a time are unchanged.
 2. **Start.** Set the step `IN_PROGRESS`. Only start it when the previous step is `COMPLETED` and an authorized party (section 3a) has told Claude to proceed (PROCEDURE).
 3. **Stop at `READY_FOR_REVIEW`.** When the acceptance criteria are met, set `READY_FOR_REVIEW`, commit and push the branch, and **stop**. Claude does not start the next step, open a different task, merge anything or declare the step complete.
 4. **Report.** The stop report contains: exact files changed; the exact commands run and their results; evidence (commit SHAs, test output); unresolved issues and anything not verified; the branch head and whether the working tree is clean; and whether the terminal is safe to clear.
 5. **Review.** ChatGPT reviews the evidence in the repository and either asks for corrections (the step goes back to `IN_PROGRESS`) or gives technical approval (PROCEDURE).
 6. **Complete.** Only after an explicit, written technical approval from ChatGPT that names the reviewed commit, a later commit sets `COMPLETED` and fills the completion record. Claude never infers approval from silence, from a green test run or from its own judgment (PROCEDURE).
-7. **Continue.** The next step stays `PLANNED` until the approval in step 6 also says to proceed, or until Lukas says so. Without one of those, explicitly given, it stays blocked. There is no silent progression and no task switching (PROCEDURE).
+7. **Continue.** The next step stays `PLANNED` until the approval in step 6 also says to proceed, or until Lukas says so. Without one of those, explicitly given, it stays blocked. There is no silent progression and no task switching: a session stays on its own task and step (PROCEDURE).
 
 ## 3a. Who decides what
 
@@ -58,3 +58,4 @@ Nothing in GitHub blocks a session from ignoring this protocol (the repository h
 2026-11-12: created by `T-GOV-002` step 01. Same day, after review: historical transition checking added to the CLI as `--against REF`; this document now states that it is only checked when a base is supplied.
 2026-11-12: `T-GOV-002` step 04 resolved a contradiction. The protocol reserved starting the next step to Lukas alone, while Lukas had given ChatGPT a standing instruction to approve technical acceptance and advance between steps. Section 3a now states who decides what; Claude still stops at `READY_FOR_REVIEW` and never self-approves. The completion gate was not weakened: it additionally requires the `source` to begin with `DIRECT` or `REPORTED`.
 2026-11-13: Lukas explicitly delegated routine technical review, task PR opening/merging and lease release to ChatGPT as the default integrator. Section 3a records this standing delegation; Claude remains prohibited from merging PRs or releasing leases, and Lukas retains final authority.
+2026-11-13: `T-GOV-003` changed the working-step limit from one per tracker to one per task. `tracker_check.py` now counts `IN_PROGRESS`/`READY_FOR_REVIEW` steps inside each task, so different tasks may each have one; ordering stays sequential within each task. Claims, leases, one writer to `main`, one pull request integrated at a time and Claude stopping at `READY_FOR_REVIEW` are unchanged. T-GOV-003 was claimed and implemented in one pull request as a **one-time bootstrap exception** approved by ChatGPT as delegated integrator (the global limit and two stale authority tests blocked a separate claim pull request); this is not a general workflow and every later task needs its own claim pull request.
