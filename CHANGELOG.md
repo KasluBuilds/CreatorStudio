@@ -4,6 +4,11 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-AST-001` start and registry agreement (branch `task/asset-required-uses-start`, pending review)
+
+- Governance-only: records claim PR #13 merged (merge commit `12c5964781261fcc49ce6e62030636aad4b64fce`) with `S-AST-001-00` `COMPLETED`, and sets `S-AST-001-01` `IN_PROGRESS`. No Asset code or tests.
+- Adds integration agreement `AGR-GOV-REGISTRY-01` (T-AST-001 and T-DNA-001 may each edit only their own records in `ACTIVE_TASKS.json`, `DEVELOPMENT_TRACKER.json`, `CHANGELOG.md`, `SESSION_HANDOFF.md`; changelog append-only; handoff regenerated; merges serialized by ChatGPT) and lists it on T-AST-001 only. T-DNA-001's entry is not edited here.
+
 ## Unreleased — task `T-AST-001` claim (branch `task/asset-required-uses-fail-closed`, pending review)
 
 - Claim only: registers `T-AST-001` (owner `claude:asset-stream`, 24-hour lease, restarted 2026-11-14 when the branch was refreshed with `origin/main` adc0f99) and its steps `S-AST-001-00` (claim, `READY_FOR_REVIEW`) and `S-AST-001-01` (implementation, `PLANNED`, not started). No source, test, status or milestone change.
