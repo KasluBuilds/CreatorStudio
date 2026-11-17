@@ -1,0 +1,16 @@
+{
+  "lane": "L6",
+  "status": "DONE",
+  "summary": "IMPLEMENTED: orchestrator/dev_supervisor/github_log.py (11-kind Event model with evidence refs and source label, scrubber for tokens/key-value secrets/userinfo/query strings/absolute and personal paths/long opaque strings, Markdown renderer with @mention and marker-forgery neutralisation, Runner protocol, GhRunner over the gh CLI with argument lists and stdin bodies, GitHubLogger with atomic machine-local spool, posted-id ledger, per-issue batching, rate limiting, bounded retries with exponential backoff, marker read-back before re-posting after an ambiguous failure, refusal log without content, sub-task issue helper with parent back-reference and per-task idempotency, close_issue). TESTED: 98 offline unit tests with a fake runner; subprocess and sockets patched to fail in the flow test. OBSERVED live (one harmless comment on issue #50 through GhRunner; second log of the same event returned 'duplicate'; read-after-write via GhRunner.event_ids and via gh issue view found exactly 1 comment carrying the marker). NOT TESTED: live issue create/close through GhRunner, GhRunner transient-error classification against real gh failures, concurrent processes on one state dir (no file lock). PROPOSED: wiring into the supervisor loop (other lanes).",
+  "commands": [
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_github_log.py", "result": "Ran 98 tests: OK"},
+    {"command": "python -B -I <scratch live script>: GitHubLogger(GhRunner(repo=KasluBuilds/CreatorStudio)).log(event, issue 50) twice, then GhRunner.event_ids(50)", "result": "posted / duplicate / marker 1ee7c0de50000006 found (OBSERVED)"},
+    {"command": "gh issue view 50 --json comments --jq '[.comments[] | select(.body|contains(\"dev-event:1ee7c0de50000006\"))] | length'", "result": "1 (OBSERVED)"}
+  ],
+  "unresolved": [
+    "orchestrator/dev_supervisor/__init__.py is owned by another lane; tests rely on the package resolving (namespace package until it lands), not re-tested after that merge here",
+    "Single-process assumption per state directory: no file lock (open)",
+    "Live create_issue/close_issue not exercised to avoid creating or closing real issues (NOT TESTED)"
+  ],
+  "changelog": "T-DEV-006: dev_supervisor.github_log - scrubbed, refusal-safe, spool-backed idempotent GitHub progress log with gh runner; 98 offline tests."
+}
