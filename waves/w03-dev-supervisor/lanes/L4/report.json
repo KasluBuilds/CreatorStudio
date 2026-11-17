@@ -1,0 +1,15 @@
+{
+  "lane": "L4",
+  "status": "DONE",
+  "summary": "IMPLEMENTED: orchestrator/dev_supervisor/omniroute.py (injected-transport OmniRoute client, localhost-only by default, key read at call time only, error classes, 5-task deterministic benchmark harness, results JSON without secrets) and routing.py (deterministic explained task-profile scheduler; UNAVAILABLE signals neutral; paid route excluded unless allow_paid_api). TESTED: 70 offline tests, sockets blocked. OBSERVED (single live run vs local OmniRoute, see OMNIROUTE_BENCHMARK.md): gemini-3.1-flash-lite 5/5, gemini-3-flash-preview 4/5; other Gemini routes failed with not_found/rate_limited/timeout/upstream_error; both Groq routes auth_error. NOT TESTED: long contexts, multi-turn tool use, Claude Code through OmniRoute, authenticated requests (no key was available), repeat runs. Nothing is VERIFIED. PROPOSED: scoring weights and thresholds in routing.py are design choices, not calibrated.",
+  "commands": [
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_routing.py", "result": "Ran 70 tests: OK"},
+    {"command": "cd orchestrator && python -B -m dev_supervisor.omniroute --out <results.json> --timeout 45", "result": "live run, 7 Gemini/Groq routes, 2 answered (see OMNIROUTE_BENCHMARK.md)"}
+  ],
+  "unresolved": [
+    "Groq routes return auth_error via OmniRoute: Groq provider connection likely needs the user to check in OmniRoute (not investigated, no credentials touched)",
+    "Gemini 2.5/3.5 routes rate_limited or not_found in this window: rerun later and check omniroute quota",
+    "orchestrator/dev_supervisor/__init__.py is owned by another lane; tests import the package as a namespace package until it lands"
+  ],
+  "changelog": "w03 L4: dev supervisor routing scheduler and OmniRoute client/benchmark harness with 70 offline tests; live benchmark OBSERVED (2 of 7 Gemini/Groq routes fully answered)."
+}
