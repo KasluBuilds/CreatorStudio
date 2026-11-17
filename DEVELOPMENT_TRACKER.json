@@ -527,7 +527,7 @@
         {
           "id": "S-CRD-001-00",
           "title": "Step 0: claim branch",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-CRD-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
             "No overlap with another task and no edit to a package owned by someone else; no other task's record is edited",
@@ -538,13 +538,25 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main a6a89a2 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #18 merged into main (merge commit shown); reviewed head is 2e2e48e28b0c6e2d4eee0c2350bf83e60b451921. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:41:11Z) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/18",
+              "commit": "9dfaec269e62461b0a5d27edcf03bece9d466511"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: the integrator (ChatGPT, under Lukas's standing delegation) told Claude in this session that claim PR #18 was merged and that T-CRD-001 is officially authorized, with Step 1 to be completed as one implementation batch in one PR; this is delegated technical approval, not a claim that Lukas personally reviewed the code. Claude verified only that PR #18 is MERGED on GitHub (merge commit 9dfaec269e62461b0a5d27edcf03bece9d466511, head 2e2e48e) and that the merge commit is an ancestor of origin/main. Does not claim ChatGPT re-ran any command."
+          }
         },
         {
           "id": "S-CRD-001-01",
           "title": "Step 1: exact Research contract, safety metadata, research digest, tests and README",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "Exact research->creative_director/0.3 contract; invalid versions produce no partial Research context",
             "Original Research claim status, safety_critical, unresolved_safety_warning and producer usage preserved as typed metadata; missing or malformed safety metadata fails closed",
