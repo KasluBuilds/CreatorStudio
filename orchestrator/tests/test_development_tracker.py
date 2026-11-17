@@ -447,7 +447,10 @@ class TestCliAgainstBase(unittest.TestCase):
         self.commit(snapshot("PLANNED", "READY_FOR_REVIEW"), "main step review")
         main_ref = self.git("rev-parse", "HEAD")
         self.git("checkout", "task")
-        self.git("merge", "--no-ff", "-m", "merge main", "main")
+        # Both sides changed the same JSON file. Resolve the merge explicitly with the
+        # task-side step plus main's completed step, as a real integrator would.
+        self.git("merge", "--no-ff", "--no-commit", "--strategy=ours", "main")
+        self.commit(snapshot("IN_PROGRESS", "READY_FOR_REVIEW"), "merge main tracker resolution")
         self.commit(snapshot("READY_FOR_REVIEW", "READY_FOR_REVIEW"), "finish task step")
         task_head = self.git("rev-parse", "HEAD")
         self.git("checkout", "main")
@@ -488,7 +491,7 @@ class TestCliAgainstBase(unittest.TestCase):
         self.write(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS")))
         code, out = self.run_cli("--against", "HEAD")
         self.assertEqual(code, 0, out)
-        self.assertIn("nothing to compare", out)
+        self.assertIn("no tracker at HEAD", out)
 
     def test_bad_refs_and_missing_values_exit_2(self):
         self.commit(doc(step(0)))
