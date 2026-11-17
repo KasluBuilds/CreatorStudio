@@ -1,0 +1,27 @@
+{
+  "lane": "L1",
+  "status": "DONE",
+  "summary": "Implemented the offline, transport-injected acquisition step for the Asset Agent (T-AST-003): orchestrator/assets/acquisition.py (Transport protocol, bounded fetch with https-only, per-provider host allow-list also checked after redirects, byte limit, content-type allow-list and magic-byte check, atomic staging then AssetLibrary.add copy with sha256 re-verification, scrubbed errors, no partial files on any failure path, candidate quarantine ledger, licence-text snapshot evidence with hash/url/date/verifier, reverify_license drift detection that holds the asset without deleting anything, deterministic find_and_acquire report), local_provider.py (LocalFolderProvider with a strict sidecar rights schema; originals only read), openverse.py (pure request builder and response parser over the transport; images and audio) and additive fields on AssetCandidate. Acquired assets always land QUARANTINED; only a named human attestation can approve them. 135 new offline unit tests, including one that patches the socket layer to fail and one that proves the modules import no network code. NOT VERIFIED: nothing was run against the live Openverse service or with real media; Openverse fixtures are authored from the public API documentation, not recorded. Nothing here is VERIFIED.",
+  "commands": [
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+      "result": "Ran 149 tests: OK (skipped=1; the skip is the symlink test, symlinks unavailable)"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
+      "result": "Ran 135 tests: OK (skipped=1; symlink test, symlinks unavailable)"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+      "result": "Ran 1442 tests: OK (skipped=4) before the final gate tightening (133 acquisition tests then); only test_assets.py and test_asset_acquisition.py were re-run afterwards"
+    }
+  ],
+  "unresolved": [
+    "INTERPRETATION APPLIED (per Lukas's standing delegation relayed 2026-11-17): ACQUIRABLE is a technical preflight state, not rights clearance and not the literal PERMITTED criterion, which is never met before a file exists and a named human attests. Fetch-eligible only when triage is not reject and every quarantine reason is resolved by acquisition itself or cleared by a later human attestation; a local file with an undocumented licence claim (LOCAL_LICENSE_UNDOCUMENTED) and a user_owned claim on a remote file (USER_OWNED_REMOTE) are held; user_owned without an owner_declaration never becomes user-owned. All acquired assets stay QUARANTINED.",
+    "M-AST-02 is NOT complete with this lane alone. Remaining before its acceptance criteria can be claimed: (a) a run of OpenverseProvider against the live service and a choice of download-host allow-list (NOT TESTED); (b) a Wikimedia Commons adapter if wanted; (c) integration of the Research asset-request pack into AssetRequest and of the report into the Creative Director (cross-package, needs the research and creative_director owners and an integration agreement); (d) real-media verification on reviewed input. PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, CHANGELOG.md and SESSION_HANDOFF.md are shared records a lane may not edit: the integrator should reflect M-AST-02 as IN_PROGRESS (implementation partly IMPLEMENTED, verification UNIT_ISOLATED) at wave close.",
+    "AssetCandidate gained optional fields (download_url, license_text_url, expected_sha256, local_path, claimed_basis, owner_declaration); sanitize_candidate and candidate_to_record were extended additively and the 149 existing asset tests still pass. The research and creative_director packages do not use AssetCandidate, but the owners should be told.",
+    "A licence-page hash detects that the page text changed, not that the licence terms changed; pages with dynamic boilerplate will cause false drift (it fails closed). Whether to hash a normalised legal-code text instead is an open question listed in ASSETS.md section 8.7.",
+    "The new full-suite run took about 292 s here versus about 54 s reported for CI; the difference was not investigated."
+  ],
+  "changelog": "T-AST-003 (wave w01, lane L1): Asset acquisition pipeline, offline and transport-injected: bounded fetch, quarantined library records, licence-text evidence with drift detection, LocalFolderProvider (strict sidecar schema) and Openverse request builder/parser (NOT TESTED live); 135 new unit tests; nothing is VERIFIED."
+}
