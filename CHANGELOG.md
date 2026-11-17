@@ -4,6 +4,11 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-AST-002` Step 1 (branch `task/asset-required-uses-fail-closed-recovery`, `READY_FOR_REVIEW`, pending review)
+
+- `evaluate_rights` in `orchestrator/assets/rights.py` now fails closed: a non-empty `UseContext.required_uses` against an empty `allowed_uses` quarantines with the new reason code `USE_NOT_DECLARED` instead of passing silently (found in the Asset Agent rights audit of 2026-11-13). Explicitly allowed uses still pass and a required use missing from a non-empty `allowed_uses` still quarantines as `USE_NOT_ALLOWED`. No other rights-policy change.
+- Three synthetic regression tests added to `orchestrator/tests/test_assets.py`. Continues the abandoned `T-AST-001` work by re-applying its `rights.py`/test diff (from `cc98875`); PR #17 and that branch/worktree are untouched. Implemented and tested on synthetic data only; not VERIFIED on real asset records. `PROJECT_STATUS.json` is unchanged. `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## Unreleased — task `T-AST-002` Step 0 closeout (branch `task/t-ast-002-step0-closeout`, pending review)
 
 - Administrative only: takeover claim PR #22 was technically approved by ChatGPT (delegated integrator under Lukas's standing instruction; this does not claim Lukas personally reviewed the code) and merged into `main` (merge commit `db2fb3554ede9655b79aa4f7ad6233a0651805c5`; reviewed head `7c2d35f8ff42d04682a51b427c449689f8cd22ad`). `S-AST-002-00` moves to `COMPLETED` with a `REPORTED` completion record dated 2026-11-17. `T-AST-002` stays `ACTIVE`; `S-AST-002-01` stays `PLANNED` and is not started. `T-AST-001` history, PR #17 and the abandoned branch/worktree are untouched. `SESSION_HANDOFF.md` regenerated with the official command.
