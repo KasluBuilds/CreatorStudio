@@ -833,12 +833,28 @@
         {
           "id": "S-GOV-006-00",
           "title": "Step 0: verify merge-base fix and workflow closeout allowance (claim, fix and closeout in one pull request)",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "verify ignores main's files and catches real strays",
             "workflow accepts the closeout commit on wave pushes"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Head on which the checks below were run before the closeout commits.",
+              "commit": "b88adbfae81ab35e2b8d4c92a71b06cd27038ec9"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run locally by Claude Code: the verify tests including the new git test (main merged into the wave branch, a real stray still caught) and the workflow assertion.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py -k verify",
+              "result": "Ran 3 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "Reproduced on the real wave w01: the push-event run failed after wave close with 'belongs to no lane' for the four closeout files, and verify flagged every file merged in from main until base_commit was moved by hand. The fix removes both."
+            }
+          ]
         }
       ]
     }
