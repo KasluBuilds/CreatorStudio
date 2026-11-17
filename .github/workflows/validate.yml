@@ -65,6 +65,11 @@ jobs:
       - name: Full test suite
         shell: bash
         working-directory: orchestrator
+        # The runner's default TEMP is an 8.3 short path (RUNNER~1) while Python reports the long form;
+        # four existing ingest tests compare the two. A long temp directory avoids that without editing the tests.
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: python -B -I -m unittest discover -s tests
 
       - name: Secret scan of added lines
