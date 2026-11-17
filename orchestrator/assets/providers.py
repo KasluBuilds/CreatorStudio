@@ -1,10 +1,10 @@
-"""Provider interfaces for FUTURE asset search / generation. No concrete provider, no network,
-no downloader exists in this package.
+"""Provider interfaces for asset search / generation. Nothing here touches the network.
 
 Everything a provider returns is untrusted: it is validated, sanitised, and converted only into
 a PROVISIONAL record that is UNVERIFIED and carries "claim"-strength evidence, so it can never
-reach `permitted` / `approved` on the provider's say-so. A candidate has no local file until a
-separate, explicit acquisition step (not implemented) exists.
+reach `permitted` / `approved` on the provider's say-so. A candidate has no local file until the
+separate, explicit acquisition step (acquisition.py) runs, and even then it stays quarantined
+until a named human attests the rights facts.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from typing import Optional, Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
 from .evaluation import AssetRequest
-from .models import (AssetRecord, Category, Evidence, ManifestError, MediaType, RightsBasis, Watermark,
+from .models import (SHA256_RE, AssetRecord, Category, Evidence, ManifestError, MediaType, RightsBasis, Watermark,
                      clean_text, norm_tag, parse_date)
 from .rights import RightsDecision, UseContext, evaluate_rights, parse_license
 
@@ -42,6 +42,16 @@ class AssetCandidate:
     claims_preview: bool = False
     generated: bool = False
     notes: str = ""
+    # --- acquisition inputs (all optional; added by T-AST-003, defaults keep older callers working) ---
+    download_url: str = ""          # https URL of the file; only the acquisition step ever fetches it
+    license_text_url: str = ""      # https URL of the licence text to snapshot as evidence
+    expected_sha256: str = ""       # a provider-declared checksum; a mismatch aborts acquisition
+    local_path: str = ""            # a user-supplied local file (mutually exclusive with download_url)
+    claimed_basis: str = ""         # only "user_owned" is honoured here; everything else derives from the licence name
+    owner_declaration: str = ""     # the user's own statement of ownership (sidecar); evidence of strength "declaration"
+
+
+CLAIMED_BASES = ("", "user_owned", "public_domain", "creative_commons", "licensed_other")
 
 
 @runtime_checkable
@@ -76,9 +86,37 @@ def _safe_url(url: str) -> str:
     return f"{p.scheme}://{p.hostname}{p.path}"[:500]
 
 
+def safe_fetch_url(url: object) -> str:
+    """A URL that acquisition may fetch: https only, a host, no embedded credentials, no control
+    characters, at most 1000 characters. Unlike _safe_url the query string is kept (a download link may
+    need it) so it must never be logged or stored: only _safe_url output is persisted. "" if unusable."""
+    if not isinstance(url, str) or not url or len(url) > 1000 or any(ord(ch) < 33 for ch in url):
+        return ""
+    try:
+        p = urlsplit(url)
+        port = p.port
+    except ValueError:
+        return ""
+    if p.scheme != "https" or not p.hostname or p.username or p.password or port not in (None, 443) or p.fragment:
+        return ""
+    return url
+
+
 def sanitize_candidate(c: AssetCandidate) -> AssetCandidate:
     """Raise ManifestError if the candidate is unusable; otherwise return a cleaned copy."""
     p: list[str] = []
+    for key in ("download_url", "license_text_url"):
+        raw = getattr(c, key, "")
+        if raw and not safe_fetch_url(raw):
+            p.append(f"{key}: must be a plain https URL")
+    exp = getattr(c, "expected_sha256", "")
+    if exp and not (isinstance(exp, str) and SHA256_RE.fullmatch(exp)):
+        p.append("expected_sha256: must be 64 lowercase hex characters")
+    basis = getattr(c, "claimed_basis", "")
+    if basis not in CLAIMED_BASES:
+        p.append("claimed_basis: not an accepted value")
+    if getattr(c, "download_url", "") and getattr(c, "local_path", ""):
+        p.append("download_url and local_path are mutually exclusive")
     if not isinstance(c.category, Category) or not isinstance(c.media_type, MediaType):
         raise ManifestError("candidate: category/media_type invalid")
     for k in ("claimed_commercial_use", "claimed_modification", "claims_watermarked"):
@@ -100,7 +138,12 @@ def sanitize_candidate(c: AssetCandidate) -> AssetCandidate:
         claimed_commercial_use=c.claimed_commercial_use, claimed_modification=c.claimed_modification,
         claimed_attribution_text=clean_text(c.claimed_attribution_text, "attribution", 1000, p),
         claims_watermarked=c.claims_watermarked, claims_preview=bool(c.claims_preview),
-        generated=bool(c.generated), notes=clean_text(c.notes, "notes", 1000, p))
+        generated=bool(c.generated), notes=clean_text(c.notes, "notes", 1000, p),
+        download_url=getattr(c, "download_url", "") if not p else "",
+        license_text_url=getattr(c, "license_text_url", "") if not p else "",
+        expected_sha256=exp if isinstance(exp, str) else "", local_path=clean_text(getattr(c, "local_path", ""), "local_path", 1000, p),
+        claimed_basis=basis if basis in CLAIMED_BASES else "",
+        owner_declaration=clean_text(getattr(c, "owner_declaration", ""), "owner_declaration", 1000, p))
     if not out.provider or not out.external_id or not out.title:
         p.append("provider, external_id and title are required")
     if p:
@@ -115,17 +158,23 @@ def candidate_to_record(c: AssetCandidate, asset_id: str, today: str) -> AssetRe
     basis = RightsBasis.UNKNOWN
     if c.generated:
         basis = RightsBasis.GENERATED
+    elif c.claimed_basis == "user_owned" and c.owner_declaration:
+        basis = RightsBasis.USER_OWNED   # a claim; rights still need a recorded user_declaration attestation
     elif c.claimed_license_name:
         t = parse_license(c.claimed_license_name)
         basis = RightsBasis.CREATIVE_COMMONS if t is not None and t.attribution else \
             RightsBasis.PUBLIC_DOMAIN if t is not None else RightsBasis.LICENSED_OTHER
     wm = Watermark.WATERMARKED if c.claims_watermarked else Watermark.UNCHECKED  # a claim of "clear" is not accepted
     desc = f"claim by provider {c.provider!r} (id {c.external_id}); not independently verified"
+    evidence = [Evidence("provider_claim", desc, c.source_url, captured_at=parse_date(today, "today"), strength="claim")]
+    if basis is RightsBasis.USER_OWNED:
+        evidence.append(Evidence("owner_declaration", c.owner_declaration, captured_at=parse_date(today, "today"),
+                                 strength="declaration"))
     return AssetRecord(
         asset_id=asset_id, title=c.title, category=c.category, media_type=c.media_type, tags=c.tags,
         source=c.provider, source_url=c.source_url, creator=c.creator, rights_basis=basis,
         license_name=c.claimed_license_name, license_url=c.claimed_license_url,
-        evidence=[Evidence("provider_claim", desc, c.source_url, captured_at=parse_date(today, "today"), strength="claim")],
+        evidence=evidence,
         attribution_text=c.claimed_attribution_text, commercial_use_allowed=c.claimed_commercial_use,
         modification_allowed=c.claimed_modification, acquisition_date="", watermark_status=wm,
         is_preview=c.claims_preview, notes=c.notes)
