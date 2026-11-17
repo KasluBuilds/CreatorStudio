@@ -277,10 +277,15 @@ def evaluate_rights(rec: AssetRecord, ctx: Optional[UseContext] = None) -> Right
                 add("RESTRICTION_NOTED", "info", f"restriction {r!r} noted")
             elif (kind == "commercial" and ctx.commercial) or (kind == "modification" and ctx.modification):
                 add("RESTRICTION_INCOMPATIBLE", "reject", f"restriction {r!r} conflicts with intended use")
-    if ctx.required_uses and rec.allowed_uses:
-        missing = [u for u in ctx.required_uses if u not in rec.allowed_uses]
-        if missing:
-            add("USE_NOT_ALLOWED", "quarantine", f"intended use not in allowed_uses: {missing}")
+    if ctx.required_uses:
+        if not rec.allowed_uses:
+            # Fail closed: a required use cannot be confirmed against an empty allow-list.
+            add("USE_NOT_DECLARED", "quarantine",
+                f"required uses {list(ctx.required_uses)} cannot be confirmed: allowed_uses is empty")
+        else:
+            missing = [u for u in ctx.required_uses if u not in rec.allowed_uses]
+            if missing:
+                add("USE_NOT_ALLOWED", "quarantine", f"intended use not in allowed_uses: {missing}")
 
     # 5. evidence: right kind and strength for the basis, and no contradiction
     if not rec.evidence:

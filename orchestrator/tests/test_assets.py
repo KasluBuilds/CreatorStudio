@@ -203,6 +203,29 @@ class TestRights(unittest.TestCase):
         d = evaluate_rights(r, UseContext(required_uses=("social_media",)))
         self.assertIn("USE_NOT_ALLOWED", d.codes())
 
+    def test_required_use_with_empty_allowed_uses_quarantined(self):
+        r = verified(cc(allowed_uses=[]))
+        self.assertTrue(evaluate_rights(r).permitted)   # control: no required use -> unchanged
+        d = evaluate_rights(r, UseContext(required_uses=("social_media",)))
+        self.assertEqual(d.verdict, QUARANTINE)
+        self.assertFalse(d.permitted)
+        self.assertIn("USE_NOT_DECLARED", d.codes())
+        self.assertNotIn("USE_NOT_ALLOWED", d.codes())
+
+    def test_explicitly_allowed_required_use_still_permitted(self):
+        r = verified(cc(allowed_uses=["social_media", "editorial"]))
+        d = evaluate_rights(r, UseContext(required_uses=("social_media",)))
+        self.assertTrue(d.permitted, d.codes())
+        self.assertNotIn("USE_NOT_DECLARED", d.codes())
+        self.assertNotIn("USE_NOT_ALLOWED", d.codes())
+
+    def test_required_use_missing_from_nonempty_allowed_uses_quarantined(self):
+        r = verified(cc(allowed_uses=["editorial"]))
+        d = evaluate_rights(r, UseContext(required_uses=("social_media", "editorial")))
+        self.assertEqual(d.verdict, QUARANTINE)
+        self.assertIn("USE_NOT_ALLOWED", d.codes())
+        self.assertNotIn("USE_NOT_DECLARED", d.codes())
+
     def test_claim_only_evidence_insufficient(self):
         r = verified(cc(evidence=[Evidence("provider_claim", "site says CC", strength="claim")]))
         self.assertIn("CLAIM_ONLY_EVIDENCE", evaluate_rights(r).codes())

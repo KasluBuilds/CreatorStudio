@@ -485,7 +485,7 @@
         {
           "id": "S-AST-002-01",
           "title": "Step 1: required-use fail-closed fix and regression tests (continue from cc98875)",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Non-empty required_uses with empty allowed_uses returns QUARANTINE (new reason code, no other severity change)",
             "Explicitly allowed uses still reach PERMITTED when all other checks pass",
@@ -493,7 +493,12 @@
             "Synthetic regression tests for all three cases are added to orchestrator/tests/test_assets.py",
             "Only orchestrator/assets/rights.py and orchestrator/tests/test_assets.py change besides the shared registry files; the full suite passes"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Re-applied the intended change from the preserved T-AST-001 implementation (branch task/asset-required-uses-fail-closed, cc988755b8137d4e7baf54d71c89542a5dda3f6b) by applying only its rights.py and test_assets.py diff onto origin/main c9c61ab; PR #17 was not merged and the abandoned branch/worktree were not touched. orchestrator/assets/rights.py: non-empty required_uses with empty allowed_uses now quarantines with new reason code USE_NOT_DECLARED; the USE_NOT_ALLOWED path is unchanged. Three synthetic regression tests added to orchestrator/tests/test_assets.py (empty allowed_uses quarantined, explicitly allowed use still permitted, required use missing from non-empty allowed_uses still USE_NOT_ALLOWED). With the fix reverted, test_assets.py fails (1 failure, the empty-allowed_uses test); with it applied, test_assets.py passes (149 tests, 1 skipped) and the full suite passes (1270 tests, skipped=1). Synthetic data only; not verified against real asset records or real footage. Command results are in the stop report; the commit cannot cite its own SHA."
+            }
+          ]
         }
       ]
     }
