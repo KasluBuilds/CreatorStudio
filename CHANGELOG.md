@@ -24,10 +24,6 @@ before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed
 
 - Claim only: registers T-DNA-002 (claude:creator-dna-stream) for `orchestrator/creator_dna/`, its tests and `CREATOR_DNA.md`, adds it to the shared registry agreement and proposes `AGR-DNA-VERIFIER-01` (constructor-only test adaptation in three tests of UNRESOLVED packages). No code changed.
 
-## 2026-11-17 — task `T-DNA-002` claim (Creator DNA learning core, M-DNA-02a)
-
-- Claim only: registers T-DNA-002 (claude:creator-dna-stream) for `orchestrator/creator_dna/`, its tests and `CREATOR_DNA.md`, adds it to the shared registry agreement and proposes `AGR-DNA-VERIFIER-01` (constructor-only test adaptation in three tests of UNRESOLVED packages). No code changed.
-
 ## 2026-11-17 — task `T-GOV-005` wave wording follow-up (complete)
 
 - `CLAUDE.md`: a wave lane's manifest entry is its claim and it never edits `ACTIVE_TASKS.json`; standalone tasks still claim first; a redundant sentence added by T-GOV-004 is removed; no step stops inside a wave.
