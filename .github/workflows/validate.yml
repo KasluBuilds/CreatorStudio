@@ -1,0 +1,82 @@
+# Automated validation for pull requests into main and for every push to a wave integration branch.
+# GitHub branch protection and rulesets are NOT available on this repository's plan (HTTP 403, verified
+# 2026-11-17), so this workflow reports a status on the pull request but cannot block a merge: the integrator
+# (ChatGPT, or Lukas) must look at it before merging. See WAVE_PROTOCOL.md.
+name: validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: ['wave/**']
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      HEAD_REF: ${{ github.head_ref || github.ref_name }}
+      EVENT: ${{ github.event_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Fetch main, wave and lane refs
+        shell: bash
+        run: |
+          git fetch origin main
+          git fetch origin '+refs/heads/wave/*:refs/remotes/origin/wave/*' '+refs/heads/lane/*:refs/remotes/origin/lane/*' || true
+
+      - name: Registry, status and handoff
+        shell: bash
+        working-directory: orchestrator
+        run: |
+          python -B -m governance validate --against origin/main
+          python -B -m governance handoff --check
+
+      - name: Development tracker
+        shell: bash
+        run: python -B dashboard/tracker_check.py --against origin/main
+
+      - name: Wave gate (wave branches only)
+        if: startsWith(github.head_ref || github.ref_name, 'wave/')
+        shell: bash
+        working-directory: orchestrator
+        run: |
+          WAVE_ID="${HEAD_REF#wave/}"
+          if [ "$EVENT" = "pull_request" ]; then
+            python -B -m governance wave verify "$WAVE_ID" --require-complete --allow-closeout
+          else
+            python -B -m governance wave verify "$WAVE_ID"
+          fi
+
+      - name: Full test suite
+        shell: bash
+        working-directory: orchestrator
+        # The runner's default TEMP is an 8.3 short path (RUNNER~1) while Python reports the long form;
+        # four existing ingest tests compare the two. A long temp directory avoids that without editing the tests.
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: python -B -I -m unittest discover -s tests
+
+      - name: Secret scan of added lines
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if git diff -U0 origin/main...HEAD | grep '^+' | grep -v '^+++' | grep -E "((^|[^A-Za-z0-9])sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY)"; then
+            echo "possible credential in the diff"; exit 1
+          fi
+          echo "no credential patterns in added lines"

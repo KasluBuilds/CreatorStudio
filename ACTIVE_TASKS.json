@@ -104,7 +104,8 @@
       "task_ids": [
         "T-AST-002",
         "T-DNA-001",
-        "T-CRD-001"
+        "T-CRD-001",
+        "T-GOV-004"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -362,6 +363,68 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14; refreshed 2026-11-17 by merging origin/main 9317119 (no force-push) with the lease renewed for 24 hours. Task definition, owned paths and scope unchanged. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage. Implementation started 2026-11-17 after claim PR #18 merged (9dfaec2) and Lukas/ChatGPT authorized T-CRD-001 as ONE implementation batch in ONE PR; branch and worktree fields moved from the merged claim branch to task/t-crd-001-impl so the scope check resolves this task. Owned paths, lease and agreement unchanged."
+    },
+    {
+      "id": "T-GOV-004",
+      "title": "Parallel wave infrastructure: lanes, one integration branch, one pull request per wave",
+      "description": "Establish the infrastructure for large-scale parallel Claude Code development: wave manifests with disjoint lane ownership, per-lane worktrees and branches, self-service delivery into a wave integration branch (git push as the lock), a whole-wave verify gate, one close step that writes the registry/tracker/changelog/handoff records, a GitHub Actions validate workflow and a pre-push safety hook, plus protocol changes that remove per-task claim, step-start, lease-renewal and closeout pull requests for waves. No product subsystem is touched; Creative Director code and ownership are not touched.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-gov-004-waves",
+      "worktree": "../CreatorStudio-worktrees/t-gov-004-waves",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "A wave manifest validator rejects overlapping lanes, shared registry files, reserved paths, unauthorized use of another stream's or an UNRESOLVED package, overlap with active tasks, bad task ids/branches/test modules and dependency cycles",
+        "wave init, worktrees, submit, status, verify and close work against a real bare origin in tests, including a concurrent push that is retried and a lane that tries to widen its scope or edit the manifest",
+        "wave close generates COMPLETED registry and tracker records that pass the existing governance and tracker validators, and refuses without honest approval flags and a REPORTED or DIRECT source",
+        "A validate GitHub Actions workflow and a pre-push hook exist; the protections actually available on this plan are verified and documented, not assumed",
+        "WAVE_PROTOCOL.md, the operating protocol, the step protocol and CLAUDE.md describe waves; claim, step-start, lease-renewal and closeout pull requests are not needed for waves",
+        "Full suite, governance validate, handoff --check, scope and tracker_check pass; no product subsystem and no Creative Director file changes",
+        "Waves are the normal path in the protocols; the Repository Coordinator role (section 18) is defined with explicit gates and exclusions; the completion gate and wave close record an honest approver; documents match the repository's public status and the branch-protection facts observed with gh api"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 in this single pull request (claim, implementation and closeout together) under the one-time bootstrap exception, directed by Lukas to the Repository Coordinator session; the gates were run on head 9b248310e721bfc667c6905222fd95ccfa69f28e before the closeout commit. Delivers waves (governance wave), the validate workflow, the pre-push hook, WAVE_PROTOCOL.md and the Repository Coordinator role. AGR-GOV-REGISTRY-01 keeps listing T-GOV-004 only as history. Touches no product package; orchestrator/creative_director/ is untouched. Branch task/t-gov-004-waves is merged by the Coordinator and may be deleted by Lukas."
+    },
+    {
+      "id": "T-GOV-005",
+      "title": "Wave wording follow-up: CLAUDE.md lane rules and protection evidence",
+      "description": "Fix the CLAUDE.md rules that told every session to claim files in ACTIVE_TASKS.json (wrong for a wave lane) and a redundant sentence introduced by T-GOV-004, and record the branch-protection configuration read back after T-GOV-004 merged. Documentation and status record only.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-gov-005-wave-wording",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-GOV-004"
+      ],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "CLAUDE.md tells wave lanes that the manifest is their claim and that they never edit ACTIVE_TASKS.json, and standalone tasks still claim first",
+        "The protection configuration observed after the T-GOV-004 merge is recorded as evidence E-OBS-PROTECTION-0001 and referenced by M-INF-01",
+        "governance validate, handoff --check, tracker_check and the full suite pass"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Opened, delivered and closed in one small pull request as part of the Phase 3 direction Lukas gave the Repository Coordinator on 2026-11-17 (waves are the normal path, remove administrative pull requests). Touches no product package and no Creative Director file. Completion is recorded as DIRECT from that instruction; it is not a code review."
     }
   ]
 }
