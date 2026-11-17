@@ -236,13 +236,14 @@ def load_base(root: Path, ref: str) -> Optional[Dict[str, Any]]:
         raise BaseError(f"{spec} is not valid JSON: {exc}")
 
 
-def transition_history_problems(root: Path, ref: str, base_doc: Optional[Dict[str, Any]],
-                              current_doc: Dict[str, Any]) -> List[str]:
-    """Check every committed tracker snapshot on the first-parent path from ref to HEAD.
+def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any]) -> List[str]:
+    """Check each committed tracker snapshot from the branch fork point through HEAD.
 
-    Comparing only the base and final files hides intermediate transitions. Walking the
-    branch history preserves the one-step workflow even when a task uses one PR and its
-    IN_PROGRESS checkpoint exists only on that branch.
+    The supplied base ref must be an ancestor of HEAD (the branch is up to date). If
+    main was merged into the task branch, the fork point is the nearest first-parent
+    commit that is also an ancestor of the base ref. This avoids comparing an older
+    task-branch snapshot directly with a newer main snapshot and catches intermediate
+    transitions even when a later file would hide them.
     """
     def git(*args: str) -> subprocess.CompletedProcess:
         try:
@@ -251,20 +252,35 @@ def transition_history_problems(root: Path, ref: str, base_doc: Optional[Dict[st
         except (OSError, subprocess.SubprocessError) as exc:
             raise BaseError(f"git unavailable: {exc}")
 
+    if not ref or ref.startswith("-"):
+        raise BaseError(f"invalid ref {ref!r}")
     base = git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
     head = git("rev-parse", "--verify", "--quiet", "HEAD^{commit}")
     if base.returncode != 0 or head.returncode != 0:
         raise BaseError(f"cannot resolve history from {ref!r} to HEAD")
     base_sha, head_sha = base.stdout.strip(), head.stdout.strip()
-    ancestor = git("merge-base", "--is-ancestor", base_sha, head_sha)
-    if ancestor.returncode != 0:
-        raise BaseError(f"{ref!r} is not an ancestor of HEAD")
+    if git("merge-base", "--is-ancestor", base_sha, head_sha).returncode != 0:
+        raise BaseError(f"{ref!r} is not an ancestor of HEAD; update the branch before checking")
 
-    commits = git("rev-list", "--first-parent", "--reverse", f"{base_sha}..{head_sha}")
+    first_parent = git("rev-list", "--first-parent", head_sha)
+    if first_parent.returncode != 0:
+        raise BaseError("cannot read first-parent history from HEAD")
+    fork_base = None
+    for candidate in first_parent.stdout.split():
+        ancestry = git("merge-base", "--is-ancestor", candidate, base_sha)
+        if ancestry.returncode == 0:
+            fork_base = candidate
+            break
+        if ancestry.returncode != 1:
+            raise BaseError(f"cannot determine branch fork point for {ref!r}")
+    if fork_base is None:
+        raise BaseError(f"cannot find a first-parent fork point shared with {ref!r}")
+
+    previous = load_base(root, fork_base)
+    commits = git("rev-list", "--first-parent", "--reverse", f"{fork_base}..{head_sha}")
     if commits.returncode != 0:
-        raise BaseError(f"cannot read first-parent history from {ref!r} to HEAD")
+        raise BaseError(f"cannot read first-parent history from {fork_base} to HEAD")
 
-    previous = base_doc
     problems: List[str] = []
     for sha in commits.stdout.split():
         spec = f"{sha}:DEVELOPMENT_TRACKER.json"
@@ -289,7 +305,6 @@ def transition_history_problems(root: Path, ref: str, base_doc: Optional[Dict[st
     if previous is not None and previous != current_doc:
         problems.extend(transition_problems(previous, current_doc))
     return sorted(set(problems))
-
 
 def main(argv: List[str]) -> int:
     root = Path(__file__).resolve().parents[1]
@@ -319,7 +334,7 @@ def main(argv: List[str]) -> int:
             note = f" (no tracker at {against}: nothing to compare)"
         else:
             try:
-                history_problems = transition_history_problems(root, against, base, doc)
+                history_problems = transition_history_problems(root, against, doc)
             except BaseError as exc:
                 print(f"ERROR: {exc}", file=sys.stderr)
                 return 2
