@@ -1,0 +1,19 @@
+{
+  "lane": "L5",
+  "status": "DONE",
+  "summary": "Implemented orchestrator/dev_supervisor/resolve_discovery.py (injectable process/socket/MCP transports, OBSERVED/UNAVAILABLE labelling, MATCH/MISMATCH/UNCONFIGURED/UNAVAILABLE identity verdict, never by name alone, require_match refuses MISMATCH, CLI with exit codes 0/1/2/3, --start-bridge launches only the Resolve app and always prints the manual bridge steps) plus 60 offline tests and RESOLVE_BOOTSTRAP.md. Live read-only observation (OBSERVED): Resolve Free 21.0.4.5 GUI running, 1 instance; TCP connect to 127.0.0.1:49632 succeeded (no bytes sent); MCP read calls answered; database Local Database (Disk); current project is the T-RSV-002 disposable probe project (CS_T-RSV-002_ntsc_probe) with a UUID id exposed by get_current, current timeline N2; project list holds 7 projects incl. MCP_COMPATIBILITY_TEST. So the intended project MCP_COMPATIBILITY_TEST is NOT the open one; discovery CLI with a config expecting it returned MISMATCH exit 1, with no config UNCONFIGURED exit 2. Root cause (INFERRED, partly REPORTED): launching Resolve starts only the app; the bridge needs the user to run Workspace > Scripts > resolve_bridge; identity is whatever project is open (changed by other tasks) and no identity config existed. NOT TESTED: raw reply on port 49632 (authenticated), folder identity, a real MCP client in the CLI (it takes an agent-supplied snapshot). Nothing VERIFIED beyond the cited command outputs.",
+  "commands": [
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_resolve_discovery.py", "result": "Ran 60 tests: OK"},
+    {"command": "python -B -m dev_supervisor.resolve_discovery --config <local> --mcp-snapshot <local>  (real process list and real loopback connect)", "result": "resolve_running true, bridge_listening true, verdict MISMATCH, exit 1"},
+    {"command": "python -B -m dev_supervisor.resolve_discovery (no config)", "result": "UNCONFIGURED, exit 2"},
+    {"command": "Get-Process (Resolve) ; Test-NetConnection 127.0.0.1 -Port 49632", "result": "1 Resolve process; TcpTestSucceeded True"},
+    {"command": "MCP read calls: resolve_control.runtime_mode; project_manager.get_current; timeline.get_name; project_manager.list", "result": "all succeeded, no mutation; ToolSearch only loaded schemas (project_manager, timeline, resolve_control)"}
+  ],
+  "unresolved": [
+    "CLI has no real MCP/bridge client; it consumes a JSON snapshot of read-only MCP replies. A real transport needs a decision (stdio to MCP server vs authenticated bridge) and is outside this lane's scope.",
+    "dev_supervisor/__init__.py is not in this lane's owned paths; the module works as a namespace package from orchestrator/. Whichever lane owns the package should add __init__.py.",
+    "Observed current project is owned by T-RSV-002 and changes as that task runs; the user must pick the intended project, run resolve_bridge, and write a machine-local identity config (see RESOLVE_BOOTSTRAP.md manual fallback).",
+    "Project folder identity not exposed by the read calls used; NOT TESTED beyond that."
+  ],
+  "changelog": "w03 L5 (T-DEV-005): read-only Resolve discovery module with identity MATCH/MISMATCH/UNCONFIGURED/UNAVAILABLE, 60 offline tests, and bootstrap findings (OBSERVED vs INFERRED); implemented and tested offline, live identity not VERIFIED."
+}
