@@ -535,6 +535,14 @@ def verify(root: Path, wave_id: str, remote: str = "origin", require_complete: b
     registry = json.loads(git(root, "show", f"{m.get('base_commit', 'HEAD')}:ACTIVE_TASKS.json").stdout)
     problems = validate_manifest(m, registry)
     base = m.get("base_commit", "")
+    # Once main has been merged into the wave branch (needed before the single pull request), a diff against the original
+    # base_commit would count main's own files as the wave's. The merge-base with main is exactly what the wave changed;
+    # before any merge it equals base_commit, so nothing changes for a wave that main has not touched.
+    main_ref = f"{remote}/main"
+    if git(root, "rev-parse", "--verify", "--quiet", main_ref, check=False).returncode == 0:
+        mb = git(root, "merge-base", main_ref, head, check=False)
+        if mb.returncode == 0 and mb.stdout.strip():
+            base = mb.stdout.strip()
     changed = changed_files(root, base, head)
     problems += wave_scope_problems(m, changed, allow_closeout=allow_closeout)
     problems += conflict_marker_files(root, changed)

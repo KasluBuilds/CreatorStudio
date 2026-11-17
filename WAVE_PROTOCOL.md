@@ -90,7 +90,9 @@ true). A Coordinator approval is recorded as `approved_by: repository_coordinato
    --standing-instruction --date YYYY-MM-DD --source "REPORTED: ..."`. It writes one COMPLETED task and one COMPLETED
    step per lane, a changelog entry, and the regenerated handoff, validates them with the real validators, and commits
    (it never pushes). The source states where the approval came from and must not claim Lukas read the code.
-9. **Merge (Coordinator).** Push the wave branch, open one pull request into `main`, wait for `validate` on that exact head,
+9. **Merge (Coordinator).** Merge `origin/main` into the wave branch if it moved (branch protection requires an up-to-date branch;
+   `wave verify` measures the wave against the merge-base with `origin/main`, so main's own files are not counted as the wave's, and CI
+   accepts the closeout commit on every push to a wave branch). Then push the wave branch, open one pull request into `main`, wait for `validate` on that exact head,
    run the gates in section 12, then `gh pr merge <n> --merge --match-head-commit <head>`. Fast-forward the primary checkout and remove the
    finished lane worktrees (`git worktree remove`, never `--force` while they hold uncommitted work). Remote branches may be
    deleted later; nothing depends on them once merged.
