@@ -563,7 +563,7 @@
             "Unverified safety-critical and warned claims capped below verified; verified safety-critical claims never hooks; producer usage validated against mirrored rules",
             "Deterministic research digest (integrity consistency only); tampering and unsafe hooks rejected by validation",
             "Synthetic regression tests in test_creative_director.py; creative_director/README.md written; the full suite passes",
-            "Creative Director implementation changes only orchestrator/creative_director/ and orchestrator/tests/test_creative_director.py besides shared registry files; integrator-owned tracker history correction is separately authorized by AGR-CRD-TRACKER-HISTORY-01 and limited to dashboard/tracker_check.py, DEVELOPMENT_STEP_PROTOCOL.md and orchestrator/tests/test_development_tracker.py."
+            "Creative Director implementation changes only orchestrator/creative_director/ and orchestrator/tests/test_creative_director.py besides shared registry files; integrator-owned tracker history correction is separately authorized by AGR-CRD-TRACKER-HISTORY-01 and limited to dashboard/tracker_check.py, DEVELOPMENT_STEP_PROTOCOL.md, orchestrator/tests/test_development_tracker.py and .github/workflows/validate.yml."
           ],
           "evidence": [
             {
