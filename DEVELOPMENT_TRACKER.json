@@ -783,7 +783,7 @@
         {
           "id": "S-DSH-002-00",
           "title": "Step 0: appearance switch, palettes, persistence, tests, packaging and documentation (claim, implementation and closeout in one pull request)",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Light, Dark and System with persistence and live System following",
             "Both palettes meet contrast; the rendered-window audit passes in every mode",
@@ -815,7 +815,14 @@
               "type": "observation",
               "summary": "Only dashboard/desktop/ and the four shared registry records changed. model.js, sync.js, github.js and controller.js are unchanged (a test asserts they never mention the theme). No governance machinery, product package, wave w01 file or other session's pull request was touched. The first pull request for this task (#35) was closed because its history contained a step jump the tracker rule rejects; this branch walks the step IN_PROGRESS, READY_FOR_REVIEW, COMPLETED."
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas assigned this dark-mode work to the Repository Coordinator session on 2026-11-17 and told it to proceed autonomously, including building and publishing a new release. This records that direct assignment; it does not claim that Lukas or ChatGPT reviewed the code, which was written by this same session. The gates were mechanical (CI, validators, tests, rendered audit) plus the self-review recorded in the pull request."
+          }
         }
       ]
     }
