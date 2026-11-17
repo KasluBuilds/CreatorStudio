@@ -257,25 +257,14 @@
       "owner": "claude:creator-dna-stream",
       "branch": "task/t-dna-001-claim",
       "worktree": "../CreatorStudio-worktrees/t-dna-001-claim",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-14T09:38:12+00:00",
-        "expires": "2026-11-15T09:38:12+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
       ],
-      "owned_paths": [
-        "orchestrator/creator_dna/",
-        "orchestrator/tests/test_creator_dna.py",
-        "AI_Creator_Studio_Documentation/CREATOR_DNA.md",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "Creator rejection and attribution revocation are independent state; EvidenceItem.rejected stays a read-only property true for either, and existing readers of rejected and review_note are unchanged",
         "Revocation is written as a distinct attribution_revoked event with decision ID and reason (schema v4); evidence_review accepts only reject and restore and any other action fails replay",
@@ -295,7 +284,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Claim branch created from origin/main 12c5964 (T-AST-001 claim PR #13 merged) on 2026-11-14. Step 00 is the claim only; Step 01 (implementation, tests, documentation) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved in principle by Lukas with eight safeguards (independent state, strict evidence_review, restore never undoes revocation, idempotent revocation, exact legacy v1-v3 replay, heuristic only sets warning flags, creator-specific exports, unchanged cross-package readers). Documentation file added to owned_paths by Lukas. orchestrator/speaker_attribution/ (caller sync_revocations), cross-package tests and UNRESOLVED packages are NOT claimed and must not change; test_speaker_attribution.py is run unchanged as a compatibility check only. T-AST-001 also lists the shared registry, tracker, handoff and changelog files, so merge order matters there. Synthetic data only; no real footage."
+      "integration_notes": "Claim branch created from origin/main 12c5964 (T-AST-001 claim PR #13 merged) on 2026-11-14. Step 00 is the claim only; Step 01 (implementation, tests, documentation) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved in principle by Lukas with eight safeguards (independent state, strict evidence_review, restore never undoes revocation, idempotent revocation, exact legacy v1-v3 replay, heuristic only sets warning flags, creator-specific exports, unchanged cross-package readers). Documentation file added to owned_paths by Lukas. orchestrator/speaker_attribution/ (caller sync_revocations), cross-package tests and UNRESOLVED packages are NOT claimed and must not change; test_speaker_attribution.py is run unchanged as a compatibility check only. T-AST-001 also lists the shared registry, tracker, handoff and changelog files, so merge order matters there. Synthetic data only; no real footage. Completed 2026-11-17. Claim PR #15 (merge commit e164f5ca28b5d5de063edfe8a29685699131b5f8), step-start PR #19 (merge commit 346aacd1d547dc76864bd605f1cf198fd4f83cd0) and implementation PR #20 (merge commit 59b14a6c0215fbeb22321fc790750a4926e3bd19, reviewed head 30ab9b39fe43c428110c699e577492d574a1d1ca) were reviewed and merged by ChatGPT as delegated integrator. Lease released and paths freed by this closing pull request, which cannot itself hold a claim because it only closes this task. The task lease had expired on 2026-11-15; no other session took over the paths. Branches task/t-dna-001-claim and task/t-dna-001-step-start are merged and may be deleted by Lukas."
     }
   ]
 }

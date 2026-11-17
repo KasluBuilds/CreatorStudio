@@ -402,7 +402,7 @@
         {
           "id": "S-DNA-001-01",
           "title": "Step 1: revocation/restore event model, regression tests and documentation",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Independent creator_rejected and attribution_revoked state; rejected remains a read-only compatibility property",
             "Distinct attribution_revoked event (schema v4); evidence_review strict to reject and restore",
@@ -427,8 +427,25 @@
             {
               "type": "observation",
               "summary": "Changed only orchestrator/creator_dna/store.py, orchestrator/creator_dna/schema.py, orchestrator/tests/test_creator_dna.py, AI_Creator_Studio_Documentation/CREATOR_DNA.md and the shared registry files. speaker_attribution/, cross-package tests and unresolved packages are untouched. Implemented but not VERIFIED on real data; no real footage was used."
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #20 reviewed by ChatGPT and merged into main (merge commit shown). It delivered the schema v4 revocation and restore model, its regression tests and the CREATOR_DNA.md update, and moved this step to READY_FOR_REVIEW. Reviewed head 30ab9b39fe43c428110c699e577492d574a1d1ca.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/20",
+              "commit": "59b14a6c0215fbeb22321fc790750a4926e3bd19"
+            },
+            {
+              "type": "commit",
+              "summary": "PR #20 reviewed head, approved by ChatGPT before merge",
+              "commit": "30ab9b39fe43c428110c699e577492d574a1d1ca"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, technically approved this step, merged PR #20 (reviewed head 30ab9b39fe43c428110c699e577492d574a1d1ca, merge commit 59b14a6c0215fbeb22321fc790750a4926e3bd19) and explicitly authorized this closeout; relayed to Claude in the session and not independently verified beyond the merged state of PR #20 on GitHub and the checks Claude re-ran on the PR head. Does not claim Lukas reviewed the code or that ChatGPT re-ran any command. Implemented on synthetic data only; not VERIFIED on real data."
+          }
         }
       ]
     }
