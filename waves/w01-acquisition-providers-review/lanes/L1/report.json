@@ -23,5 +23,5 @@
     "A licence-page hash detects that the page text changed, not that the licence terms changed; pages with dynamic boilerplate will cause false drift (it fails closed). Whether to hash a normalised legal-code text instead is an open question listed in ASSETS.md section 8.7.",
     "The new full-suite run took about 292 s here versus about 54 s reported for CI; the difference was not investigated."
   ],
-  "changelog": "T-AST-003 (wave w01, lane L1): Asset acquisition pipeline, offline and transport-injected: bounded fetch, quarantined library records, licence-text evidence with drift detection, LocalFolderProvider (strict sidecar schema) and Openverse request builder/parser (NOT TESTED live); 133 new unit tests; nothing is VERIFIED."
+  "changelog": "T-AST-003 (wave w01, lane L1): Asset acquisition pipeline, offline and transport-injected: bounded fetch, quarantined library records, licence-text evidence with drift detection, LocalFolderProvider (strict sidecar schema) and Openverse request builder/parser (NOT TESTED live); 135 new unit tests; nothing is VERIFIED."
 }
