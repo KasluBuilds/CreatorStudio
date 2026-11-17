@@ -1,0 +1,22 @@
+{
+  "lane": "L1",
+  "status": "DONE",
+  "summary": "Openverse live-run fixes. (1) openverse.canonical_license_url derives the licence-text URL only from the documented license/license_version fields (cc0, pdm, CC-BY-style); the response license_url (which carried a 404 deed.en/ path live) is ignored; an underivable licence has no text URL and is held, never fetched. (2) acquisition.fetch_to maps HTTP 429 to RATE_LIMITED (in RETRYABLE_CODES); all other non-200 statuses keep HTTP_STATUS. (3) ASSETS.md section 8.8 records the 2026-11-17 live runs 1-3 as REPORTED with VERIFIED limited to what was exercised and NOT-verified listed. Nothing here promotes M-AST-02 to verified or complete; no live payload or media committed; tests use no network.",
+  "commands": [
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
+      "result": "Ran 139 tests: OK (skipped=1; symlink test)"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+      "result": "Ran 149 tests: OK (skipped=1; symlink test)"
+    }
+  ],
+  "unresolved": [
+    "Evidence for the live run comes from the asset agent's own harness logs (outside the repo, not committed); the Coordinator has not re-observed it, so it is recorded as REPORTED.",
+    "Run 1's unparseable response was not captured; cause unknown.",
+    "PROJECT_STATUS evidence for M-AST-02 is for the integrator to record at close; M-AST-02 must stay IN_PROGRESS (remaining: redirect behaviour live, drift over time, Research/Creative Director integration, real-media verification, optional Wikimedia adapter).",
+    "Parse-test fixtures remain authored from API docs; only section 8.8 is real-service evidence."
+  ],
+  "changelog": "T-AST-004 (wave w02, lane L1): Openverse licence-text URL derived canonically (response license_url ignored), distinct retryable RATE_LIMITED code for HTTP 429, and the 2026-11-17 live-run evidence recorded in ASSETS.md (REPORTED, narrowly scoped); new tests; M-AST-02 stays in progress."
+}
