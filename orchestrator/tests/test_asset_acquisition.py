@@ -25,7 +25,8 @@ from assets import (AcquisitionContext, AcquisitionPolicy, AssetCandidate, Asset
                     acquire, find_and_acquire, reverify_license, scrub)
 from assets import acquisition as acq
 from assets import openverse as ov
-from assets.acquisition import (check_url, classify, content_type_problem, fetch_to, make_asset_id, sniff_family)
+from assets.acquisition import (RETRYABLE_CODES, check_url, classify, content_type_problem, fetch_to, make_asset_id,
+                               sniff_family)
 from assets.local_provider import SIDECAR_SUFFIX, validate_sidecar
 
 CLOCK = lambda: "2026-11-17T00:00:00+00:00"
@@ -229,6 +230,15 @@ class TestFetchTo(unittest.TestCase):
 
     def test_non_200_status(self):
         self.assertEqual("HTTP_STATUS", self.err(served(status=404)).code)
+
+    def test_429_is_its_own_retryable_code_and_other_statuses_keep_theirs(self):
+        e = self.err(served(status=429))
+        self.assertEqual("RATE_LIMITED", e.code)
+        self.assertIn("RATE_LIMITED", RETRYABLE_CODES)
+        self.assertNotIn("HTTP_STATUS", RETRYABLE_CODES)
+        for status in (400, 401, 403, 404, 410, 500, 502, 503):
+            with self.subTest(status):
+                self.assertEqual("HTTP_STATUS", self.err(served(status=status)).code)
 
     def test_declared_length_over_limit_refused_before_reading(self):
         t = served(length=99_999)
@@ -489,6 +499,7 @@ class TestAcquire(LibCase):
             "TOO_LARGE": served(body=JPEG + b"x" * 20_000),
             "CONTENT_TYPE_NOT_ALLOWED": served(content_type="text/html"),
             "HTTP_STATUS": served(status=503),
+            "RATE_LIMITED": served(status=429),
             "HOST_NOT_ALLOWED": served(final_url="https://evil.example.test/x.jpg"),
         }
         for code, t in cases.items():
@@ -932,6 +943,39 @@ class TestOpenverse(LibCase):
                  (None, "4.0", ""), ("BY-NC", "2.0", "CC-BY-NC-2.0")]
         for code, ver, want in cases:
             self.assertEqual(want, ov.license_name(code, ver), (code, ver))
+
+    def test_canonical_licence_url_derived_from_documented_fields(self):
+        cases = [("cc0", "1.0", "https://creativecommons.org/publicdomain/zero/1.0/"),
+                 ("pdm", None, "https://creativecommons.org/publicdomain/mark/1.0/"),
+                 ("by", "4.0", "https://creativecommons.org/licenses/by/4.0/"),
+                 ("by-sa", "3.0", "https://creativecommons.org/licenses/by-sa/3.0/"),
+                 ("BY-NC-ND", "2.0", "https://creativecommons.org/licenses/by-nc-nd/2.0/"),
+                 ("by", None, ""), ("by", "banana", ""), ("sampling+", "1.0", ""), ("custom-thing", None, ""), (None, "4.0", "")]
+        for code, ver, want in cases:
+            self.assertEqual(want, ov.canonical_license_url(code, ver), (code, ver))
+
+    def test_response_license_url_is_ignored_even_with_trailing_deed_path(self):
+        # Live finding 2026-11-17: Openverse returned .../zero/1.0/deed.en/ , which answers 404. It must never be used.
+        body = ov_body({"results": [
+            {"id": "w1", "title": "T", "license": "cc0", "license_version": "1.0", "url": f"https://{CDN}/a.png",
+             "license_url": "https://creativecommons.org/publicdomain/zero/1.0/deed.en/"},
+            {"id": "w2", "title": "T", "license": "cc0", "license_version": "1.0", "url": f"https://{CDN}/b.png",
+             "license_url": "https://evil.test/anything"}]})
+        cands, _ = ov.parse_search_response(body, MediaType.IMAGE)
+        for c in cands:
+            self.assertEqual("https://creativecommons.org/publicdomain/zero/1.0/", c.license_text_url)
+            self.assertEqual(c.license_text_url, c.claimed_license_url)
+
+    def test_underivable_licence_has_no_text_url_and_is_never_fetched(self):
+        body = ov_body({"results": [
+            {"id": "u1", "title": "mushroom", "license": "custom-thing", "license_version": None, "url": f"https://{CDN}/u.jpg",
+             "license_url": "https://creativecommons.org/licenses/by/4.0/"}]})
+        cands, _ = ov.parse_search_response(body, MediaType.IMAGE)
+        self.assertEqual(("", ""), (cands[0].license_text_url, cands[0].claimed_license_name))
+        t = FakeTransport()
+        item = acquire(cands[0], self.lib, t, ctx_for(), QuarantineLedger(self.root))
+        self.assertNotEqual("acquired", item.outcome)
+        self.assertEqual([], t.requests)
 
     def test_parse_fixture(self):
         cands, problems = ov.parse_search_response(ov_body(), MediaType.IMAGE)

@@ -249,6 +249,23 @@
       "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
       "result": "Ran 135 tests: OK (skipped=1); test_assets.py Ran 149 tests: OK (skipped=1)",
       "commit": "0044794e1ee0b547d4a51571d614d750839cad21"
+    },
+    "E-AST-ACQ-0002": {
+      "id": "E-AST-ACQ-0002",
+      "type": "test_run",
+      "date": "2026-11-17",
+      "summary": "Wave w02 lane L1 (T-AST-004): after the Openverse licence-URL canonicalisation and the RATE_LIMITED (429) code, the asset test modules pass offline (test_asset_acquisition.py 139 tests, test_assets.py 149 tests, one symlink skip each). Re-run by the Repository Coordinator on the lane head ab37de4; synthetic data only, no network.",
+      "ref": "orchestrator/tests/test_asset_acquisition.py",
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_asset*.py\"",
+      "result": "Ran 288 tests: OK (skipped=2)",
+      "commit": "ab37de4ab0e0bb6543ef4d7b0a542a82828d1bb4"
+    },
+    "E-REP-AST-OPENVERSE-LIVE": {
+      "id": "E-REP-AST-OPENVERSE-LIVE",
+      "type": "reported",
+      "date": "2026-11-17",
+      "summary": "REPORTED by the asset agent (not re-observed by the Coordinator; harness and logs are outside the repository and uncommitted): an anonymous, Lukas-authorised live Openverse run. A search returned 20 parseable results; a CC0 JPEG (159,612 bytes) and PNG (6,579 bytes) were downloaded over HTTPS from exact allow-listed result hosts, passed content-type and magic-byte checks, were hashed, and stayed QUARANTINED with a licence snapshot; fail-closed on HTTP 404 (Openverse license_url with trailing deed.en/) and HTTP 429 (Wikimedia SVG). Not observed: redirects, licence drift over time, other providers, audio/video, SVG, legal clearance; run 1's response was not captured.",
+      "ref": "AI_Creator_Studio_Documentation/ASSETS.md section 8.8"
     }
   },
   "milestones": [
@@ -714,9 +731,11 @@
       "verification": {
         "state": "IN_PROGRESS",
         "level": "UNIT_ISOLATED",
-        "summary": "135 offline unit tests on synthetic data; nothing run against a live service or real media.",
+        "summary": "139 + 149 offline unit tests on synthetic data. One narrow anonymous live Openverse run on 2026-11-17 is REPORTED by the asset agent (not re-observed, not enough for a higher level); no real media, redirects, drift over time or other providers.",
         "evidence": [
-          "E-AST-ACQ-0001"
+          "E-AST-ACQ-0001",
+          "E-AST-ACQ-0002",
+          "E-REP-AST-OPENVERSE-LIVE"
         ]
       },
       "depends_on": [
@@ -725,7 +744,7 @@
       "commit": "0044794e1ee0b547d4a51571d614d750839cad21",
       "open_questions": [
         "Whether to hash a normalised legal-code text instead of the licence page, because a page hash detects page changes rather than licence changes and dynamic boilerplate causes false drift (it fails closed).",
-        "Which download hosts to allow for the Openverse provider, decided together with the first live-service run (NOT TESTED)."
+        "Which download hosts to allow for the Openverse provider long-term (the live run used per-run exact result hostnames: live.staticflickr.com, upload.wikimedia.org; no standing list is decided)."
       ],
       "blockers": []
     },

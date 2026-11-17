@@ -80,6 +80,14 @@
       ],
       "owner": "claude:governance-session",
       "owner_status": "ASSIGNED - Lukas assigned the governance migration to this session on 2026-11-09"
+    },
+    "resolve_executor": {
+      "paths": [
+        "orchestrator/resolve_executor/",
+        "orchestrator/tests/test_resolve_executor.py"
+      ],
+      "owner": "claude:resolve-stream",
+      "owner_status": "ASSIGNED - Lukas assigned T-RSV-002 (safe Resolve execution layer, M-RSV-02) directly in session on 2026-11-17"
     }
   },
   "shared_files": {
@@ -100,7 +108,7 @@
   },
   "integration_agreements": {
     "AGR-GOV-REGISTRY-01": {
-      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-002, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time. Extended to T-RSR-001 (Research security remediation, Assignment 6) by its claim pull request on the same terms, with Lukas's and ChatGPT's authorization relayed in session 2026-11-17.",
+      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-002, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time. Extended to T-RSR-001 (Research security remediation, Assignment 6) by its claim pull request on the same terms, with Lukas's and ChatGPT's authorization relayed in session 2026-11-17. Extended to T-RSV-002 (safe Resolve execution layer) by its claim pull request on the same terms, under Lukas's direct assignment in session 2026-11-17.",
       "task_ids": [
         "T-AST-002",
         "T-DNA-001",
@@ -110,7 +118,8 @@
         "T-DSH-002",
         "T-GOV-006",
         "T-GOV-007",
-        "T-RSR-001"
+        "T-RSR-001",
+        "T-RSV-002"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -646,6 +655,81 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Claim only (step 00); implementation (step 01) is not started until this claim is merged on main. Authorized by Lukas and ChatGPT (relayed in session 2026-11-17) to act as Research owner; the package owner record claude:research-stream is still REPORTED, not independently confirmed. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; each task edits only its own records. The Assignment 5 audit report is not in the repository: scope is the recovered finding summary relayed by Lukas, and the available evidence does not establish an F-03 finding. Historical counts (220 Research tests, 831 full suite) are reported, not verified. Synthetic data only. Claim PR #32 merged into main 2026-11-17T22:12:47Z (merge commit 469b95dda98365c8b9f23824e9f11684c3d6b1a2); Step 01 started in the same worktree after fast-forwarding to that commit."
+    },
+    {
+      "id": "T-AST-004",
+      "title": "Openverse live-run fixes: canonical licence URL, distinct retryable 429, evidence section in ASSETS.md",
+      "description": "Wave w02-openverse-live-fixes, lane L1: Openverse live-run fixes: canonical licence URL, distinct retryable 429, evidence section in ASSETS.md.",
+      "owner": "claude:asset-recovery",
+      "branch": "lane/w02-openverse-live-fixes/L1",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "license_text_url is derived canonically from license + version (for example cc0 1.0 -> https://creativecommons.org/publicdomain/zero/1.0/), never from the response's license_url; if it cannot be derived the item fails closed (quarantined/failed with a reason code, never permitted); tests cover cc0, a by-style licence, an unknown licence and a response URL with a trailing deed.en/ path that is ignored",
+        "HTTP 429 maps to its own distinct retryable error code (separate from HTTP_STATUS), recorded with a scrubbed message; the asset stays unfetched and nothing partial is left; tests cover it, including that other 4xx/5xx codes keep their existing behaviour",
+        "ASSETS.md gains a section recording the 2026-11-17 live Openverse run (runs 1-3, sizes, sha256 prefixes, 404 and 429 findings) with VERIFIED limited to exactly what was exercised (search and parse on a real payload, bounded HTTPS download with exact-host allow-list, content-type and magic-byte check on a real JPEG and PNG, sha256, licence snapshot, fail-closed on 404/429, temp cleanup) and NOT verified listed (redirects, drift over time, other providers, video/audio, legal clearance, SVG, run 1 response)",
+        "No network code is exercised by tests (existing no-socket test still passes); no downloaded media or live payloads committed; existing tests are not weakened; M-AST-02 is not recorded as verified or complete"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 as lane L1 of wave w02-openverse-live-fixes; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head ab37de4ab0e0bb6543ef4d7b0a542a82828d1bb4, lane head ab37de4ab0e0bb6543ef4d7b0a542a82828d1bb4). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-RSV-002",
+      "title": "Safe, validated DaVinci Resolve execution layer (M-RSV-02)",
+      "description": "Build orchestrator/resolve_executor/: typed operation requests, deterministic validation (no Resolve calls), exact frame/timebase arithmetic, a replaceable adapter (offline fake plus a live adapter over the local in-app bridge), read-after-write verification, operation log, checkpoints, bounded retries, failure classification and recovery recommendations, render monitoring and export verification. Capability inventory of the Resolve MCP tools and scripting API with honest test status. Live tests only on a disposable Resolve project with synthetic media, outputs only inside an already allowed output root. Investigate the historical 95/100-frame discrepancy.",
+      "owner": "claude:resolve-stream",
+      "branch": "task/t-rsv-002",
+      "worktree": "../CreatorStudio-worktrees/t-rsv-002",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-17T22:17:56+00:00",
+        "expires": "2026-11-18T22:17:56+00:00"
+      },
+      "exclusive_resources": [
+        "resolve"
+      ],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/resolve_executor/",
+        "orchestrator/tests/test_resolve_executor.py",
+        "AI_Creator_Studio_Documentation/RESOLVE_INTEGRATION.md",
+        "AI_Creator_Studio_Documentation/TECHNICAL_ARCHITECTURE.md",
+        "PROJECT_STATUS.json",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "A reusable package orchestrator/resolve_executor/ exists with typed requests, validation that never calls Resolve, a replaceable adapter and an executor with read-after-write verification",
+        "Frame/time arithmetic uses integers or exact rationals and is regression-tested (first/last frame, one-frame, 100-frame, mixed rates, non-zero start, invalid ranges); the 95/100 discrepancy is investigated, not compensated with a constant",
+        "Unsupported operations fail explicitly; output paths are allowlisted; interrupted mutations are never repeated automatically",
+        "Render subsystem validates settings and destination, monitors, detects failure/completion and verifies the file with ffprobe",
+        "Capability inventory distinguishes VERIFIED, IMPLEMENTED, NOT TESTED and UNSUPPORTED; documentation matches the code",
+        "Offline tests run in CI without Resolve; live tests only on a disposable project with synthetic media; no source media modified; no bridge allowlist or machine-local configuration changed",
+        "Full suite and governance checks pass; M-RSV-02 is not recorded as VERIFIED without the required evidence"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_resolve_executor.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests",
+        "cd orchestrator && python -B -m governance validate --against origin/main",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main"
+      ],
+      "integration_notes": "Assigned directly by Lukas in session 2026-11-17, who also authorized this session to open and merge its own pull requests after technical self-review once every required check passes (no ChatGPT or human code review is claimed). Holds the exclusive resource 'resolve' for live tests on a disposable project only. Synthetic media only; never MVI_0879.MOV or any real footage. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; only this task's own records are edited. Does not touch tools/, launchers, .mcp.json or the bridge configuration."
     }
   ]
 }

@@ -57,6 +57,23 @@ def license_name(license_code: Any, version: Any) -> str:
     return ""
 
 
+def canonical_license_url(license_code: Any, version: Any) -> str:
+    """The creativecommons.org legal page derived ONLY from the documented license/version fields, or "".
+
+    The response's own license_url is never used: the live run of 2026-11-17 showed it can carry a trailing
+    ``deed.en/`` path that returns 404. Anything not derivable here yields "" (no licence text can be captured, so
+    the candidate is held back, never fetched)."""
+    name = license_name(license_code, version)
+    if name == "CC0-1.0":
+        return "https://creativecommons.org/publicdomain/zero/1.0/"
+    if name == "PDM-1.0":
+        return "https://creativecommons.org/publicdomain/mark/1.0/"
+    if name.startswith("CC-"):
+        code, _, ver = name[3:].rpartition("-")
+        return f"https://creativecommons.org/licenses/{code.lower()}/{ver}/"
+    return ""
+
+
 def parse_search_response(body: bytes, media_type: MediaType) -> tuple[list[AssetCandidate], list[str]]:
     """(candidates, problems). Malformed, oversize or hostile payloads are reported, never raised."""
     problems: list[str] = []
@@ -81,7 +98,7 @@ def parse_search_response(body: bytes, media_type: MediaType) -> tuple[list[Asse
         if not safe_fetch_url(url):
             problems.append(f"results[{i}]: no plain https file URL")
             continue
-        lic_url = r.get("license_url")
+        lic_url = canonical_license_url(r.get("license"), r.get("license_version"))
         tags = [t.get("name") for t in r.get("tags", []) if isinstance(t, dict) and isinstance(t.get("name"), str)] \
             if isinstance(r.get("tags"), list) else []
         landing = r.get("foreign_landing_url")
@@ -91,9 +108,9 @@ def parse_search_response(body: bytes, media_type: MediaType) -> tuple[list[Asse
             source_url=landing if safe_fetch_url(landing) else "",
             creator=clean_text(r.get("creator"), "creator", 300, problems), tags=tags[:50],
             claimed_license_name=license_name(r.get("license"), r.get("license_version")),
-            claimed_license_url=lic_url if safe_fetch_url(lic_url) else "",
+            claimed_license_url=lic_url,
             claimed_attribution_text=clean_text(r.get("attribution"), "attribution", 1000, problems),
-            download_url=url, license_text_url=lic_url if safe_fetch_url(lic_url) else ""))
+            download_url=url, license_text_url=lic_url))
     return out, [scrub(p) for p in problems]
 
 

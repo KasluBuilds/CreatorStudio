@@ -1,6 +1,6 @@
 # Asset Agent — Discovery, Generation, Rights and Organization
 
-**Status:** Separate Asset Acquisition service is DECIDED; detailed policy and implementation are PROPOSED. An offline foundation (`orchestrator/assets/`: metadata schema, fail-closed rights engine, library) is implemented and unit-tested on synthetic data; there is no provider, downloader or automated licence verification (M-AST-01 in `PROJECT_STATUS.json`).
+**Status:** Separate Asset Acquisition service is DECIDED; detailed policy and implementation are PROPOSED. An offline foundation (`orchestrator/assets/`: metadata schema, fail-closed rights engine, library) is implemented and unit-tested on synthetic data; an offline, transport-injected acquisition step with an Openverse adapter and a local-folder provider is also implemented (section 8, M-AST-01 and M-AST-02 in `PROJECT_STATUS.json`) and had one narrow, anonymous live run on 2026-11-17 (section 8.8, REPORTED); there is no automated licence verification, and M-AST-02 stays in progress.
 
 ## 1. Mission
 
@@ -88,7 +88,7 @@ Project-specific downloaded/generated assets should be linked to a manifest and 
 
 Routine insertion of rights-cleared assets does not require user approval. Unknown or incompatible rights must block use automatically. The agent should report rejected assets and find alternatives rather than silently using them.
 
-## 8. Acquisition (offline, transport-injected) — IMPLEMENTED (unit-tested); live use NOT TESTED
+## 8. Acquisition (offline, transport-injected) — IMPLEMENTED (unit-tested); one narrow live run recorded in 8.8 (REPORTED)
 
 Added by task T-AST-003 (wave w01, lane L1). Code: `orchestrator/assets/acquisition.py`, `local_provider.py`, `openverse.py`; tests: `orchestrator/tests/test_asset_acquisition.py`. Status labels: **IMPLEMENTED** = code and offline unit tests exist; **NOT TESTED** = never run against the real thing; nothing in this section is **VERIFIED** (no real input has been used).
 
@@ -114,7 +114,7 @@ Per `AcquisitionPolicy`: https only (no credentials in the URL, port 443 only), 
 
 ### 8.4 Failure behaviour
 
-Every failure returns a `failed` report item with a stable code and a scrubbed message, and removes the staging directory, any managed file and any licence snapshot created for it: `TRANSPORT_ERROR` (including a stream that dies midway), `HTTP_STATUS`, `TOO_LARGE`, `TRUNCATED`, `LENGTH_MISMATCH`, `EMPTY`, `CONTENT_TYPE_NOT_ALLOWED`, `CONTENT_MISMATCH`, `HASH_MISMATCH` (a provider-declared sha256), `HOST_NOT_ALLOWED`, `REDIRECT_NOT_ALLOWED`, `URL_NOT_ALLOWED`, `LIBRARY_WRITE_ERROR`. `scrub()` removes tokens, key/value secrets, URL userinfo and query strings, long opaque strings and caps the length; it is a best-effort filter, not a guarantee.
+Every failure returns a `failed` report item with a stable code and a scrubbed message, and removes the staging directory, any managed file and any licence snapshot created for it: `TRANSPORT_ERROR` (including a stream that dies midway), `HTTP_STATUS`, `RATE_LIMITED` (HTTP 429: retryable later, listed in `RETRYABLE_CODES`, never retried automatically; every other non-200 status stays `HTTP_STATUS`), `TOO_LARGE`, `TRUNCATED`, `LENGTH_MISMATCH`, `EMPTY`, `CONTENT_TYPE_NOT_ALLOWED`, `CONTENT_MISMATCH`, `HASH_MISMATCH` (a provider-declared sha256), `HOST_NOT_ALLOWED`, `REDIRECT_NOT_ALLOWED`, `URL_NOT_ALLOWED`, `LIBRARY_WRITE_ERROR`. `scrub()` removes tokens, key/value secrets, URL userinfo and query strings, long opaque strings and caps the length; it is a best-effort filter, not a guarantee.
 
 ### 8.5 Licence evidence and drift
 
@@ -123,12 +123,28 @@ For a catalogue asset the licence text is fetched **first** and stored under `ev
 ### 8.6 Providers
 
 - `LocalFolderProvider(folder)`: offline. A file `clip.mp4` is described by `clip.mp4.rights.json`. Strict sidecar schema (`schema_version` 1; required `title`, `category`, `rights_basis`; optional `media_type`, `license_name`, `license_url`, `creator`, `source`, `source_url`, `attribution_text`, `commercial_use_allowed`, `modification_allowed`, `owner_declaration`, `tags`). A missing sidecar, bad JSON, an unknown key, a wrong type, a missing required key or a `user_owned` basis without `owner_declaration` produces a candidate with **no rights claim**, which is quarantined, never copied. The sidecar is the user's own claim: `user_owned` additionally needs a `user_declaration` attestation, and a CC or other licence claim on a local file is quarantined and not copied (`LOCAL_LICENSE_UNDOCUMENTED`) until a reviewer documents it. Originals are only read (a test hashes them before and after); links are never followed.
-- `OpenverseProvider(transport)`: a pure request builder (`build_search_url`) plus response parser (`parse_search_response`) over the injected transport. Images and audio only (no video endpoint). The licence name is derived only from the documented `license`/`license_version` fields; anything else is left unknown. The download hosts (the original uploaders' hosts) must be allow-listed by the caller. **NOT TESTED against the live service**: the fixtures were written from the public API documentation, not recorded. No API key is used or supported.
+- `OpenverseProvider(transport)`: a pure request builder (`build_search_url`) plus response parser (`parse_search_response`) over the injected transport. Images and audio only (no video endpoint). The licence name **and the licence-text URL** are derived only from the documented `license`/`license_version` fields (`canonical_license_url`: cc0 1.0 -> `creativecommons.org/publicdomain/zero/1.0/`, `by` 4.0 -> `creativecommons.org/licenses/by/4.0/`); the response's own `license_url` is ignored, and a licence that cannot be derived has no licence-text URL, so the candidate is held (`NO_LICENSE_TEXT_URL`) and never fetched. The download hosts (the original uploaders' hosts) must be allow-listed by the caller. The unit-test fixtures were written from the public API documentation, not recorded; the live run in 8.8 is the only real-service evidence. No API key is used or supported.
 
 ### 8.7 Open questions (not decided here)
 
 - Whether a licence-page hash is the right drift signal (a legal-code URL or a normalised text hash may be better).
-- Which download hosts to allow-list for Openverse results, and whether to add the Wikimedia Commons adapter.
+- Which download hosts to allow-list for Openverse results long-term (the live run saw `live.staticflickr.com` and `upload.wikimedia.org`, chosen per run from the exact result hostnames; no standing list is decided), and whether to add the Wikimedia Commons adapter.
 - Whether watermark checking needs an automated aid; today it is unchecked until a reviewer sets it.
 - The ledger and evidence snapshots are written by this module outside `index.json`; a cross-process lock does not exist (single process only, as before).
-- Real-media verification and a live-service run are needed before any part of this can be called VERIFIED.
+- Real-media verification on reviewed input, redirect handling against a real redirecting host, licence drift over time and other providers are still needed before the milestone can be called verified.
+
+### 8.8 Live Openverse run, 2026-11-17 — one provider, three assets, anonymous
+
+Authorised by Lukas as a bounded check (anonymous, no API key, at most 3 small CC0 assets of at most 1 MB, exact-hostname allow-list from the results, redirects re-checked, temporary storage only, no production use). The harness with its real transport lived outside the repository; its logs are in the author's scratch area and are **not committed**, and no downloaded media or live payload is in the repository. The evidence below is the asset agent's own report; the Coordinator has not re-observed it (recorded as **REPORTED**, not independently reviewed).
+
+| Run | What happened |
+|---|---|
+| 1 | One search request. The response was not parseable and the harness had not saved status, headers or body first, so **the cause is unknown** (not reproduced; nothing downloaded). |
+| 2 | `GET https://api.openverse.org/v1/images/?q=nature&page_size=20&mature=false&license_type=commercial%2Cmodification&license=cc0` -> 200 `application/json`, 51,085 bytes, 20 results, all 20 parsed, 0 problems. Three CC0 candidates selected; download hosts `live.staticflickr.com` and `upload.wikimedia.org`, licence host `creativecommons.org`; no redirects occurred. Flickr JPEG: 200 `image/jpeg`, 159,612 bytes, sha256 `a78b58b5…2fd4d`, stored **QUARANTINED**, with a licence snapshot of `https://creativecommons.org/publicdomain/zero/1.0/` (200 `text/html`, sha256 `abb4d48f…a1f12`, retrieved 2026-11-17). **Both Wikimedia candidates failed closed with HTTP 404** while fetching the licence text, before any download: Openverse's `license_url` was `…/zero/1.0/deed.en/` (trailing slash), which returns 404. |
+| 3 | Same search with the canonical licence URL applied in the harness (the fix now in `canonical_license_url`). Wikimedia PNG: 200 `image/png`, 6,579 bytes, sha256 `ded8bb73…ba819`, QUARANTINED, same licence snapshot hash. The Flickr JPEG came back with the identical sha256. The Wikimedia SVG got **HTTP 429** (`text/html`) and failed closed (SVG is also outside the content-type allow-list by design). |
+
+All files were at most 159,612 bytes, every asset stayed QUARANTINED and unattested, none was used, and all temporary files were deleted. The licence page's text hash was identical across every fetch.
+
+**VERIFIED, and only this (one provider, three assets, one day):** a search request and response parse on a real Openverse payload; a bounded HTTPS download with a host allow-list built from the exact result hostnames; the content-type and magic-byte check on a real JPEG and a real PNG; the sha256; the licence-text snapshot with hash, URL and date; fail-closed behaviour on a 404 and a 429; temporary-file cleanup. Even this rests on the report above.
+
+**NOT verified:** redirect handling (none occurred, so only the offline tests cover it); licence drift over time; any other provider; audio or video; legal clearance of any asset (nothing was attested; a CC0 claim is the provider's claim); SVG; the cause of run 1's unparseable response; behaviour under sustained rate limiting.
