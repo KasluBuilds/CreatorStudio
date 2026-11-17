@@ -5,7 +5,7 @@ project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
 
-## Unreleased — task `T-CRD-001` implementation (branch `task/t-crd-001-impl`, `READY_FOR_REVIEW`, reviewer rework complete; final CI pending)
+## Unreleased — task `T-CRD-001` implementation (branch `task/t-crd-001-impl`, `COMPLETED`, ChatGPT-approved; PR #27 merge pending)
 
 - `S-CRD-001-01` in one batch: `ResearchContext.from_packet()` accepts only `research->creative_director/0.3` (missing, non-string, malformed, older or newer versions make the whole packet unusable, with a high-severity issue); `ResearchItem` preserves the original claim kind/status, `safety_critical`, `unresolved_safety_warning` and the producer `usage` as typed metadata, separate from the derived usage; missing or malformed safety metadata, an unresolved warning, an unverified safety-critical claim or a producer-usage mismatch restrict the claim (capped below verified, usage `unresolved_safety_do_not_recommend`); a verified safety-critical claim may stay verified but can never be a hook; verified facts require complete supporting provenance (recognized review label and verification level), with missing metadata failing closed.
 - New deterministic `StoryBrief.research_digest` (integrity consistency check, not authentication); the validator recomputes it and re-derives every derived research field, and rejects tampering and hooks that rely on unresolved, safety-critical, warned or metadata-less claims. Schema versions bumped: story brief and editor view `0.2` -> `0.3` (documents under 0.2 must be re-planned; no consumer outside the package).
