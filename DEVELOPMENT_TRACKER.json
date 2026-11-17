@@ -485,7 +485,7 @@
         {
           "id": "S-AST-002-01",
           "title": "Step 1: required-use fail-closed fix and regression tests (continue from cc98875)",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "Non-empty required_uses with empty allowed_uses returns QUARANTINE (new reason code, no other severity change)",
             "Explicitly allowed uses still reach PERMITTED when all other checks pass",
