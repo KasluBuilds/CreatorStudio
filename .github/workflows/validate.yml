@@ -62,6 +62,15 @@ jobs:
             python -B -m governance wave verify "$WAVE_ID"
           fi
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Desktop dashboard tests
+        shell: bash
+        working-directory: dashboard/desktop
+        run: node --test "tests/*.test.js"
+
       - name: Full test suite
         shell: bash
         working-directory: orchestrator
