@@ -313,6 +313,7 @@ class SupervisorLoop:
                                                      str(self.root))
         self.last_action: Optional[str] = None
         self.ticks = 0
+        self.watch_main = True       # False with start --no-main: the loop supervises workers only
 
     def close(self) -> None:
         self.sup.close()
@@ -462,7 +463,7 @@ class SupervisorLoop:
             t = self.tick()
             self.svc.out.write(f"tick {t['tick']}: main_alive={t['main_alive']} requests={len(t['requests'])} "
                                f"worker_changes={len(t['workers']['changes'])}\n")
-            if not t["main_alive"] and self.cfg.exit_with_main:
+            if self.watch_main and not t["main_alive"] and self.cfg.exit_with_main:
                 self.svc.out.write("Main is no longer running; supervisor loop ends (workers keep running).\n")
                 return EXIT_OK
             if max_ticks is not None and self.ticks >= max_ticks:
@@ -505,6 +506,7 @@ def cmd_start(svc: Services, a: argparse.Namespace) -> int:
     try:
         plan = loop.sup.recover()
         svc.out.write(f"recovery: {len(plan.items)} item(s), {len(plan.blockers)} blocker(s); nothing relaunched\n")
+        loop.watch_main = not a.no_main
         if not a.no_main:
             main = loop.ensure_main()
             svc.out.write(f"Main session {main.get('session_id')} pid {main.get('pid')} ({main.get('status')})\n")

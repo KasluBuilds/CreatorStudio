@@ -523,8 +523,10 @@ class CliTests(Offline):
         env = Env(self, worker_permission_mode="acceptEdits")
         env.cli("assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree", str(env.wt),
                 "--owner-stream", "s", "--prompt-file", env.prompt_file(), "--yes")
-        code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        code, out = env.cli("start", "--yes", "--max-ticks", "2", "--no-main")
         self.assertEqual(code, 0, out)
+        self.assertIn("tick 2", out)                                  # no Main is not a reason to stop here
+        self.assertEqual(env.terminal.opened, [])
         spec = env.worker_launcher.specs[0]
         self.assertEqual(spec.argv[:2], ["claude", "-p"])
         self.assertEqual(spec.argv[spec.argv.index("--permission-mode") + 1], "acceptEdits")
