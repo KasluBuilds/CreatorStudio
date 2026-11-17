@@ -14,6 +14,12 @@ before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed
 
 - Claim only: registers `T-RSV-002` (owner `claude:resolve-stream`, 24-hour lease, exclusive resource `resolve`) for the safe Resolve execution layer (`M-RSV-02`), a new package owner entry `resolve_executor` (assigned directly by Lukas), `AGR-GOV-REGISTRY-01` extended to it, and steps `S-RSV-002-00` (claim, `READY_FOR_REVIEW`) and `S-RSV-002-01` (implementation, `PLANNED`). No source, test, documentation, status or milestone change. `SESSION_HANDOFF.md` regenerated with the official command.
 
+## Unreleased — task `T-RSR-001` Research security remediation, Assignment 6 (step 01 `READY_FOR_REVIEW`, pending review)
+
+- Findings F-01, F-02, F-04, F-05, F-06, F-07 of the Assignment 5 audit (NOT READY). The audit record establishes no F-03 and none is invented. Each attack was reproduced against `origin/main 0129423` first; see the pull request for the matrix.
+- `orchestrator/research/`: attestations bind `bind_context(brief id, topic kind)`; source subject signs `text_origin`; `RemoteVerifier`, `TrustPolicy(require_separated_verifier, require_ledger_seal)` and `check_signing_request`; retrieval needs a trusted gatherer and unretrieved leads are capped at 0.25; append-only evidence ledger with human resolutions and an optional orchestrator seal; bounded origin bonus and contested-fact caps in scoring; stored relevance and `text_origin` are validated, exports and Markdown recompute. New `ledger.py` and `README.md`. Schema `research-brief/0.5`; old attestations no longer verify (signer-contract change); `research->creative_director/0.3` unchanged.
+- `orchestrator/tests/test_research.py`: 284 -> 354 tests (adversarial regression tests per finding plus interactions). Deployment-level F-02 is NOT complete: it needs an orchestrator-side verification service and a policy-enforcing signer. Synthetic data only; nothing VERIFIED.
+
 ## Unreleased — task `T-RSR-001` claim (branch `task/t-rsr-001-claim`, pending integration)
 
 - Claim only: registers `T-RSR-001` (owner `claude:research-stream`, 24-hour lease, `AGR-GOV-REGISTRY-01` extended to it) and steps `S-RSR-001-00` (claim, `READY_FOR_REVIEW`) and `S-RSR-001-01` (implementation, `PLANNED`, not started). Owned paths: `orchestrator/research/`, `orchestrator/tests/test_research.py` and the four shared registry files. No source, test, documentation, status or milestone change.
