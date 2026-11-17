@@ -238,6 +238,37 @@ def load_base(root: Path, ref: str) -> Optional[Dict[str, Any]]:
         raise BaseError(f"{spec} is not valid JSON: {exc}")
 
 
+def _branch_side_of_main_merge(old_doc: Dict[str, Any], merged_doc: Dict[str, Any],
+                               main_doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove changes inherited unchanged from the already-validated main parent of a merge.
+
+    The task branch's first-parent history may merge main after several main-side tracker
+    transitions. Those transitions were validated on main; comparing only the branch's
+    previous snapshot with the merge result would collapse them into one apparent jump.
+    Keep branch-side changes, but neutralize steps whose merged value is exactly the
+    second-parent value. The real merged snapshot is still used as the next baseline.
+    """
+    def steps(doc: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        return {step["id"]: step for task in doc.get("tasks", []) for step in task.get("steps", [])
+                if isinstance(step, dict) and isinstance(step.get("id"), str)}
+
+    old_steps, merged_steps, main_steps = steps(old_doc), steps(merged_doc), steps(main_doc)
+    checked = []
+    for sid, merged_step in merged_steps.items():
+        old_step, main_step = old_steps.get(sid), main_steps.get(sid)
+        if main_step is not None and merged_step == main_step and merged_step != old_step:
+            if old_step is not None:
+                checked.append(old_step)
+            # A step newly introduced on main is already covered by main's own history.
+            continue
+        checked.append(merged_step)
+    # A removal inherited from main is likewise already covered by main's own history.
+    for sid, old_step in old_steps.items():
+        if sid not in merged_steps and sid not in main_steps:
+            checked.append(old_step)
+    return {"tasks": [{"steps": checked}]}
+
+
 def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any], head_ref: str = "HEAD") -> List[str]:
     """Check each committed tracker snapshot from the branch fork point through the selected head ref.
 
@@ -301,7 +332,16 @@ def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any
         except ValueError as exc:
             raise BaseError(f"{spec} is not valid JSON: {exc}")
         if previous is not None:
-            problems.extend(transition_problems(previous, snapshot))
+            transition_snapshot = snapshot
+            parents = git("rev-list", "--parents", "-n", "1", sha)
+            if parents.returncode != 0:
+                raise BaseError(f"cannot read parents for {sha}")
+            parent_ids = parents.stdout.split()[1:]
+            if len(parent_ids) >= 2 and git("merge-base", "--is-ancestor", parent_ids[1], base_sha).returncode == 0:
+                main_snapshot = load_base(root, parent_ids[1])
+                if main_snapshot is not None:
+                    transition_snapshot = _branch_side_of_main_merge(previous, snapshot, main_snapshot)
+            problems.extend(transition_problems(previous, transition_snapshot))
         previous = snapshot
 
     # Also compare the working-tree file with the selected head's snapshot. This keeps local --against checks
