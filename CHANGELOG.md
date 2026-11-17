@@ -4,6 +4,11 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## 2026-11-17 — task `T-GOV-005` wave wording follow-up (complete)
+
+- `CLAUDE.md`: a wave lane's manifest entry is its claim and it never edits `ACTIVE_TASKS.json`; standalone tasks still claim first; a redundant sentence added by T-GOV-004 is removed; no step stops inside a wave.
+- `PROJECT_STATUS.json`: evidence `E-OBS-PROTECTION-0001` records the branch protection configured on `main` after T-GOV-004 merged (read back with `gh api`: `validate` required and up to date, administrators included, pull request required, no force-push or deletion). Documentation and records only; no product package changes.
+
 ## 2026-11-17 — task `T-GOV-004` parallel wave infrastructure (complete; lease and owned paths released)
 
 - Infrastructure only; no product subsystem and no Creative Director file is touched. Claim, implementation and closeout share one pull request (PR #28) under the one-time bootstrap exception; Lukas directed the Repository Coordinator to integrate it, recorded as `approved_by: lukas` with a `DIRECT` source that does not claim a code review. The tracker's review step was folded into this pull request.
