@@ -127,7 +127,7 @@ class SnapshotTests(SnapshotCase):
         self.assertEqual(snap["last_github_checkpoint"]["value"]["issue"], 51)
         self.assertTrue(any("w-2" in a for a in snap["next_actions"]))        # BLOCKED worker -> human action
         self.assertEqual(snap["model_provider"]["providers"][0]["provider"], "anthropic")
-        self.assertIn(snap["overall_freshness"], ("cached", "offline"))
+        self.assertEqual(snap["overall_freshness"], "cached")          # unavailable PR/branch keep it from "live"
 
     def test_stale_main_session(self):
         _, reg = self.registry(False)

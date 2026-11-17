@@ -1,0 +1,326 @@
+{
+  "account_usage": {
+    "provider": "statusline",
+    "usage": {
+      "age_seconds": null,
+      "freshness": "offline",
+      "label": "UNAVAILABLE",
+      "reason": "usage is not OBSERVED (labelled REPORTED); only OBSERVED account usage is shown",
+      "source": "account_usage:statusline",
+      "timestamp": "2026-11-18T12:00:00+00:00",
+      "value": null
+    }
+  },
+  "blockers": [],
+  "branch": {
+    "age_seconds": null,
+    "freshness": "offline",
+    "label": "UNAVAILABLE",
+    "reason": "branch not supplied (workers list their own branches)",
+    "source": "git",
+    "timestamp": "2026-11-18T12:00:00+00:00",
+    "value": null
+  },
+  "failures": [
+    {
+      "detail": {
+        "age_seconds": 30.0,
+        "freshness": "cached",
+        "label": "OBSERVED",
+        "source": "event_log",
+        "timestamp": "2026-11-18T11:59:30+00:00",
+        "value": "exit:1"
+      },
+      "kind": "worker_failed",
+      "task_id": "T-SYNTH-1",
+      "worker_id": "w-synth-1"
+    }
+  ],
+  "generated_at": "2026-11-18T12:00:00+00:00",
+  "last_github_checkpoint": {
+    "age_seconds": 30.0,
+    "freshness": "cached",
+    "label": "REPORTED",
+    "source": "event_log",
+    "timestamp": "2026-11-18T11:59:30+00:00",
+    "value": {
+      "event_id": "abcd1234",
+      "issue": 1
+    }
+  },
+  "main": {
+    "alive": {
+      "age_seconds": 0.0,
+      "freshness": "live",
+      "label": "OBSERVED",
+      "source": "pid_probe",
+      "timestamp": "2026-11-18T12:00:00+00:00",
+      "value": true
+    },
+    "context_pressure": {
+      "level": {
+        "age_seconds": null,
+        "freshness": "offline",
+        "label": "UNAVAILABLE",
+        "reason": "no projects dir or session id",
+        "source": "config",
+        "timestamp": "2026-11-17T23:33:46.278705+00:00",
+        "value": null
+      },
+      "model": {
+        "age_seconds": null,
+        "freshness": "offline",
+        "label": "UNAVAILABLE",
+        "reason": "no projects dir or session id",
+        "source": "config",
+        "timestamp": "2026-11-17T23:33:46.278705+00:00",
+        "value": null
+      },
+      "ratio": {
+        "age_seconds": null,
+        "freshness": "offline",
+        "label": "UNAVAILABLE",
+        "reason": "no projects dir or session id",
+        "source": "config",
+        "timestamp": "2026-11-17T23:33:46.278705+00:00",
+        "value": null
+      },
+      "tokens": {
+        "age_seconds": null,
+        "freshness": "offline",
+        "label": "UNAVAILABLE",
+        "reason": "no projects dir or session id",
+        "source": "config",
+        "timestamp": "2026-11-17T23:33:46.278705+00:00",
+        "value": null
+      },
+      "window": {
+        "age_seconds": null,
+        "freshness": "offline",
+        "label": "UNAVAILABLE",
+        "reason": "no projects dir or session id",
+        "source": "config",
+        "timestamp": "2026-11-17T23:33:46.278705+00:00",
+        "value": null
+      }
+    },
+    "model": {
+      "age_seconds": null,
+      "freshness": "offline",
+      "label": "UNAVAILABLE",
+      "reason": "no projects dir or session id",
+      "source": "config",
+      "timestamp": "2026-11-17T23:33:46.278705+00:00",
+      "value": null
+    },
+    "present": true,
+    "selected_by": "most recent alive session",
+    "session_id": {
+      "age_seconds": 0.0,
+      "freshness": "live",
+      "label": "OBSERVED",
+      "source": "session_file:4242.json",
+      "timestamp": "2026-11-18T12:00:00+00:00",
+      "value": "synthetic-session-0001"
+    },
+    "stale": {
+      "age_seconds": 0.0,
+      "freshness": "live",
+      "label": "INFERRED",
+      "source": "session_file:4242.json",
+      "timestamp": "2026-11-18T12:00:00+00:00",
+      "value": false
+    },
+    "started_at": {
+      "age_seconds": 0.0,
+      "freshness": "live",
+      "label": "OBSERVED",
+      "source": "session_file:4242.json",
+      "timestamp": "2026-11-18T12:00:00+00:00",
+      "value": "2026-11-18T11:50:00+00:00"
+    },
+    "status": {
+      "age_seconds": 5.0,
+      "freshness": "live",
+      "label": "OBSERVED",
+      "source": "session_file:4242.json",
+      "timestamp": "2026-11-18T11:59:55+00:00",
+      "value": "busy"
+    },
+    "updated_at": {
+      "age_seconds": 5.0,
+      "freshness": "live",
+      "label": "OBSERVED",
+      "source": "session_file:4242.json",
+      "timestamp": "2026-11-18T11:59:55+00:00",
+      "value": "2026-11-18T11:59:55+00:00"
+    }
+  },
+  "model_provider": {
+    "model": {
+      "age_seconds": null,
+      "freshness": "offline",
+      "label": "UNAVAILABLE",
+      "reason": "no projects dir or session id",
+      "source": "config",
+      "timestamp": "2026-11-17T23:33:46.278705+00:00",
+      "value": null
+    },
+    "providers": [
+      {
+        "model": null,
+        "provider": "anthropic"
+      },
+      {
+        "model": "synthetic-model",
+        "provider": "anthropic"
+      }
+    ]
+  },
+  "next_actions": [
+    "Human decision needed for worker w-synth-2 (task T-SYNTH-2)"
+  ],
+  "overall_freshness": "cached",
+  "product": "Orbit",
+  "pull_request": {
+    "age_seconds": null,
+    "freshness": "offline",
+    "label": "UNAVAILABLE",
+    "reason": "pull request not observed",
+    "source": "github",
+    "timestamp": "2026-11-18T12:00:00+00:00",
+    "value": null
+  },
+  "read_only": true,
+  "registry": {
+    "present": true,
+    "worker_count": 2
+  },
+  "retries": [],
+  "schema_version": 1,
+  "tasks": [
+    {
+      "results": [],
+      "task_id": "T-SYNTH-1",
+      "workers": [
+        "w-synth-1"
+      ]
+    },
+    {
+      "results": [],
+      "task_id": "T-SYNTH-2",
+      "workers": [
+        "w-synth-2"
+      ]
+    }
+  ],
+  "thresholds": {
+    "live_after_seconds": 120.0,
+    "stale_after_seconds": 900.0
+  },
+  "workers": [
+    {
+      "branch": {
+        "age_seconds": 30.0,
+        "freshness": "cached",
+        "label": "REPORTED",
+        "source": "registry:w-synth-1",
+        "timestamp": "2026-11-18T11:59:30+00:00",
+        "value": "lane/synthetic/L1"
+      },
+      "exit_code": null,
+      "failure_count": 1,
+      "last_failure": "exit:1",
+      "last_heartbeat": {
+        "age_seconds": 30.0,
+        "freshness": "cached",
+        "label": "REPORTED",
+        "source": "registry:w-synth-1",
+        "timestamp": "2026-11-18T11:59:30+00:00",
+        "value": "2026-11-18T11:59:30+00:00"
+      },
+      "model": {
+        "age_seconds": 30.0,
+        "freshness": "cached",
+        "label": "REPORTED",
+        "source": "registry:w-synth-1",
+        "timestamp": "2026-11-18T11:59:30+00:00",
+        "value": "synthetic-model"
+      },
+      "next_restart_not_before": null,
+      "note": "",
+      "provider": {
+        "age_seconds": 30.0,
+        "freshness": "cached",
+        "label": "REPORTED",
+        "source": "registry:w-synth-1",
+        "timestamp": "2026-11-18T11:59:30+00:00",
+        "value": "anthropic"
+      },
+      "restart_count": 1,
+      "role": "builder",
+      "status": {
+        "age_seconds": 30.0,
+        "freshness": "cached",
+        "label": "OBSERVED",
+        "source": "registry:w-synth-1",
+        "timestamp": "2026-11-18T11:59:30+00:00",
+        "value": "RUNNING"
+      },
+      "task_id": "T-SYNTH-1",
+      "worker_id": "w-synth-1"
+    },
+    {
+      "branch": {
+        "age_seconds": 30.0,
+        "freshness": "cached",
+        "label": "REPORTED",
+        "source": "registry:w-synth-2",
+        "timestamp": "2026-11-18T11:59:30+00:00",
+        "value": "lane/synthetic/L2"
+      },
+      "exit_code": null,
+      "failure_count": 0,
+      "last_failure": null,
+      "last_heartbeat": {
+        "age_seconds": 30.0,
+        "freshness": "cached",
+        "label": "REPORTED",
+        "source": "registry:w-synth-2",
+        "timestamp": "2026-11-18T11:59:30+00:00",
+        "value": "2026-11-18T11:59:30+00:00"
+      },
+      "model": {
+        "age_seconds": null,
+        "freshness": "offline",
+        "label": "UNAVAILABLE",
+        "reason": "not recorded",
+        "source": "registry:w-synth-2",
+        "timestamp": "2026-11-18T12:00:00+00:00",
+        "value": null
+      },
+      "next_restart_not_before": null,
+      "note": "",
+      "provider": {
+        "age_seconds": 30.0,
+        "freshness": "cached",
+        "label": "REPORTED",
+        "source": "registry:w-synth-2",
+        "timestamp": "2026-11-18T11:59:30+00:00",
+        "value": "anthropic"
+      },
+      "restart_count": 0,
+      "role": "builder",
+      "status": {
+        "age_seconds": 30.0,
+        "freshness": "cached",
+        "label": "OBSERVED",
+        "source": "registry:w-synth-2",
+        "timestamp": "2026-11-18T11:59:30+00:00",
+        "value": "BLOCKED"
+      },
+      "task_id": "T-SYNTH-2",
+      "worker_id": "w-synth-2"
+    }
+  ]
+}

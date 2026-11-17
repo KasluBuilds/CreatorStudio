@@ -73,8 +73,16 @@ def _unavail(reason: str, source: str, now: Optional[datetime], **kw) -> Dict[st
 
 
 def _worst(fields: Iterable[Dict[str, Any]]) -> str:
-    idx = [FRESHNESS_ORDER.index(f["freshness"]) for f in fields if isinstance(f, dict) and "freshness" in f]
-    return FRESHNESS_ORDER[max(idx)] if idx else "offline"
+    """Overall freshness: `offline` only when no value at all is available; otherwise the worst of the available
+    values (a single unavailable value, such as a missing PR, is shown on its own row and downgrades `live` to `cached`)."""
+    fr = [f["freshness"] for f in fields if isinstance(f, dict) and "freshness" in f]
+    avail = [x for x in fr if x != "offline"]
+    if not avail:
+        return "offline"
+    worst = max(FRESHNESS_ORDER.index(x) for x in avail)
+    if len(avail) < len(fr):
+        worst = max(worst, FRESHNESS_ORDER.index("cached"))
+    return FRESHNESS_ORDER[worst]
 
 
 def _walk_fields(x: Any):
