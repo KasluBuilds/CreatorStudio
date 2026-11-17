@@ -18,7 +18,7 @@ from typing import Any
 
 from . import schema as S
 from .inputs import Material
-from .safety import Checker, check_arc, check_short, _segset
+from .safety import Checker, check_arc, check_hook_claims, check_research_contract, check_short, _segset
 from .schema import (Arc, Audience, BoundaryOption, Callback, CentralIdea, GuidanceItem, Hook, Issue, Moment, Pause,
                      ResearchItem, ShortConcept, StoryBrief, StyleConsideration, to_plain)
 from .serialize import from_plain
@@ -175,8 +175,10 @@ def view_cross(c: Checker, d: dict, brief: StoryBrief | None) -> None:
         c.need(d["central_idea"]["supporting_moment_ids"], mids, "/central_idea")
     for cb in d["callbacks"]:
         c.need([cb["setup_moment_id"], cb["payoff_moment_id"]], mids, "/callbacks")
+    check_research_contract(c, d)
     for h in d["hooks"]:
         c.need(h["moment_ids"] + h["promise_delivered_by"], mids, "/hooks")
+        check_hook_claims(c, h, f"/hooks[{h['hook_id']}]", d["research_context"])
     for o in (*d["beginnings"], *d["endings"]):
         c.need(o["moment_ids"], mids, "/boundaries")
     for i in d["issues"]:

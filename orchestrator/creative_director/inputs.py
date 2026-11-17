@@ -365,6 +365,90 @@ PERMISSIVENESS = {ResearchCategory.CONTRADICTED: 0, ResearchCategory.DISPUTED: 1
                   ResearchCategory.HYPOTHESIS: 3, ResearchCategory.OPINION: 4, ResearchCategory.INTERPRETATION: 5,
                   ResearchCategory.PARTIALLY_SUPPORTED: 6, ResearchCategory.VERIFIED_FACT: 7}
 
+# ---- T-CRD-001: exact contract, safety metadata, producer-usage rules, research digest -------------------------
+# Only this exact contract is read. Anything else (missing, non-string, malformed, older, newer) makes Research
+# UNUSABLE: no claim, source, angle or audience from such a packet is used.
+RESEARCH_CONTRACT = "research->creative_director/0.3"
+SUPPORTED_RESEARCH_CONTRACTS = (RESEARCH_CONTRACT,)
+
+# Mirror of the Research producer's usage rule (research/outputs.py, `_USAGE` and the safety override).
+# Copied BY VALUE: this package never imports Research internals. MANUAL SYNCHRONIZATION RISK: if the producer
+# changes its rule, this table must be updated by hand together with a new contract version; the tests pin it
+# against explicit expected cases in this package only (no cross-package test).
+PRODUCER_STATUS_USAGE = {"verified": "may_state_as_fact", "partial": "attribute_and_hedge",
+                         "unverified": "do_not_state_as_fact", "disputed": "present_all_perspectives",
+                         "contradicted": "report_as_contradicted"}
+PRODUCER_UNRESOLVED_SAFETY_USAGE = "unresolved_safety_claim_do_not_recommend"
+# OUR usage for a restricted claim; distinct from the producer's own string, which is kept separately.
+UNRESOLVED_SAFETY_USAGE = "unresolved_safety_do_not_recommend"
+SAFETY_STATES = ("ok", "missing", "malformed", "not_applicable")
+USAGE_CHECKS = ("matches", "mismatch", "missing", "unverifiable")
+_CAPPABLE = (ResearchCategory.VERIFIED_FACT, ResearchCategory.PARTIALLY_SUPPORTED)
+
+
+def expected_producer_usage(kind: str, status: str | None, safety_critical: bool | None) -> str | None:
+    """What the Research producer's own rule gives for this claim, or None when it cannot be determined."""
+    if kind in _KIND_TO_CAT:
+        return "label_as_" + kind
+    if kind != "fact" or status not in PRODUCER_STATUS_USAGE or not isinstance(safety_critical, bool):
+        return None
+    if safety_critical and status != "verified":
+        return PRODUCER_UNRESOLVED_SAFETY_USAGE
+    return PRODUCER_STATUS_USAGE[status]
+
+
+def check_producer_usage(kind: str, status: str | None, safety_critical: bool | None,
+                         supplied: str | None) -> str:
+    if supplied is None:
+        return "missing"
+    exp = expected_producer_usage(kind, status, safety_critical)
+    return "unverifiable" if exp is None else ("matches" if supplied == exp else "mismatch")
+
+
+def restriction_reasons(kind: str, status: str | None, safety_critical: bool | None,
+                        unresolved_warning: bool | None, safety_state: str, usage_check: str) -> tuple[str, ...]:
+    """Why a claim is restricted (capped below verified, never ordinary factual guidance); () if it is not.
+    A VERIFIED safety-critical claim without a warning is NOT restricted, but may never be a hook."""
+    r: list[str] = []
+    is_fact = kind not in _KIND_TO_CAT
+    if is_fact:
+        if kind != "fact":
+            r.append("unrecognised claim kind")
+        if status not in PRODUCER_STATUS_USAGE:
+            r.append("unrecognised claim status")
+        if safety_state in ("missing", "malformed"):
+            r.append(f"safety metadata {safety_state}")
+        if unresolved_warning is True:
+            r.append("unresolved safety warning")
+        if safety_critical is True and status != "verified":
+            r.append("safety-critical claim is not verified")
+    if usage_check != "matches":
+        r.append(f"producer usage {usage_check}")
+    return tuple(r)
+
+
+def derived_usage(category: ResearchCategory, restricted: bool) -> str:
+    return UNRESOLVED_SAFETY_USAGE if restricted else CATEGORY_USAGE[category]
+
+
+RESEARCH_DIGEST_SCOPE = ("research claims: id, derived category and usage, original producer kind/status/usage, "
+                         "safety metadata, restriction, plus the research contract. An integrity consistency "
+                         "check only: it is NOT authentication and not proof of who wrote the packet")
+_DIGEST_FIELDS = ("claim_id", "category", "usage", "producer_kind", "producer_status", "producer_usage",
+                  "usage_check", "safety_critical", "unresolved_safety_warning", "safety_metadata",
+                  "restricted", "restriction_reasons")
+
+
+def compute_research_digest(contract: str | None, items: Iterable[Mapping[str, Any]]) -> dict:
+    """Deterministic sha256 over plain research-item dicts (order independent). Used both when a brief is built
+    and when it is validated, so the two cannot disagree."""
+    rows = sorted(({k: it[k] for k in _DIGEST_FIELDS} for it in items), key=lambda r: r["claim_id"])
+    blob = json.dumps({"contract": contract, "claims": rows}, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":"))
+    return {"algorithm": "sha256", "scope": RESEARCH_DIGEST_SCOPE, "value": hashlib.sha256(blob.encode("utf-8")).hexdigest(),
+            "claims": len(rows), "contract": contract}
+
+
 # ---- the Research Agent's per-source record, as sent in `research->creative_director/*` (research/outputs.py)
 #   stance               "supports" | "contradicts" | "context"     (research.models.Stance)
 #   review_label         "unreviewed" | "llm_assessed" | "human_reviewed" | "process_verified"
@@ -539,6 +623,28 @@ def _count_reasons(reasons: list[str]) -> str:
     return ", ".join(f"{r} x{n}" for r, n in sorted(counts.items()))
 
 
+def _flag(c: Mapping[str, Any], key: str) -> Any:
+    """A safety flag as supplied: a real bool, else the marker 'missing' / 'malformed' (never coerced)."""
+    if key not in c or c[key] is None:
+        return "missing"
+    return c[key] if isinstance(c[key], bool) else "malformed"
+
+
+def _merge_flag(vals: list) -> bool | None:
+    """Pessimistic merge: any True wins, then any unusable value (None), else False."""
+    if any(v is True for v in vals):
+        return True
+    return None if any(not isinstance(v, bool) for v in vals) else False
+
+
+def _merge_state(vals: list) -> str:
+    if any(v == "malformed" for v in vals):
+        return "malformed"
+    if any(v == "missing" for v in vals):
+        return "missing"
+    return "ok"
+
+
 @dataclass(frozen=True)
 class ResearchContext:
     brief_id: str | None
@@ -554,6 +660,17 @@ class ResearchContext:
         return next((i for i in self.items if i.claim_id == claim_id), None)
 
     @classmethod
+    def _unusable(cls, reason: str, kind: str) -> "ResearchContext":
+        """Fail closed: NOTHING from the packet is used (no claims, sources, angles, audience, topic)."""
+        txt = f"research unusable: {reason}; no research context was used"
+        return cls(None, None, None, (), (), (txt,), {}, ({"kind": kind, "severity": "high", "text": txt},))
+
+    @property
+    def usable(self) -> bool:
+        return not any(i["kind"] in ("research_contract_unsupported", "research_packet_unusable")
+                       for i in self.issues)
+
+    @classmethod
     def from_packet(cls, packet: Mapping[str, Any]) -> "ResearchContext":
         """Reads a `research->creative_director/*` packet (dict). Never writes, never invents sources.
 
@@ -565,13 +682,16 @@ class ResearchContext:
           downgraded to unverified and an issue is recorded. Contradicting sources stay in the provenance.
         - Malformed source records (no valid id) are dropped with a warning, an issue and a caveat on the claim."""
         if not isinstance(packet, Mapping):
-            return cls(None, None, None, (), (), ("research packet is not a mapping; ignored",))
+            return cls._unusable("research packet is not a mapping", "research_packet_unusable")
         p = copy.deepcopy(dict(packet))
         warns: list[str] = []
         issues: list[dict] = []
-        contract = str(p.get("contract", ""))
-        if not contract.startswith("research->creative_director/"):
-            warns.append(f"unrecognised research contract {contract!r}; parsed conservatively")
+        contract = p.get("contract")
+        if not isinstance(contract, str) or contract not in SUPPORTED_RESEARCH_CONTRACTS:
+            shown = (repr(clean_text(contract)[:60]) if isinstance(contract, str)
+                     else "missing" if contract is None else f"a non-text {type(contract).__name__}")
+            return cls._unusable(f"unsupported research contract ({shown}); only "
+                                 f"{RESEARCH_CONTRACT!r} is accepted", "research_contract_unsupported")
         entries: dict[str, list[dict]] = {}
         order: list[str] = []
         for key in ("facts", "interpretations_opinions_hypotheses"):
@@ -594,13 +714,21 @@ class ResearchContext:
                     cat = ResearchCategory.UNVERIFIED_FACT
                     warns.append(f"claim {cid}: unknown status {status!r}; treated as unverified")
                 records, dropped = _parse_sources(c.get("sources"))
+                pkind = kind if (kind in _KIND_TO_CAT or kind == "fact") else "unknown"
+                pstatus = clean_text(c["status"])[:40] if isinstance(c.get("status"), str) else None
+                pusage = clean_text(c["usage"])[:200] if isinstance(c.get("usage"), str) else None
+                if pkind in _KIND_TO_CAT:
+                    sc = uw = None
+                else:
+                    sc, uw = _flag(c, "safety_critical"), _flag(c, "unresolved_safety_warning")
                 attributed = c.get("attributed_to")
                 attributed = (clean_text(str(attributed))
                               if isinstance(attributed, (str, int, float)) and attributed != "" else None)
                 if cid not in entries:
                     order.append(cid)
                 entries.setdefault(cid, []).append({"text": text, "cat": cat, "caveats": caveats, "attr": attributed,
-                                                    "records": records, "dropped": dropped})
+                                                    "records": records, "dropped": dropped, "kind": pkind,
+                                                    "pstatus": pstatus, "pusage": pusage, "sc": sc, "uw": uw})
         items: list[ResearchItem] = []
         for cid in order:
             group = entries[cid]
@@ -620,6 +748,36 @@ class ResearchContext:
                 warns.append(f"claim {cid}: {note}")
                 conflict_notes.append(note)
             # ---- provenance: merge conservatively, report what was dropped or disputed
+            # ---- safety metadata: kept as supplied (typed); duplicates merge pessimistically
+            pkind = best["kind"]
+            same = [e for e in group if (e["kind"] in _KIND_TO_CAT) == (pkind in _KIND_TO_CAT)]
+            if pkind in _KIND_TO_CAT:
+                sc = uw = None
+                sstate = "not_applicable"
+            else:
+                sc = _merge_flag([e["sc"] for e in same])
+                uw = _merge_flag([e["uw"] for e in same])
+                sstate = _merge_state([e["sc"] for e in same] + [e["uw"] for e in same])
+            pstatus, pusage = best["pstatus"], best["pusage"]
+            ucheck = check_producer_usage(pkind, pstatus, sc, pusage)
+            reasons = restriction_reasons(pkind, pstatus, sc, uw, sstate, ucheck)
+            if reasons:
+                caveats.append("restricted (" + "; ".join(reasons) + "): never ordinary factual guidance, "
+                               "never to be recommended or presented as verified")
+                for kindname, sev, hit in (
+                        ("research_safety_metadata_invalid", "high",
+                         [x for x in reasons if x.startswith("safety metadata")]),
+                        ("research_safety_unresolved", "high",
+                         [x for x in reasons if "safety" in x and not x.startswith("safety metadata")]),
+                        ("research_usage_mismatch", "medium", [x for x in reasons if x.startswith("producer usage")]),
+                        ("research_claim_unrecognised", "medium",
+                         [x for x in reasons if x.startswith("unrecognised")])):
+                    if hit:
+                        txt = f"claim {cid} is restricted: {'; '.join(hit)}"
+                        warns.append(txt)
+                        issues.append({"kind": kindname, "severity": sev, "text": txt})
+            elif sc is True:
+                caveats.append("safety-critical claim: verified, but it may never be used as a hook")
             prov, src_notes = merge_provenance([r for e in group for r in e["records"]])
             dropped = [d for e in group for d in e["dropped"]]
             if dropped:
@@ -648,11 +806,16 @@ class ResearchContext:
                            "treated as unverified")
                     warns.append(txt)
                     issues.append({"kind": "research_verified_downgraded", "severity": "medium", "text": txt})
+            if reasons and cat in _CAPPABLE:         # capped below verified, whatever else was decided above
+                cat = ResearchCategory.UNVERIFIED_FACT
             if cat is ResearchCategory.OPINION and attributed is None:
                 caveats.append("opinion with no attribution supplied; do not present it as anyone's view")
-            items.append(ResearchItem(cid, text, cat, CATEGORY_USAGE[cat], attributed,
+            items.append(ResearchItem(cid, text, cat, derived_usage(cat, bool(reasons)), attributed,
                                       tuple(pv["id"] for pv in prov), tuple(dict.fromkeys(caveats)), tuple(prov),
-                                      tuple(conflict_notes)))
+                                      tuple(conflict_notes), producer_kind=pkind, producer_status=pstatus,
+                                      safety_critical=sc, unresolved_safety_warning=uw, safety_metadata=sstate,
+                                      producer_usage=pusage, usage_check=ucheck, restricted=bool(reasons),
+                                      restriction_reasons=reasons))
         sugg: list[dict] = []
         for a in p.get("angles", []) or []:
             if isinstance(a, Mapping):
@@ -667,7 +830,7 @@ class ResearchContext:
                              "origin": "research_brief"})
         meta = {k: _plain(p[k]) for k in ("brief_id", "topic", "topic_kind", "why_now", "controversial", "relevance")
                 if k in p}
-        meta["contract"] = contract
+        meta["contract"] = contract        # exactly the supported version (anything else returned earlier)
         meta["perspectives"] = [{k: _plain(x[k]) for k in PERSPECTIVE_KEYS if k in x}
                                 for x in (p.get("perspectives") or []) if isinstance(x, Mapping)]
         aud = p.get("audience") if isinstance(p.get("audience"), Mapping) else {}

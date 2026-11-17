@@ -556,7 +556,7 @@
         {
           "id": "S-CRD-001-01",
           "title": "Step 1: exact Research contract, safety metadata, research digest, tests and README",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Exact research->creative_director/0.3 contract; invalid versions produce no partial Research context",
             "Original Research claim status, safety_critical, unresolved_safety_warning and producer usage preserved as typed metadata; missing or malformed safety metadata fails closed",
@@ -565,7 +565,22 @@
             "Synthetic regression tests in test_creative_director.py; creative_director/README.md written; the full suite passes",
             "Only orchestrator/creative_director/ and test_creative_director.py change besides the shared registry files"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Full suite on the implementation branch: 1310 tests, 1 skipped (the skip is unchanged), no failures. test_creative_director.py went from 132 to 172 tests (40 new synthetic tests in four new classes). Synthetic data only.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1310 tests in 166.424s - OK (skipped=1)"
+            },
+            {
+              "type": "observation",
+              "summary": "Mutation spot checks (implementation temporarily broken, then restored): exact-contract check reverted to a prefix test, restriction cap disabled, digest comparison disabled, safety_critical hook clause removed, verified-cap validator check disabled each make tests fail. Two clauses are redundant by design and survive their own mutation: the hook rule's restricted/metadata/warning clauses (a restricted claim can never be verified_fact because the item-level check rejects it first) and the usage_check consistency check (covered by the restriction-reasons check)."
+            },
+            {
+              "type": "document",
+              "summary": "orchestrator/creative_director/README.md documents the fail-closed behavior, preserved fields, restrictions, the mirrored producer rule and its manual synchronization risk, the digest and its limits, hook rules and the schema version bump."
+            }
+          ]
         }
       ]
     }

@@ -30,14 +30,16 @@ from typing import Any, get_args, get_origin, get_type_hints
 
 from . import schema as S
 from .analysis import terms
-from .inputs import (CATEGORY_USAGE, META_KEYS, PERSPECTIVE_KEYS, PROVENANCE_KEYS, EvidenceError, Material,
-                     TranscriptIndex, clean_text, material_digest, source_supports)
+from .inputs import (META_KEYS, PERSPECTIVE_KEYS, PROVENANCE_KEYS, SAFETY_STATES, SUPPORTED_RESEARCH_CONTRACTS,
+                     USAGE_CHECKS, EvidenceError, Material, TranscriptIndex, check_producer_usage, clean_text,
+                     compute_research_digest, derived_usage, material_digest, restriction_reasons, source_supports)
 from .textsafety import attribution_risk, norm, transcript_norm
 
 MAX_ERRORS = 200
 _DETECTED_BY = re.compile(r"^(?:heuristic|annotation:[^\s\"'`\\<>]{1,200})$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 ELIGIBILITY = ("eligible_as_guidance", "noted_only")
+_NON_FACT_KINDS = ("opinion", "interpretation", "hypothesis")
 SUGGESTION_BASIS = S.SUGGESTED
 
 # (field, strict) narrative fields per class: checked for dialogue-attribution risk.
@@ -347,8 +349,7 @@ class Checker:
             self.err(path + "/basis", "must be 'research_brief'")
         if v["presented_as"] != "research_context_not_a_creator_statement":
             self.err(path + "/presented_as", "research claims are never creator statements")
-        if v["usage"] != CATEGORY_USAGE[S.ResearchCategory(v["category"])]:
-            self.err(path + "/usage", "does not match the canonical usage rule for this category")
+        self.research_safety(v, path)
         pids = []
         for i, pv in enumerate(v["provenance"]):
             if not isinstance(pv, dict) or not isinstance(pv.get("id"), str) or set(pv) - set(PROVENANCE_KEYS):
@@ -376,6 +377,48 @@ class Checker:
                                "counted_as_evidence true, not unreviewed, no conflicting duplicate records)")
         if set(pids) != set(v["source_ids"]):
             self.err(path, "source_ids and provenance ids differ")
+
+    def research_safety(self, v: dict, path: str) -> None:
+        """T-CRD-001: every derived field of a research item is recomputed from the preserved producer fields,
+        so a tampered category, usage, flag or restriction is caught. Fails closed."""
+        kind, status = v["producer_kind"], v["producer_status"]
+        sc, uw, state = v["safety_critical"], v["unresolved_safety_warning"], v["safety_metadata"]
+        nonfact = kind in _NON_FACT_KINDS
+        if kind not in ("fact", "unknown") + _NON_FACT_KINDS:
+            self.err(path + "/producer_kind", "unrecognised claim kind")
+        if state not in SAFETY_STATES:
+            return self.err(path + "/safety_metadata", f"must be one of {SAFETY_STATES}")
+        if v["usage_check"] not in USAGE_CHECKS:
+            return self.err(path + "/usage_check", f"must be one of {USAGE_CHECKS}")
+        if nonfact:
+            if state != "not_applicable" or sc is not None or uw is not None:
+                self.err(path + "/safety_metadata", "an opinion/interpretation/hypothesis carries no safety flags")
+        elif state == "not_applicable":
+            self.err(path + "/safety_metadata", "a factual claim needs safety metadata or a missing/malformed marker")
+        elif state == "ok":
+            if not isinstance(sc, bool) or not isinstance(uw, bool):
+                self.err(path + "/safety_metadata", "'ok' requires both safety flags to be true/false")
+        elif sc is not None and uw is not None:
+            self.err(path + "/safety_metadata", "marked missing/malformed although both flags are present")
+        expected = check_producer_usage(kind, status, sc, v["producer_usage"])
+        if v["usage_check"] != expected:
+            self.err(path + "/usage_check", f"does not match the producer usage rule (expected {expected!r})")
+        reasons = restriction_reasons(kind, status, sc, uw, state, expected)
+        if tuple(v["restriction_reasons"]) != reasons:
+            self.err(path + "/restriction_reasons", "do not match the preserved safety metadata and producer usage")
+        if v["restricted"] is not bool(reasons):
+            self.err(path + "/restricted", "does not match the preserved safety metadata and producer usage")
+        cat = S.ResearchCategory(v["category"])
+        if v["usage"] != derived_usage(cat, bool(reasons)):
+            self.err(path + "/usage", "does not match the canonical usage rule for this category")
+        if reasons and cat in (S.ResearchCategory.VERIFIED_FACT, S.ResearchCategory.PARTIALLY_SUPPORTED):
+            self.err(path + "/category", "a restricted claim (unresolved safety, missing or malformed safety "
+                                         "metadata, producer usage mismatch) cannot be above unverified")
+        if cat is S.ResearchCategory.VERIFIED_FACT and (kind != "fact" or status != "verified"):
+            self.err(path + "/category", "verified_fact requires the producer to have said fact/verified")
+        if nonfact != (cat in (S.ResearchCategory.OPINION, S.ResearchCategory.INTERPRETATION,
+                               S.ResearchCategory.HYPOTHESIS)):
+            self.err(path + "/category", "category does not fit the producer's claim kind")
 
     def post_GuidanceItem(self, v: dict, path: str) -> None:
         self._basis(v, path, S.SUGGESTED)
@@ -435,6 +478,41 @@ class Checker:
                 self.err(path, "source material changed since this was planned (transcript digest mismatch)")
 
 
+def check_research_digest(c: "Checker", d: dict) -> None:
+    """The research digest must be exactly what the research claims and contract hash to. This catches edits to
+    any digest-covered field (category, usage, original status, safety metadata, restriction, contract). It is an
+    INTEGRITY CONSISTENCY check, not authentication: anyone able to rewrite the brief can recompute it."""
+    dg = d["research_digest"]
+    keys = {"algorithm", "scope", "value", "claims", "contract"}
+    if not isinstance(dg, dict) or set(dg) != keys:
+        return c.err("/research_digest", f"must have exactly the keys {sorted(keys)}")
+    if dg != compute_research_digest(d["research_meta"].get("contract"), d["research_context"]):
+        c.err("/research_digest", "research claims, safety metadata or contract changed since planning "
+                                  "(digest mismatch; integrity check only, not authentication)")
+
+
+def check_hook_claims(c: "Checker", h: dict, hp: str, research_context: list) -> None:
+    """A hook may rely only on a claim that is a verified fact AND not safety-critical, not warned, not
+    restricted and carrying valid safety metadata. A verified safety-critical claim may stay verified, but it can
+    never be a hook."""
+    for cid in h["relies_on_claim_ids"]:
+        rc = next((r for r in research_context if r["claim_id"] == cid), None)
+        if rc is None or rc["category"] != "verified_fact":
+            c.err(hp, f"relies on claim {cid!r} which is not a verified fact")
+        elif (rc["safety_critical"] is not False or rc["unresolved_safety_warning"] is not False
+              or rc["restricted"] or rc["safety_metadata"] != "ok"):
+            c.err(hp, f"relies on claim {cid!r} which is safety-critical, carries an unresolved warning, is "
+                      "restricted or lacks valid safety metadata; such claims can never be hooks")
+
+
+def check_research_contract(c: "Checker", d: dict) -> None:
+    meta = d["research_meta"]
+    if "contract" in meta and meta["contract"] not in SUPPORTED_RESEARCH_CONTRACTS:
+        c.err("/research_meta/contract", f"only {SUPPORTED_RESEARCH_CONTRACTS} is accepted")
+    if d["research_context"] and "contract" not in meta:
+        c.err("/research_meta/contract", "research claims present without the supported research contract")
+
+
 def _segset(refs) -> set[str]:
     return {i for r in refs for i in r["segment_ids"]}
 
@@ -467,6 +545,8 @@ def brief_cross(c: Checker, d: dict) -> None:
         if not isinstance(r, dict) or set(r) != {"input", "reason"} or not all(isinstance(x, str) for x in r.values()):
             c.err(f"/rejected_inputs[{i}]", "must be {input, reason} text")
     _research_blocks(c, d)
+    check_research_contract(c, d)
+    check_research_digest(c, d)
 
     moments, mids = d["moments"], c.unique(d["moments"], "moment_id", "/moments")
     byid = {m["moment_id"]: m for m in moments}
@@ -541,10 +621,7 @@ def brief_cross(c: Checker, d: dict) -> None:
         hp = f"/hooks[{h['hook_id']}]"
         c.need(h["moment_ids"], mids, hp)
         c.need(h["promise_delivered_by"], mids, hp)
-        for cid in h["relies_on_claim_ids"]:
-            cat = next((r["category"] for r in d["research_context"] if r["claim_id"] == cid), None)
-            if cat != "verified_fact":
-                c.err(hp, f"relies on claim {cid!r} which is not a verified fact")
+        check_hook_claims(c, h, hp, d["research_context"])
 
     for sc in d["short_concepts"]:
         check_short(c, sc, byid, mids)
