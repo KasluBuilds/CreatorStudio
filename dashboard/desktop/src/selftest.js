@@ -7,6 +7,61 @@ const path = require('path');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Runs inside the page: the WCAG contrast of every visible text element against the colour it is really drawn on.
+const AUDIT_JS = `(() => {
+  const parse = (str) => {
+    let m = /^rgba?\\(([^)]+)\\)$/.exec(str);
+    if (m) { const p = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; }
+    m = /^color\\(srgb ([^)]+)\\)$/.exec(str);
+    if (m) { const p = m[1].split(/[ \\/]+/).filter(Boolean).map(Number); return [p[0] * 255, p[1] * 255, p[2] * 255, p.length > 3 ? p[3] : 1]; }
+    return null;
+  };
+  const over = (top, bot) => [0, 1, 2].map((i) => top[i] * top[3] + bot[i] * (1 - top[3])).concat([1]);
+  const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  const lum = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+  const ratio = (a, b) => { const x = lum(a); const y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const bgOf = (el) => {
+    const layers = [];
+    for (let e = el; e; e = e.parentElement) {
+      const c = parse(getComputedStyle(e).backgroundColor);
+      if (c && c[3] > 0) { layers.push(c); if (c[3] >= 1) break; }
+    }
+    let base = layers.length && layers[layers.length - 1][3] >= 1 ? layers.pop() : (parse(getComputedStyle(document.body).backgroundColor) || [255, 255, 255, 1]);
+    for (let i = layers.length - 1; i >= 0; i--) base = over(layers[i], base);
+    return base;
+  };
+  const failures = [];
+  let checked = 0;
+  for (const el of document.querySelectorAll('body *')) {
+    if (!Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+    const svgText = el instanceof SVGElement;
+    const fg = parse(svgText ? cs.fill : cs.color);
+    if (!fg) continue;
+    let backgrounds = [bgOf(el)];
+    // an SVG glyph is drawn on the shape drawn just before it (the node's circle); text on a CSS gradient is measured against every colour stop
+    const prev = el.previousElementSibling;
+    if (svgText && prev && prev.tagName.toLowerCase() === 'circle') { const f = parse(getComputedStyle(prev).fill); if (f) backgrounds = [f]; }
+    const gradient = getComputedStyle(el).backgroundImage;
+    if (gradient && gradient !== 'none') {
+      const stops = (gradient.match(/rgba?\\([^)]*\\)|color\\(srgb [^)]*\\)/g) || []).map(parse).filter(Boolean);
+      if (stops.length) backgrounds = stops.map((c) => over(c, backgrounds[0]));
+    }
+    const bg = backgrounds[0];
+    const eff = fg[3] < 1 ? over(fg, bg) : fg;
+    const size = parseFloat(cs.fontSize); const bold = parseInt(cs.fontWeight, 10) >= 700;
+    const min = (size >= 24 || (size >= 18.66 && bold)) ? 3 : 4.5;
+    checked += 1;
+    const ra = Math.min.apply(null, backgrounds.map((b) => ratio(fg[3] < 1 ? over(fg, b) : fg, b)));
+    if (ra < min) failures.push({ text: el.textContent.trim().slice(0, 40), ratio: Math.round(ra * 100) / 100, min, tag: el.tagName.toLowerCase() + '.' + (el.getAttribute('class') || '') });
+  }
+  return { checked, failures: failures.slice(0, 8), failureCount: failures.length };
+})()`;
+
+
 async function runSelftest({ app, win, controller, opts }) {
   const out = path.resolve(opts.out || path.join(app.getPath('userData'), 'selftest'));
   fs.mkdirSync(out, { recursive: true });
@@ -122,6 +177,51 @@ async function runSelftest({ app, win, controller, opts }) {
     const after = await exec('document.querySelector("#sync-time").textContent');
     ok('manual refresh completes', done);
     ok('refresh updates the sync time', after !== before || before.includes('just now'), `${before} -> ${after}`);
+  }
+
+
+  // ---- appearance: Light / Dark / System (presentation only; added after the original checks, which are unchanged)
+  {
+    const themeFile = path.join(app.getPath('userData'), 'theme.json');
+    const startPref = await exec('window.__debug.state.theme');
+    ok('appearance preference is valid', ['light', 'dark', 'system'].includes(startPref), startPref);
+    if (opts.expectTheme) ok(`the saved appearance (${opts.expectTheme}) was restored at startup`, startPref === opts.expectTheme, startPref);
+    ok('appearance switch has Light, Dark and System', JSON.stringify(await exec('[...document.querySelectorAll("#theme-switch button")].map(b => b.dataset.themeMode)')) === '["light","dark","system"]');
+    const firstAgent = model.agents[0].id;
+    const views = [['overview', '#/overview'], ['roadmap', '#/roadmap'], [`agent-${firstAgent}`, `#/agent/${firstAgent}`], ['gate', `#/gate/${model.gates[0] ? model.gates[0].id : ''}`]];
+    for (const mode of ['dark', 'light', 'system']) {
+      await go('#/overview');
+      await exec(`document.querySelector('[data-theme-mode="${mode}"]').click()`);
+      await waitFor(`window.__debug.state.theme === ${JSON.stringify(mode)}`, 6000);
+      await sleep(600);
+      ok(`${mode}: the ${mode} button is the pressed one`, JSON.stringify(await exec('[...document.querySelectorAll("#theme-switch button")].filter(b => b.getAttribute("aria-pressed") === "true").map(b => b.dataset.themeMode)')) === JSON.stringify([mode]));
+      const wantDark = mode === 'dark' ? true : mode === 'light' ? false : (await exec('window.__debug.state.resolvedTheme')) === 'dark';
+      ok(`${mode}: the page really is ${wantDark ? 'dark' : 'light'} (prefers-color-scheme)`, (await exec('matchMedia("(prefers-color-scheme: dark)").matches')) === wantDark);
+      let saved = null;
+      try { saved = JSON.parse(fs.readFileSync(themeFile, 'utf8')).mode; } catch (e) { saved = String(e.message); }
+      ok(`${mode}: the choice is saved to disk`, saved === mode, saved);
+      const bodyBg = await exec('getComputedStyle(document.body).backgroundColor');
+      ok(`${mode}: the page background matches the theme`, (bodyBg.match(/\d+/g) || [255, 255, 255]).slice(0, 3).map(Number).reduce((a, b) => a + b, 0) < 200 === wantDark, bodyBg);
+      for (const [name, hash] of views) {
+        await go(hash);
+        const r = await exec(AUDIT_JS);
+        ok(`${mode}: text contrast on ${name} (${r ? r.checked : 0} text elements)`, !!r && r.checked > 15 && r.failureCount === 0, r ? JSON.stringify(r.failures) : 'no result');
+        if (mode !== 'system') await shot(`theme-${mode}-${name}`);
+      }
+      if (mode === 'dark' || mode === 'light') {
+        const nodes = await exec('document.querySelectorAll("svg.road-svg .node").length');
+        await go('#/roadmap');
+        ok(`${mode}: the roadmap still draws every milestone`, (await exec('document.querySelectorAll("svg.road-svg .node").length')) === model.milestones.length, nodes);
+        const globalText = await exec('document.querySelector(".agent-head p.muted").textContent');
+        ok(`${mode}: the canonical figure is unchanged`, globalText.includes(`${model.global.implementation.toFixed(1)}% implemented`), globalText);
+      }
+    }
+    // leave the profile as it was found, unless asked to leave the last choice in place so a second launch can prove it persisted
+    const finalMode = opts.leaveTheme ? (opts.expectTheme === 'dark' ? 'light' : 'dark') : startPref;
+    await go('#/overview');
+    await exec(`document.querySelector('[data-theme-mode="${finalMode}"]').click()`);
+    await waitFor(`window.__debug.state.theme === ${JSON.stringify(finalMode)}`, 6000);
+    if (opts.leaveTheme) ok(`the final choice (${finalMode}) stays saved for the next launch`, JSON.parse(fs.readFileSync(themeFile, 'utf8')).mode === finalMode);
   }
 
   ok('no renderer console errors', consoleErrors.length === 0, consoleErrors.join(' | '));

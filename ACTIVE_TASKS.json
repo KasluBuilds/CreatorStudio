@@ -106,7 +106,8 @@
         "T-DNA-001",
         "T-CRD-001",
         "T-GOV-004",
-        "T-DSH-001"
+        "T-DSH-001",
+        "T-DSH-002"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -475,6 +476,49 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Completed 2026-11-17 in this single pull request (claim, implementation and closeout), directed by Lukas to the Repository Coordinator session; gates were run on head 32e96d57d8c0bd12dfed4f036e128fafadcc3241 before the closeout commit. The executable is built from merged main and published as Release dashboard-v1.0.0 with SHA256SUMS.txt after the merge. Does not touch wave w01, Creative Director or any product package."
+    },
+    {
+      "id": "T-DSH-002",
+      "title": "Desktop dashboard dark mode (Light, Dark, System)",
+      "description": "Add Light, Dark and System appearance to the existing Windows desktop dashboard: System by default, saved across restarts, applied to the whole application with an intentionally designed dark palette and accessible contrast. Presentation only: progress calculations, GitHub synchronization, canonical data interpretation, agent registration, the filming gate and notification logic are not changed.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-dsh-002-theme",
+      "worktree": "../CreatorStudio-worktrees/t-dsh-002-theme",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DSH-001"
+      ],
+      "lease": {
+        "acquired": "2026-11-17T17:58:30+00:00",
+        "expires": "2026-11-18T17:58:30+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "dashboard/desktop/",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "Light, Dark and System options exist; System is the default on first launch and follows Windows live; the choice persists across restarts",
+        "The theme applies to every screen, card, checklist, evidence section, banner, the road, scrollbars and the title bar; tooltips and notifications follow Windows and the app has no dialogs of its own",
+        "The dark palette is designed (not an inversion) and both themes meet WCAG contrast, with status colours distinguishable and never colour alone; measured by tests and by the rendered-window audit in the packaged self-test",
+        "No change to progress calculations, GitHub synchronization, canonical data interpretation, agent registration, filming gate or notification logic; the original 38 self-test checks and 61 Node tests still pass",
+        "A new portable exe is built and published as a new GitHub Release without overwriting v1.0.0; the downloaded artifact and SHA-256 are verified; documentation describes the theme"
+      ],
+      "test_requirements": [
+        "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Directed by Lukas on 2026-11-17 (Repository Coordinator session). Claim, implementation and closeout share one pull request. Touches only dashboard/desktop/ and the four shared registry records; no governance machinery, no product package, nothing of wave w01 or the open PRs of other sessions. Release dashboard-v1.1.0 is built from merged main after the merge."
     }
   ]
 }

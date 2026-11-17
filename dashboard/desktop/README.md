@@ -10,7 +10,7 @@ Status labels: **VERIFIED** (observed in testing), **NOT TESTED**.
 ## Install
 
 1. Open <https://github.com/KasluBuilds/CreatorStudio/releases> and download `CreatorStudio-Dashboard-<version>-portable.exe`
-   from the latest `dashboard-v…` release. Check it against `SHA256SUMS.txt` on the same page:
+   from the latest `dashboard-v…` release (version 1.1.0 added dark mode). Check it against `SHA256SUMS.txt` on the same page:
    `Get-FileHash .\CreatorStudio-Dashboard-<version>-portable.exe -Algorithm SHA256`.
 2. Put it anywhere (Desktop, a folder) and double-click it. There is no installer and nothing to uninstall: delete the file.
 3. Windows SmartScreen may say "Windows protected your PC" because the file is **not code-signed** (a signing certificate costs
@@ -23,7 +23,7 @@ opens offline.
 
 | Where | What |
 |---|---|
-| **Header** | Last successful synchronization time, the **source commit** it came from (a link), a *Live / Saved copy / Offline* chip and the **Refresh** button. |
+| **Header** | Last successful synchronization time, the **source commit** it came from (a link), a *Live / Saved copy / Offline* chip, the **Light / Dark / System** appearance switch and the **Refresh** button. |
 | **Banners** | Red: GitHub cannot be reached (the saved copy is shown). Amber: the data is more than an hour old. Green, pulsing: the filming gate is ready. Blue: a newer dashboard exists, or notes about missing/odd data. |
 | **Overview** | The big progress ring (click it for the global roadmap), current major milestone, current wave and its lanes, active agents, blockers and open decisions, upcoming milestones, progress by agent, and the filming gate card. |
 | **One tab per agent** | The agent's role and streams, implementation/verification rings, its **current assignment**, its **next substantial task**, and its **winding road** with its milestones. Click a milestone for its checklist, dependencies, blockers, wave lanes assigned to it, and evidence with GitHub links. |
@@ -53,6 +53,15 @@ gold ▶ = ready to start, dashed = waiting on dependencies. The lit green stret
   ChatGPT "Phase 6 Readiness Check" automation (REPORTED by Lukas, not verified). When the gate becomes ready the app shows the green banner, flashes
   the taskbar, puts "ACTION REQUIRED" in the window title and shows one Windows notification; the banner stays until the record is acknowledged.
   This is the point where development-only work should pause so real videos can be filmed and validated.
+
+## Appearance: Light, Dark or System
+
+The **Light / Dark / System** switch in the header changes only the colours. It does not touch any data, progress figure, synchronization, agent tab, filming-gate behaviour or notification.
+
+- **System** (the default on first launch) follows Windows: if you switch Windows between light and dark while the app is open, the app follows at once.
+- Your choice is **saved** (`%APPDATA%\Creator Studio Dashboard\theme.json`) and restored the next time the app starts, with no flash of the wrong theme. Deleting that file returns to System.
+- The whole window follows the choice: overview, global roadmap, every agent roadmap, cards, milestone checklists, evidence, banners, the road itself, and also the native scrollbars and title bar. Tooltips are the operating system's own and follow Windows, and Windows notifications (the filming-gate toast) are drawn by Windows. The app has no dialog boxes of its own.
+- The dark theme is designed, not an inversion: deep blue-slate surfaces, softened status colours, a glowing travelled road. Light and dark each meet WCAG contrast (4.5:1 for text, 7:1 for body text on surfaces, 3:1 for icons), measured by tests on the palette values and again on the rendered window for every screen. Status is never colour alone: implemented, verified, in progress, blocked and ready each have their own glyph, and waiting milestones are dashed.
 
 ## Refresh, offline and stale data
 
@@ -93,17 +102,17 @@ from the repository is only ever shown as text, and links open only this project
 cd dashboard\desktop
 npm ci                          # electron + electron-builder (dev only)
 node node_modules\electron\install.js   # if npm skipped Electron's download
-npm test                        # 61 unit tests, Node only, no network
+npm test                        # 79 unit tests, Node only, no network
 npm start                       # run the app
 npm run dist                    # builds dist\CreatorStudio-Dashboard-<version>-portable.exe
 ```
 
 Test the **packaged** exe (this is how releases are checked). It drives the real window through every screen, checks what is on screen against the data
-it loaded, saves screenshots, writes `selftest-report.json` and exits 0 when everything passed:
+it loaded, switches Light, Dark and System, audits the contrast of every visible text element on four screens in each theme, saves screenshots, writes `selftest-report.json` and exits 0 when everything passed. `--leave-theme` and `--expect-theme=dark` let two separate launches prove that the appearance choice persists:
 
 ```powershell
-.\dist\CreatorStudio-Dashboard-1.0.0-portable.exe --selftest --userdata=C:\temp\ud --out=C:\temp\report            # live GitHub
-.\dist\CreatorStudio-Dashboard-1.0.0-portable.exe --selftest --offline --userdata=C:\temp\ud --out=C:\temp\report2 # offline, uses the saved copy
+.\dist\CreatorStudio-Dashboard-1.1.0-portable.exe --selftest --userdata=C:\temp\ud --out=C:\temp\report            # live GitHub
+.\dist\CreatorStudio-Dashboard-1.1.0-portable.exe --selftest --offline --userdata=C:\temp\ud --out=C:\temp\report2 # offline, uses the saved copy
 .\dist\...portable.exe --selftest --fixture=C:\path\to\checkout --userdata=C:\temp\ud2 --out=C:\temp\report3        # local files, no network
 ```
 

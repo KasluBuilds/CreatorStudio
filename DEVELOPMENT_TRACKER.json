@@ -775,6 +775,23 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-DSH-002",
+      "title": "Desktop dashboard dark mode",
+      "steps": [
+        {
+          "id": "S-DSH-002-00",
+          "title": "Step 0: appearance switch, palettes, persistence, tests, packaging and documentation (claim and implementation in one pull request)",
+          "status": "IN_PROGRESS",
+          "acceptance_criteria": [
+            "Light, Dark and System with persistence and live System following",
+            "Both palettes meet contrast; the rendered-window audit passes in every mode",
+            "Existing business logic and the original self-test checks are unchanged and pass"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }
