@@ -106,6 +106,7 @@ Leases are not judged here (this file never reads the clock): run `cd orchestrat
 | `creative_director` | claude:creative-director-stream | REPORTED - Lukas's brief names the Creative Director as one of four subsystem assignments; the stream identity is assumed, confirm it |
 | `governance` | claude:governance-session | ASSIGNED - Lukas assigned the governance migration to this session on 2026-11-09 |
 | `resolve_executor` | claude:resolve-stream | ASSIGNED - Lukas assigned T-RSV-002 (safe Resolve execution layer, M-RSV-02) directly in session on 2026-11-17 |
+| `dev_supervisor` | claude:repository-coordinator | ASSIGNED - Lukas authorized issue #44 (autonomous development supervisor) on 2026-11-18; built by wave w03-dev-supervisor; development-time infrastructure, not a video-production agent |
 
 Unresolved ownership: `creator_state`, `media_analysis`, `speaker_attribution`, `cross_package_tests`. Touching these needs an integration agreement (see PROJECT_OPERATING_PROTOCOL.md).
 
