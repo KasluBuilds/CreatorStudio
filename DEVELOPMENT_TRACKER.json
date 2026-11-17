@@ -941,13 +941,29 @@
         {
           "id": "S-GOV-007-00",
           "title": "Step 0: milestone and next-action records for wave w01 (claim, record and closeout in one pull request)",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "M-AST-02 IN_PROGRESS with evidence, not complete",
             "Deferred work listed",
             "Computed block refreshed"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Head on which the checks were run before the closeout commits.",
+              "commit": "11bf7a9d6ba3489e0cd3192855d1f1ce0dff5614"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run locally by Claude Code: the canonical validator with the transition rules against origin/main, and the score calculation.",
+              "command": "cd orchestrator && python -B -m governance validate --against origin/main",
+              "result": "OK: status and task registry are valid and consistent"
+            },
+            {
+              "type": "observation",
+              "summary": "Record-only change to PROJECT_STATUS.json and the four registry records. M-AST-02 is IN_PROGRESS, not implemented or verified; the lane's own report states which work remains."
+            }
+          ]
         }
       ]
     }
