@@ -5,6 +5,10 @@ project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
 
+## 2026-11-17 — task `T-GOV-006` wave tooling fixes found while closing wave w01 (complete)
+
+- `wave verify` now measures a wave against the merge-base with `origin/main`, so files that came in when main was merged into the wave branch are not reported as stray (a real stray file is still caught; git test added). The `validate` workflow now accepts the closeout commit on every push to a `wave/**` branch: before this, the push-event run failed after `wave close` and, because it shares the required check name `validate`, blocked the wave pull request. `WAVE_PROTOCOL.md` step 9 documents merging main into the wave branch first.
+
 ## 2026-11-17 — task `T-DSH-002` dashboard dark mode (complete; release 1.1.0 follows the merge)
 
 - Desktop dashboard 1.1.0 adds **Light / Dark / System** appearance. System is the default and follows Windows live; the choice is saved in its own file (`theme.json`) and applied to Electron's `nativeTheme` before the window is created, so the first paint is already themed. Presentation only: `model.js`, `sync.js`, `github.js` and `controller.js` are unchanged and a test asserts they never mention the theme.
