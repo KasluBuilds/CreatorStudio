@@ -236,6 +236,61 @@ def load_base(root: Path, ref: str) -> Optional[Dict[str, Any]]:
         raise BaseError(f"{spec} is not valid JSON: {exc}")
 
 
+def transition_history_problems(root: Path, ref: str, base_doc: Optional[Dict[str, Any]],
+                              current_doc: Dict[str, Any]) -> List[str]:
+    """Check every committed tracker snapshot on the first-parent path from ref to HEAD.
+
+    Comparing only the base and final files hides intermediate transitions. Walking the
+    branch history preserves the one-step workflow even when a task uses one PR and its
+    IN_PROGRESS checkpoint exists only on that branch.
+    """
+    def git(*args: str) -> subprocess.CompletedProcess:
+        try:
+            return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
+                                  encoding="utf-8", timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise BaseError(f"git unavailable: {exc}")
+
+    base = git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+    head = git("rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+    if base.returncode != 0 or head.returncode != 0:
+        raise BaseError(f"cannot resolve history from {ref!r} to HEAD")
+    base_sha, head_sha = base.stdout.strip(), head.stdout.strip()
+    ancestor = git("merge-base", "--is-ancestor", base_sha, head_sha)
+    if ancestor.returncode != 0:
+        raise BaseError(f"{ref!r} is not an ancestor of HEAD")
+
+    commits = git("rev-list", "--first-parent", "--reverse", f"{base_sha}..{head_sha}")
+    if commits.returncode != 0:
+        raise BaseError(f"cannot read first-parent history from {ref!r} to HEAD")
+
+    previous = base_doc
+    problems: List[str] = []
+    for sha in commits.stdout.split():
+        spec = f"{sha}:DEVELOPMENT_TRACKER.json"
+        exists = git("cat-file", "-e", spec)
+        if exists.returncode != 0:
+            if previous is not None:
+                raise BaseError(f"{sha}: DEVELOPMENT_TRACKER.json disappeared from history")
+            continue
+        shown = git("show", spec)
+        if shown.returncode != 0:
+            raise BaseError(f"cannot read {spec}")
+        try:
+            snapshot = json.loads(shown.stdout)
+        except ValueError as exc:
+            raise BaseError(f"{spec} is not valid JSON: {exc}")
+        if previous is not None:
+            problems.extend(transition_problems(previous, snapshot))
+        previous = snapshot
+
+    # Also compare the working-tree file with HEAD. This keeps local --against checks
+    # useful before a commit, while CI normally sees an identical HEAD/worktree snapshot.
+    if previous is not None and previous != current_doc:
+        problems.extend(transition_problems(previous, current_doc))
+    return sorted(set(problems))
+
+
 def main(argv: List[str]) -> int:
     root = Path(__file__).resolve().parents[1]
     against = None
@@ -263,8 +318,13 @@ def main(argv: List[str]) -> int:
         if base is None:
             note = f" (no tracker at {against}: nothing to compare)"
         else:
-            problems = sorted(set(problems + transition_problems(base, doc)))
-            note = f" (transitions checked against {against})"
+            try:
+                history_problems = transition_history_problems(root, against, base, doc)
+            except BaseError as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                return 2
+            problems = sorted(set(problems + history_problems))
+            note = f" (transitions checked against {against} across first-parent history)"
     for p in problems:
         print("PROBLEM:", p)
     if not problems:
