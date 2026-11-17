@@ -35,7 +35,10 @@
         "ASSETS.md documents the acquisition flow, the sidecar schema, the failure behaviour and what is IMPLEMENTED versus NOT TESTED (live providers, real media); open questions are listed, not decided; the lane report lists anything needing a decision from Lukas"
       ],
       "depends_on": [],
-      "authorizations": []
+      "authorizations": [],
+      "milestones": [
+        "M-AST-02"
+      ]
     },
     {
       "id": "L2",
@@ -64,7 +67,10 @@
         "RESEARCH.md documents the providers, limits, cache and stage adapter, with IMPLEMENTED versus NOT TESTED labels; open questions are listed, not decided; the lane report lists anything needing a decision from Lukas"
       ],
       "depends_on": [],
-      "authorizations": []
+      "authorizations": [],
+      "milestones": [
+        "M-RSR-02"
+      ]
     },
     {
       "id": "L3",
@@ -95,7 +101,10 @@
         "CREATOR_DNA.md documents the review workflow, the sheet and decision-file formats and the CLI, with IMPLEMENTED versus NOT TESTED labels (nothing is VERIFIED on real data) and the extension point for transcript review once a transcription engine exists; the lane report lists anything needing a decision from Lukas"
       ],
       "depends_on": [],
-      "authorizations": []
+      "authorizations": [],
+      "milestones": [
+        "M-DNA-03"
+      ]
     }
   ]
 }
