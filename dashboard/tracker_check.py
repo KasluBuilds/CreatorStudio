@@ -332,15 +332,15 @@ def main(argv: List[str]) -> int:
         except BaseError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
+        try:
+            history_problems = transition_history_problems(root, against, doc)
+        except BaseError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+        problems = sorted(set(problems + history_problems))
         if base is None:
-            note = f" (no tracker at {against}: nothing to compare)"
+            note = f" (no tracker at {against}; branch history checked from its fork point)"
         else:
-            try:
-                history_problems = transition_history_problems(root, against, doc)
-            except BaseError as exc:
-                print(f"ERROR: {exc}", file=sys.stderr)
-                return 2
-            problems = sorted(set(problems + history_problems))
             note = f" (transitions checked against {against} across first-parent history)"
     for p in problems:
         print("PROBLEM:", p)
