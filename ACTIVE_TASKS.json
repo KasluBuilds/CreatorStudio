@@ -254,26 +254,16 @@
       "owner": "claude:asset-recovery",
       "branch": "task/asset-required-uses-fail-closed-recovery",
       "worktree": "../CreatorStudio-worktrees/task-asset-required-uses-fail-closed-recovery",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-AST-001"
       ],
-      "lease": {
-        "acquired": "2026-11-17T13:15:00+00:00",
-        "expires": "2026-11-18T13:15:00+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
       ],
-      "owned_paths": [
-        "orchestrator/assets/rights.py",
-        "orchestrator/tests/test_assets.py",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "When UseContext.required_uses is non-empty but AssetRecord.allowed_uses is empty, evaluate_rights returns QUARANTINE",
         "Explicitly allowed uses (required_uses a subset of a non-empty allowed_uses) continue to be permitted when every other check passes",
@@ -289,7 +279,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Takeover claim created from origin/main 91151ea on 2026-11-17 in a new worktree; the abandoned owner's branch and worktree are not modified. Step 00 is this claim; Step 01 (implementation and tests, continuing from the preserved cc98875 implementation by fetching that branch, not by merging it into the claim) is not started and needs ChatGPT's written authorization after the claim is merged. PR #17 handling (update in place or supersede) is the integrator's decision. Owner claude:asset-recovery assigned by Lukas for this task. Shared registry, tracker, generated handoff and changelog files are owned for the duration of the task as the governance protocol requires. Synthetic data only; no real footage."
+      "integration_notes": "Takeover claim created from origin/main 91151ea on 2026-11-17 in a new worktree; the abandoned owner's branch and worktree are not modified. Step 00 is this claim; Step 01 (implementation and tests, continuing from the preserved cc98875 implementation by fetching that branch, not by merging it into the claim) is not started and needs ChatGPT's written authorization after the claim is merged. PR #17 handling (update in place or supersede) is the integrator's decision. Owner claude:asset-recovery assigned by Lukas for this task. Shared registry, tracker, generated handoff and changelog files are owned for the duration of the task as the governance protocol requires. Synthetic data only; no real footage. COMPLETED 2026-11-17: Step 0 takeover claim merged as PR #22 (merge commit db2fb3554ede9655b79aa4f7ad6233a0651805c5; closeout PR #23, merge commit c9c61abc8d1917948753ac39fce6e4ae9a697ea4); step-start PR #24 merged (merge commit 8c0b5c5939aaf298734a7fd8029ebe6b57285194); Step 1 implementation PR #25 merged (merge commit b462219e45f54b97d4264825cdf9276f77be5c63; reviewed head 9a48c9faef83f38a8089a380d595f2b0dbb85f88) after ChatGPT's technical approval under Lukas's standing delegation (not a claim that Lukas personally reviewed the code). Lease cleared and owned paths released by this closeout. PR #17 and the abandoned branch task/asset-required-uses-fail-closed (cc988755b8137d4e7baf54d71c89542a5dda3f6b) and its worktree were not merged, modified or closed by this task; the integrator decides their disposition. T-AST-001 remains RELEASED. Synthetic data only; nothing VERIFIED."
     },
     {
       "id": "T-DNA-001",

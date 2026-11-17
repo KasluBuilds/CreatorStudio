@@ -84,11 +84,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 
 ## Active tasks
 
-| Task | Owner | Branch | Status | Lease expires | Owns |
-|---|---|---|---|---|---|
-| T-AST-002 Recover and complete Asset required-use fail-closed implementation | claude:asset-recovery | `task/asset-required-uses-fail-closed-recovery` | ACTIVE | 2026-11-18T13:15:00+00:00 | orchestrator/assets/rights.py, orchestrator/tests/test_assets.py, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
-
-Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
+No active tasks.
 
 ## Package ownership
 
