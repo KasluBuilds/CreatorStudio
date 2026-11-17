@@ -24,7 +24,17 @@ Use Claude for high-context creative reasoning, planning, critique and complex d
 Python and FFmpeg can handle media probing, file operations, waveform/silence analysis, frame extraction, image resizing, validation, metadata, checksums and repeatable transformations. Resolve remains the editing/rendering environment where its API is needed.
 
 ### Resolve integration
-Claude Code MCP client → local MCP server → in-app Resolve bridge → Resolve scripting API.
+Two paths, for different callers (details: `RESOLVE_INTEGRATION.md` section 10):
+- Interactive: Claude Code MCP client → local MCP server → in-app Resolve bridge → Resolve scripting API.
+- Pipeline (implemented 2026-11-18, `T-RSV-002`): edit plan → `orchestrator/resolve_executor` (typed operations →
+  pure validation → executor with capability gate, idempotency journal, identity/precondition checks, read-after-write
+  verification) → replaceable adapter (live: in-app bridge; offline: in-memory fake) → Resolve. Renders are verified
+  from the file with ffprobe. The LLM never issues raw API calls on this path.
+
+Responsibilities stay separate: Creative Director (story), Editor Agent (editing decisions and the structured plan),
+validator (deterministic correctness and safety, no Resolve calls), Resolve executor (timeline operations and
+readback), QC (inspection of the result). The executor depends on no other orchestrator package and on no LLM
+provider.
 
 ### Storage
 - Project manifests and state.
@@ -77,6 +87,12 @@ Prefer high-level, validated operations such as:
 - `export_platform_variants()`
 
 These are proposed wrapper functions, not confirmed existing MCP tools. Underlying MCP tools should be used only after their schema and behavior are inspected.
+
+Implemented so far (`resolve_executor`, live-exercised on Resolve Free 21.0.4.5 with synthetic media): inspect
+project/timeline, create project/timeline, import media, add track, append source segments (positioned, half-open
+source ranges, mixed rates), transforms and crop, markers, Text+ titles, remove items, save/checkpoint, render with
+monitoring and export verification. Explicitly refused: audio levels/fades/EQ, transitions, subtitle tracks,
+insert/overwrite edits (no safe API on 21.0). `create_timeline_from_plan()` waits for the edit-plan schema (`M-EDT-01`).
 
 Batch operations where safe. Avoid hundreds of tiny calls when a single validated high-level operation can do the job. Serialize Resolve mutations because the bridge is single-threaded.
 
