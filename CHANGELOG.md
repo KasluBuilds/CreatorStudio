@@ -4,6 +4,12 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## 2026-11-17 — task `T-DNA-001` closeout (complete; lease and owned paths released)
+
+- T-DNA-001 is complete. PR #20 was reviewed by ChatGPT and merged into `main` (merge commit `59b14a6c0215fbeb22321fc790750a4926e3bd19`; reviewed head `30ab9b39fe43c428110c699e577492d574a1d1ca`) after claim PR #15 and step-start PR #19. This closeout pull request moves S-DNA-001-01 to `COMPLETED` with a `REPORTED` completion record (ChatGPT technically approved the step and merged under Lukas's standing delegation; this does not claim Lukas reviewed the code), sets T-DNA-001 `COMPLETED` and releases its lease and owned paths. `SESSION_HANDOFF.md` regenerated with the official command.
+- Scope of the work (recorded in PR #20): schema v4 Creator DNA revocation and restore model, regression tests and `CREATOR_DNA.md`. Implemented on synthetic data only; not VERIFIED on real data. `PROJECT_STATUS.json` is unchanged.
+- The lease had expired on 2026-11-15 before this closeout; no other session took over the paths.
+
 ## Unreleased — extend AGR-GOV-REGISTRY-01 to T-CRD-001 (integrator change)
 
 - Extends the shared-registry integration agreement to include T-CRD-001. The four covered paths and per-task record ownership rules are unchanged; the Creative Director claim must still be registered in its own claim pull request before implementation.
