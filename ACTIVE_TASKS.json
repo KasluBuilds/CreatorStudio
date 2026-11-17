@@ -646,6 +646,32 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Claim only (step 00); implementation (step 01) is not started until this claim is merged on main. Authorized by Lukas and ChatGPT (relayed in session 2026-11-17) to act as Research owner; the package owner record claude:research-stream is still REPORTED, not independently confirmed. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; each task edits only its own records. The Assignment 5 audit report is not in the repository: scope is the recovered finding summary relayed by Lukas, and the available evidence does not establish an F-03 finding. Historical counts (220 Research tests, 831 full suite) are reported, not verified. Synthetic data only."
+    },
+    {
+      "id": "T-AST-004",
+      "title": "Openverse live-run fixes: canonical licence URL, distinct retryable 429, evidence section in ASSETS.md",
+      "description": "Wave w02-openverse-live-fixes, lane L1: Openverse live-run fixes: canonical licence URL, distinct retryable 429, evidence section in ASSETS.md.",
+      "owner": "claude:asset-recovery",
+      "branch": "lane/w02-openverse-live-fixes/L1",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "license_text_url is derived canonically from license + version (for example cc0 1.0 -> https://creativecommons.org/publicdomain/zero/1.0/), never from the response's license_url; if it cannot be derived the item fails closed (quarantined/failed with a reason code, never permitted); tests cover cc0, a by-style licence, an unknown licence and a response URL with a trailing deed.en/ path that is ignored",
+        "HTTP 429 maps to its own distinct retryable error code (separate from HTTP_STATUS), recorded with a scrubbed message; the asset stays unfetched and nothing partial is left; tests cover it, including that other 4xx/5xx codes keep their existing behaviour",
+        "ASSETS.md gains a section recording the 2026-11-17 live Openverse run (runs 1-3, sizes, sha256 prefixes, 404 and 429 findings) with VERIFIED limited to exactly what was exercised (search and parse on a real payload, bounded HTTPS download with exact-host allow-list, content-type and magic-byte check on a real JPEG and PNG, sha256, licence snapshot, fail-closed on 404/429, temp cleanup) and NOT verified listed (redirects, drift over time, other providers, video/audio, legal clearance, SVG, run 1 response)",
+        "No network code is exercised by tests (existing no-socket test still passes); no downloaded media or live payloads committed; existing tests are not weakened; M-AST-02 is not recorded as verified or complete"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 as lane L1 of wave w02-openverse-live-fixes; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head ab37de4ab0e0bb6543ef4d7b0a542a82828d1bb4, lane head ab37de4ab0e0bb6543ef4d7b0a542a82828d1bb4). No claim, step-start, lease or closeout pull request was used."
     }
   ]
 }
