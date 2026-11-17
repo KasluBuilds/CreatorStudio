@@ -1,0 +1,10 @@
+{
+  "lane": "L1",
+  "status": "DONE",
+  "summary": "What was built and what it does, in a few sentences. State what is NOT verified.",
+  "commands": [
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_example_package.py", "result": "Ran 12 tests: OK"}
+  ],
+  "unresolved": ["Anything you could not do inside your owned paths, or that needs a decision"],
+  "changelog": "One line for CHANGELOG.md describing this lane's result."
+}

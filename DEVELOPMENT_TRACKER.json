@@ -556,6 +556,54 @@
           "evidence": []
         }
       ]
+    },
+    {
+      "task_id": "T-GOV-004",
+      "title": "Parallel wave infrastructure",
+      "steps": [
+        {
+          "id": "S-GOV-004-00",
+          "title": "Step 0: wave tooling, workflow, hook and protocol (claim and implementation in one pull request)",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "Wave manifest validation, scope, submit, verify, close and status exist and are tested against a real git origin",
+            "validate workflow and pre-push hook exist; GitHub plan limits verified",
+            "Protocols and CLAUDE.md describe waves; full suite and all governance checks pass"
+          ],
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Run by Claude Code on the working tree before the commit (the commit cannot cite its own SHA; not independently run by ChatGPT). Known skip: test_symlink_source_refused. Synthetic data only; git flows run against a throwaway bare origin.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1306 tests: OK (skipped=1)"
+            },
+            {
+              "type": "test_run",
+              "summary": "The new module alone: manifest, scope, report, generated-record, git-flow and pre-push hook tests.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py",
+              "result": "Ran 36 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "VERIFIED 2026-11-17 with gh api: branch protection and rulesets answer HTTP 403 (Upgrade to GitHub Pro or make this repository public); GitHub Actions is enabled (allowed_actions all); allow_auto_merge is false. The validate workflow is new and has not yet run on GitHub when this record was written; its first run is reported in the pull request."
+            },
+            {
+              "type": "observation",
+              "summary": "Changed only orchestrator/governance/ (new waves.py, cli.py, __init__.py, tasks.py branch pattern), orchestrator/tests/test_waves.py, .github/, .githooks/, .gitattributes, waves/, WAVE_PROTOCOL.md, the two protocols, CLAUDE.md and the shared registry files. No product package and no orchestrator/creative_director/ file changed. Implemented, not VERIFIED on a real wave."
+            }
+          ]
+        },
+        {
+          "id": "S-GOV-004-01",
+          "title": "Step 1: review, merge and closeout by the delegated integrator",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "ChatGPT reviews the pull request and gives written technical approval naming the reviewed commit",
+            "The merge commit is recorded and the T-GOV-004 lease is released by the integrator through a follow-up pull request"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }

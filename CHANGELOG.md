@@ -4,6 +4,14 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-GOV-004` parallel wave infrastructure (branch `task/t-gov-004-waves`, `READY_FOR_REVIEW`)
+
+- Infrastructure only; no product subsystem and no Creative Director file is touched. Claim and implementation share one pull request under the same one-time bootstrap exception as T-GOV-003 (integrator approval needed); `AGR-GOV-REGISTRY-01` lists T-GOV-004 for this pull request.
+- New `governance wave` commands (`orchestrator/governance/waves.py`): `validate`, `init`, `worktrees`, `submit`, `status`, `verify`, `close`. A wave is an integration branch `wave/<id>` with a manifest of lanes that own disjoint paths; lanes work in their own worktrees, deliver themselves with a fast-forward push (the lock), and `close` writes the registry, tracker, changelog and handoff records once, so a whole wave reaches `main` in one pull request without claim, step-start, lease-renewal or closeout pull requests.
+- `.github/workflows/validate.yml` (status check on pull requests and `wave/**` pushes) and `.githooks/pre-push` (safety net for `main`, `wave/` and `lane/` refs). VERIFIED 2026-11-17: branch protection and rulesets are not available on this plan (HTTP 403); Actions is enabled. The workflow cannot block a merge.
+- `WAVE_PROTOCOL.md`, `waves/` (template and README), `PROJECT_OPERATING_PROTOCOL.md` section 17, `DEVELOPMENT_STEP_PROTOCOL.md` section 6a and a `CLAUDE.md` rule. `tasks.py` accepts `lane/<wave>/<lane>` branch names. `.gitattributes` keeps hooks LF.
+- `orchestrator/tests/test_waves.py`: manifest, scope, generated-record and git-flow tests (real bare origin, concurrent push, scope tampering) and the hook. Implemented, not VERIFIED on a real wave: no real wave has run yet.
+
 ## Unreleased — task `T-CRD-001` claim (branch `task/t-crd-001-claim`, pending review)
 
 - Claim only: registers `T-CRD-001` (owner `claude:creative-director-stream`, 24-hour lease, references `AGR-GOV-REGISTRY-01`) and its steps `S-CRD-001-00` (claim, `READY_FOR_REVIEW`) and `S-CRD-001-01` (implementation, `PLANNED`, not started). Owned paths: `orchestrator/creative_director/` (includes the new `README.md`), `orchestrator/tests/test_creative_director.py` and the four shared registry files. No source, test, documentation, status or milestone change.

@@ -104,7 +104,8 @@
       "task_ids": [
         "T-AST-002",
         "T-DNA-001",
-        "T-CRD-001"
+        "T-CRD-001",
+        "T-GOV-004"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -362,6 +363,57 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14; refreshed 2026-11-17 by merging origin/main 9317119 (no force-push) with the lease renewed for 24 hours. Task definition, owned paths and scope unchanged. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage."
+    },
+    {
+      "id": "T-GOV-004",
+      "title": "Parallel wave infrastructure: lanes, one integration branch, one pull request per wave",
+      "description": "Establish the infrastructure for large-scale parallel Claude Code development: wave manifests with disjoint lane ownership, per-lane worktrees and branches, self-service delivery into a wave integration branch (git push as the lock), a whole-wave verify gate, one close step that writes the registry/tracker/changelog/handoff records, a GitHub Actions validate workflow and a pre-push safety hook, plus protocol changes that remove per-task claim, step-start, lease-renewal and closeout pull requests for waves. No product subsystem is touched; Creative Director code and ownership are not touched.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-gov-004-waves",
+      "worktree": "../CreatorStudio-worktrees/t-gov-004-waves",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-17T14:00:34+00:00",
+        "expires": "2026-11-18T14:00:34+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/governance/",
+        "orchestrator/tests/test_waves.py",
+        ".github/",
+        ".githooks/",
+        ".gitattributes",
+        "waves/",
+        "WAVE_PROTOCOL.md",
+        "PROJECT_OPERATING_PROTOCOL.md",
+        "DEVELOPMENT_STEP_PROTOCOL.md",
+        "CLAUDE.md",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "A wave manifest validator rejects overlapping lanes, shared registry files, reserved paths, unauthorized use of another stream's or an UNRESOLVED package, overlap with active tasks, bad task ids/branches/test modules and dependency cycles",
+        "wave init, worktrees, submit, status, verify and close work against a real bare origin in tests, including a concurrent push that is retried and a lane that tries to widen its scope or edit the manifest",
+        "wave close generates COMPLETED registry and tracker records that pass the existing governance and tracker validators, and refuses without honest approval flags and a REPORTED or DIRECT source",
+        "A validate GitHub Actions workflow and a pre-push hook exist; the protections actually available on this plan are verified and documented, not assumed",
+        "WAVE_PROTOCOL.md, the operating protocol, the step protocol and CLAUDE.md describe waves; claim, step-start, lease-renewal and closeout pull requests are not needed for waves",
+        "Full suite, governance validate, handoff --check, scope and tracker_check pass; no product subsystem and no Creative Director file changes"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Claim and implementation share one pull request under the same one-time bootstrap exception T-GOV-003 used: the old claim-first flow is exactly the overhead this task removes, and it cannot be removed by a flow that needs it first. The integrator must approve that exception. AGR-GOV-REGISTRY-01 lists this task for this pull request only, so it may edit the four shared registry files like T-AST-001 and T-CRD-001; merge order matters there. Stops at READY_FOR_REVIEW; the integrator merges, records the merge commit and releases the lease. Touches no product package; orchestrator/creative_director/ is not edited. Branch created from origin/main 9dfaec2 on 2026-11-17."
     }
   ]
 }

@@ -84,6 +84,8 @@ Each task is an entry in `ACTIVE_TASKS.json` with id, owner, branch, worktree, `
 `lease`, `exclusive_resources`, acceptance criteria, test requirements and integration notes. Statuses:
 `PLANNED`, `ACTIVE`, `UNDER_REVIEW` (these two hold their paths), `COMPLETED`, `RELEASED`, `BLOCKED`.
 
+**Waves.** Work assigned as a wave does not use claim, lease-renewal or closeout pull requests: see section 17 and `WAVE_PROTOCOL.md`. The rest of this section applies to tasks outside a wave.
+
 **Register (claim).** Branch from `origin/main`, add your task (status `ACTIVE`, `lease.acquired` now, `lease.expires` 24 hours
 later), run `cd orchestrator && python -B -m governance validate` and `python -B -m governance handoff --write`, commit only
 those files, push the branch and open a small *claim pull request*. The integrator merges claim pull requests promptly, in order.
@@ -123,10 +125,11 @@ Read-only inspection of Resolve does not need the resource.
   code, e.g. `E-RSR-...`). This keeps edits to `PROJECT_STATUS.json` from colliding.
 - After a merge, a small follow-up pull request records the final merge/commit SHA as evidence and releases the lease (the commit
   SHA cannot be cited inside the commit that creates it).
-- **Enforcement (VERIFIED 2026-11-09):** GitHub branch protection and rulesets are not available for this private repository on the
+- **Enforcement (VERIFIED 2026-11-09, re-checked 2026-11-17):** GitHub branch protection and rulesets are not available for this private repository on the
   current plan (the API answers HTTP 403 "Upgrade to GitHub Pro or make this repository public"). The single-writer rule for `main` is
   therefore a PROCEDURE, not a technical barrier. Options if stronger enforcement is wanted: upgrade the plan; or accept the procedure.
   Do not make the repository public to obtain protection: it contains the project's private design.
+  Added 2026-11-17 (`T-GOV-004`): GitHub Actions is enabled, and `.github/workflows/validate.yml` reports a `validate` status on every pull request into `main` and every push to a `wave/**` branch; it cannot block a merge, so the integrator must read it. `.githooks/pre-push` (enable with `git config core.hooksPath .githooks`) refuses local pushes to `main` and force-updates or deletions of `wave/` and `lane/` branches; a hook can be skipped, so it is a safety net.
 
 ## 8. Tests
 
@@ -241,5 +244,19 @@ Every task is divided into numbered steps recorded in `DEVELOPMENT_TRACKER.json`
 2026-11-13: `T-GOV-003` made the development-step working limit per task instead of global (`DEVELOPMENT_STEP_PROTOCOL.md` section 3). Its claim and implementation share one pull request as a one-time bootstrap exception approved by ChatGPT as delegated integrator; every later task still needs a separate claim pull request.
 
 2026-11-13: Lukas delegated routine technical review, task PR opening/merging and lease release to ChatGPT as the default integrator. Claude Code remains prohibited from merging or releasing leases; Lukas retains final authority and may reserve or revoke actions.
+
+2026-11-17: `T-GOV-004` added waves (section 17, `WAVE_PROTOCOL.md`, `governance wave`), a `validate` GitHub Actions workflow and a `pre-push` hook. It was claimed and delivered the old way, in one pull request, as a one-time bootstrap exception like `T-GOV-003`; `AGR-GOV-REGISTRY-01` was extended to it for that pull request.
+
+## 17. Waves (parallel lanes, one pull request per wave)
+
+Large, parallel assignments run as a **wave**: an integration branch `wave/<id>` with a manifest of lanes that own disjoint
+paths, each lane worked by one Claude Code agent in its own worktree and branch `lane/<id>/<lane>`. Lanes deliver to the wave
+branch themselves with `python -B -m governance wave submit` (a fast-forward push is the lock), the integrator verifies the whole wave and
+runs `wave close` once, and the wave merges to `main` in **one** pull request. Waves replace, for their lanes only, the claim
+(section 6), step-start, lease-renewal and closeout pull requests and the per-step ChatGPT review (section 15): shared
+registries are written only by `wave close`, so lanes never conflict on them. Every other rule here still applies: one writer to
+`main`, merge commits only (section 7), tests green, evidence for every claim, secrets (section 10), originals immutable.
+The full procedure, roles, recovery and open decisions are in `WAVE_PROTOCOL.md`. Claude lane agents never merge, never run
+`wave close`, never edit a manifest or a shared registry, and never approve their own lane.
 
 This protocol is a shared file. Changes go through a pull request that states what rule changed and why, and add a `CHANGELOG.md` entry.
