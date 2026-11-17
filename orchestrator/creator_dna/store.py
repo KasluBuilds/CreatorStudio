@@ -25,6 +25,12 @@ from .schema import (LAYER_METHODS, OBSERVED_METHODS, SCHEMA_VERSION, Category, 
 
 LOG_NAME = "events.jsonl"
 
+# Events written before schema v4 recorded an attribution revocation as an ordinary creator
+# `evidence_review/reject` whose note started with this text. That is ambiguous (a creator could type
+# the same words), so it only ever raises a read-only warning flag; it is never migrated.
+LEGACY_REVOCATION_NOTE_PREFIX = "attribution revoked ("
+REVIEW_ACTIONS = ("reject", "restore")
+
 
 class DNALogError(DNAError):
     """The event log is corrupt or inconsistent."""
@@ -36,8 +42,22 @@ class EvidenceItem:
     evidence_id: str
     added_by: str
     added_at: str
-    rejected: bool = False
-    review_note: str = ""
+    creator_rejected: bool = False               # the creator rejected this example (restorable by the creator)
+    review_note: str = ""                        # note of the latest review or revocation event
+    revoked_decision_id: str | None = None       # set once the upstream attribution was revoked (not restorable)
+    revocation_reason: str = ""
+    # Read-only warnings for replayed pre-v4 logs; never used to change what counts.
+    legacy_possible_revocation: bool = False             # pre-v4 reject whose note looks like a revocation
+    legacy_restored_after_possible_revocation: bool = False
+
+    @property
+    def attribution_revoked(self) -> bool:
+        return self.revoked_decision_id is not None
+
+    @property
+    def rejected(self) -> bool:
+        """Compatibility: excluded from confidence for either reason."""
+        return self.creator_rejected or self.attribution_revoked
 
 
 @dataclass
@@ -76,7 +96,11 @@ class TraitState:
 def _item_dict(i: EvidenceItem) -> dict:
     d = i.evidence.to_dict()
     d.update(evidence_id=i.evidence_id, added_by=i.added_by, added_at=i.added_at,
-             rejected_by_creator=i.rejected, review_note=i.review_note)
+             rejected_by_creator=i.creator_rejected, review_note=i.review_note,
+             attribution_revoked=i.attribution_revoked, revocation_decision_id=i.revoked_decision_id,
+             revocation_reason=i.revocation_reason,
+             legacy_possible_revocation=i.legacy_possible_revocation,
+             legacy_restored_after_possible_revocation=i.legacy_restored_after_possible_revocation)
     return d
 
 
@@ -164,9 +188,9 @@ class DNAStore:
         elif t == "evidence_added":
             self._add_item(self._trait(d["trait_id"]), Evidence.from_dict(d["evidence"]), actor, ts)
         elif t == "evidence_review":
-            item = self._item(self._trait(d["trait_id"]), d["evidence_id"])
-            item.rejected = d["action"] == "reject"
-            item.review_note = d.get("note", "")
+            self._apply_review(ev, d)
+        elif t == "attribution_revoked":
+            self._apply_revocation(d)
         elif t == "layer_changed":
             tr = self._trait(d["trait_id"])
             tr.history.append({"ts": ts, "actor": actor, "change": f"layer {tr.layer.value} -> {d['layer']}",
@@ -176,6 +200,40 @@ class DNAStore:
             self._apply_feedback(d, actor, ts)
         else:
             raise ValueError(f"unknown event type {t!r}")
+
+    def _apply_review(self, ev: dict, d: dict) -> None:
+        """Creator review of one example. Only `reject` and `restore` exist; anything else is refused
+        (it used to be read as a restore). Restore clears the creator's rejection only: it never touches
+        an attribution revocation."""
+        action = d["action"]
+        if action not in REVIEW_ACTIONS:
+            raise ValueError(f"unknown evidence_review action {action!r}")
+        item = self._item(self._trait(d["trait_id"]), d["evidence_id"])
+        note = d.get("note", "")
+        legacy = ev.get("v", 0) < 4
+        if action == "reject":
+            item.creator_rejected = True
+            if legacy and note.startswith(LEGACY_REVOCATION_NOTE_PREFIX):
+                item.legacy_possible_revocation = True     # warning only; replayed exactly as written
+        else:
+            if legacy and item.legacy_possible_revocation and item.creator_rejected:
+                item.legacy_restored_after_possible_revocation = True
+            item.creator_rejected = False
+        item.review_note = note
+
+    def _apply_revocation(self, d: dict) -> None:
+        item = self._item(self._trait(d["trait_id"]), d["evidence_id"])
+        decision_id, reason = d["decision_id"], d["reason"]
+        a = item.evidence.attribution
+        if a is None or a.decision_id != decision_id:
+            raise ValueError(f"evidence {item.evidence_id} is not stamped with decision {decision_id!r}")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("an attribution revocation needs a reason")
+        if item.attribution_revoked:
+            raise ValueError(f"evidence {item.evidence_id} is already revoked")
+        item.revoked_decision_id = decision_id
+        item.revocation_reason = reason
+        item.review_note = f"attribution revoked ({decision_id}): {reason}"
 
     def _apply_feedback(self, d: dict, actor: str, ts: str) -> None:
         tr = self._trait(d["trait_id"])
@@ -380,17 +438,20 @@ class DNAStore:
     def revoke_attribution(self, decision_id: str, reason: str, actor: str) -> list[tuple[str, str]]:
         """An upstream attribution decision was withdrawn or corrected (e.g. the speaker turned out not to be
         the creator). Every evidence item stamped with that decision stops counting; nothing is deleted.
-        Returns (trait_id, evidence_id) pairs that were revoked."""
+        The revocation is permanent: restore_evidence cannot undo it. Returns (trait_id, evidence_id)
+        pairs newly revoked by this call."""
         if not reason.strip():
             raise DNAError("revoking an attribution needs a reason")
         out = []
         for tr in self.traits.values():
             for item in tr.evidence_items:
                 a = item.evidence.attribution
-                if a is not None and a.decision_id == decision_id and not item.rejected:
-                    self._emit("evidence_review", actor, {
-                        "trait_id": tr.trait_id, "evidence_id": item.evidence_id, "action": "reject",
-                        "note": f"attribution revoked ({decision_id}): {reason}"})
+                # Recorded even when the creator already rejected the item; skipped only when this
+                # decision's revocation is already on record (idempotent).
+                if a is not None and a.decision_id == decision_id and not item.attribution_revoked:
+                    self._emit("attribution_revoked", actor, {
+                        "trait_id": tr.trait_id, "evidence_id": item.evidence_id,
+                        "decision_id": decision_id, "reason": reason})
                     out.append((tr.trait_id, item.evidence_id))
         return out
 
@@ -402,7 +463,15 @@ class DNAStore:
                                               "action": "reject", "note": note})
 
     def restore_evidence(self, trait_id: str, evidence_id: str, note: str = "", actor: str = "creator") -> None:
-        self._item(self._trait(trait_id), evidence_id)
+        """Undo the creator's rejection of one example. Refused when the example is excluded by a revoked
+        attribution, or when an older log holds a reject that may have been a revocation."""
+        item = self._item(self._trait(trait_id), evidence_id)
+        if item.attribution_revoked:
+            raise DNAError(f"evidence {evidence_id} is excluded by a revoked attribution "
+                           f"({item.revoked_decision_id}); restoring cannot undo that")
+        if item.legacy_possible_revocation:
+            raise DNAError(f"evidence {evidence_id} was rejected by a pre-v4 event that may have been an "
+                           "attribution revocation; it cannot be restored until that is resolved")
         self._emit("evidence_review", actor, {"trait_id": trait_id, "evidence_id": evidence_id,
                                               "action": "restore", "note": note})
 
@@ -414,6 +483,18 @@ class DNAStore:
         return self.add_evidence(trait_id, ev, actor)
 
     # ---------------------------------------------------------------- reading
+    def legacy_warnings(self) -> list[dict]:
+        """Read-only report of ambiguous pre-v4 history. Nothing here changes what counts."""
+        out = []
+        for tr in self.traits.values():
+            for i in tr.evidence_items:
+                if i.legacy_possible_revocation:
+                    out.append({"trait_id": tr.trait_id, "evidence_id": i.evidence_id,
+                                "warning": "legacy_possible_revocation",
+                                "restored_since": i.legacy_restored_after_possible_revocation,
+                                "currently_excluded": i.rejected})
+        return out
+
     def get(self, trait_id: str) -> TraitState:
         return self._trait(trait_id)
 
@@ -459,6 +540,7 @@ class DNAStore:
             "hypotheses": section(Layer.HYPOTHESIS),
             "creator_self_report": section(Layer.SELF_REPORT),
             "creator_rejected_or_corrected": inactive,
+            "legacy_evidence_warnings": self.legacy_warnings(),
         }
 
     def write_export(self, path: str | os.PathLike | None = None) -> Path:

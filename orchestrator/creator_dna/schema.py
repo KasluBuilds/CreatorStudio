@@ -24,7 +24,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Mapping
 
-SCHEMA_VERSION = 3   # v3: footage evidence carries an eligible-creator `attribution` stamp
+SCHEMA_VERSION = 4   # v3: footage evidence carries an eligible-creator `attribution` stamp;
+                     # v4: attribution revocation is its own `attribution_revoked` event and
+                     #     evidence_review is strict (reject / restore only)
 
 
 class Category(str, Enum):

@@ -8,10 +8,13 @@ before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed
 
 - Extends the shared-registry integration agreement to include T-CRD-001. The four covered paths and per-task record ownership rules are unchanged; the Creative Director claim must still be registered in its own claim pull request before implementation.
 
-## Unreleased — task `T-DNA-001` claim (branch `task/t-dna-001-claim`, pending review)
+## Unreleased — task `T-DNA-001` safe evidence revocation and restoration (branch `task/t-dna-001-claim`, `READY_FOR_REVIEW`)
 
-- Claim only: registers `T-DNA-001` (owner `claude:creator-dna-stream`, 24-hour lease) and its steps `S-DNA-001-00` (claim, `READY_FOR_REVIEW`) and `S-DNA-001-01` (implementation, `PLANNED`, not started). Owned paths include `orchestrator/creator_dna/`, `orchestrator/tests/test_creator_dna.py` and `AI_Creator_Studio_Documentation/CREATOR_DNA.md`. No source, test, documentation, status or milestone change.
-- Planned fix, not yet made: `revoke_attribution()` and `reject_evidence()` both write `evidence_review/reject` and `restore_evidence()` can make revoked evidence eligible again, also on replay; Step 1 separates creator rejection from attribution revocation. `SESSION_HANDOFF.md` regenerated with the official command.
+- Claim PR #15 merged (merge commit `e164f5ca28b5d5de063edfe8a29685699131b5f8`, reviewed head `c559117e46a62b545d9994d6b8e417b6050e7464`); `S-DNA-001-00` `COMPLETED` (REPORTED approval), `S-DNA-001-01` now `READY_FOR_REVIEW`.
+- `creator_dna` (schema v4): creator rejection and attribution revocation are independent state on an evidence item; `rejected` is a read-only property true for either. Revocation is its own `attribution_revoked` event (decision ID and reason); `evidence_review` accepts only `reject` and `restore`.
+- Fixed: `restore_evidence()` could make revoked evidence count again (also on replay), and revoking evidence the creator had already rejected was not recorded. Restore now clears only the creator's rejection and is refused for revoked evidence; revocation is recorded for creator-rejected evidence and is idempotent per decision.
+- Legacy v1 to v3 logs replay with their original semantics. A pre-v4 `reject` whose note starts `attribution revoked (` only sets read-only warning flags (`legacy_possible_revocation`, `legacy_restored_after_possible_revocation`, `DNAStore.legacy_warnings()`, export key `legacy_evidence_warnings`); new restores on flagged items are refused. An unknown `evidence_review` action now fails replay instead of being read as a restore.
+- 17 synthetic regression tests in `test_creator_dna.py`; `CREATOR_DNA.md` documents the model. `speaker_attribution/` and cross-package tests are untouched (`test_speaker_attribution.py` run unmodified: pass). `SESSION_HANDOFF.md` regenerated with the official command.
 
 ## Unreleased — task `T-AST-001` start and registry agreement (branch `task/asset-required-uses-start`, pending review)
 
