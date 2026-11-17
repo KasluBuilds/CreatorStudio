@@ -412,6 +412,21 @@ class TestCliAgainstBase(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("PLANNED -> READY_FOR_REVIEW is not allowed", out)
 
+    def test_valid_history_after_merging_newer_main(self):
+        self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED"), step(2)))
+        self.git("checkout", "-b", "task")
+        self.commit(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"), step(2)))
+        self.git("checkout", "main")
+        (self.root / "main-only.txt").write_text("main advanced", encoding="utf-8")
+        self.git("add", "main-only.txt")
+        self.git("commit", "-q", "-m", "advance main")
+        main_ref = self.git("rev-parse", "HEAD")
+        self.git("checkout", "task")
+        self.git("merge", "--no-ff", "-m", "merge main", "main")
+        self.commit(doc(step(0, "COMPLETED"), step(1, "READY_FOR_REVIEW"), step(2)))
+        code, out = self.run_cli("--against", main_ref)
+        self.assertEqual(code, 0, out)
+
     def test_illegal_transition_fails_through_the_cli(self):
         self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED")))
         # PLANNED -> COMPLETED, with a fully valid-looking completion record: only the history check can catch it
