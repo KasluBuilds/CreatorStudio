@@ -17,7 +17,7 @@ from dev_supervisor import routing as rt  # noqa: E402
 from dev_supervisor.routing import (CLAUDE_STANDARD, CLAUDE_STRONG, OMNI_GEMINI, OMNI_GROQ, PAID_API,  # noqa: E402
                                     UNAVAILABLE, RoutingConfig, TaskProfile, decide)
 
-FAKE_KEY = "sk-test-SECRET-0123456789"
+FAKE_KEY = "dummy-placeholder-value-for-tests"
 
 
 def no_net(*a, **k):
