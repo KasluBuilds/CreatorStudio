@@ -36,7 +36,7 @@ AI_Creator_Studio_Documentation/MASTER.md and the subsystem document your brief 
 Do the whole lane autonomously and completely: implement every acceptance criterion, write the tests, update the document, run the
 test modules the brief lists, then write your report.json (status DONE only if every criterion is met and the tests pass) and run
 `cd orchestrator && python -B -m governance wave submit`. If submit refuses, fix what it names and rerun. If you hit a decision that
-is not yours, record it under "unresolved" in report.json, do everything that is not blocked, and carry on. Never ask me to approve
+is not yours, record it under "unresolved" in report.json, do everything that is not blocked, and carry on. Commit often and push your lane branch regularly with `git push origin HEAD` (a push is your heartbeat: it is how the dashboard and `wave status` can see you are working). Never ask me to approve
 a step. When submit prints SUBMITTED, reply with that line and a three-line summary, then stop.
 ```
 
