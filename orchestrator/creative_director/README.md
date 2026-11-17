@@ -49,6 +49,11 @@ claim, the planner's issue is raised at high severity.
 A **verified safety-critical claim without a warning may stay verified** (not restricted), with a caveat, but it can
 **never be used as a hook**.
 
+A verified fact also needs at least one supporting provenance record: `stance="supports"`,
+`counted_as_evidence=true`, a recognized `review_label` other than `unreviewed`, and a present recognized
+`verification_level` (`assessed`, `human` or `process`). Missing or unknown review metadata never counts as
+support, even if the other fields look valid. Duplicate source records merge support-deciding fields pessimistically.
+
 **Duplicate claim ids** (same id sent more than once, in either claim list) are resolved deterministically and
 pessimistically, whatever the input order:
 
