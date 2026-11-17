@@ -1472,6 +1472,12 @@ class TestResearchProvenance(unittest.TestCase):
             "counted missing": [{"id": "s1", "stance": "supports", "review_label": "human_reviewed"}],
             "counted not boolean": [src("s1", "supports", counted="yes")],
             "stance missing": [{"id": "s1", "counted_as_evidence": True, "review_label": "human_reviewed"}],
+            "review label missing": [{"id": "s1", "stance": "supports", "counted_as_evidence": True,
+                                      "verification_level": "human"}],
+            "verification level missing": [{"id": "s1", "stance": "supports", "counted_as_evidence": True,
+                                             "review_label": "human_reviewed"}],
+            "review label unrecognised": [src("s1", "supports", review="reviewed")],
+            "verification level missing null": [src("s1", "supports", level=None)],
             "stance unrecognised": [src("s1", "maybe")],
             "bad verification level": [src("s1", "supports", level="guess")],
         }
