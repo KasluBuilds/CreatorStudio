@@ -38,7 +38,21 @@
         h('span', { class: `chip chip-${chipCls}`, id: 'conn-chip' }, c.state === 'online' ? 'Live' : c.state === 'cached' ? 'Saved copy' : c.state === 'never' ? 'Not synced' : 'Offline'),
         h('div', { class: 'sync-text' }, h('div', { id: 'sync-time' }, `Last synchronized: ${ageText}`),
           m ? h('div', { class: 'muted', id: 'sync-commit' }, 'Source commit ', link(m.sync.commitUrl, m.sync.shortCommit), ` on ${m.sync.repo}`) : h('div', { class: 'muted' }, 'No data yet'))),
-      h('button', { class: 'btn primary', id: 'refresh', disabled: state.refreshing, onclick: () => window.dashboard.refresh() }, state.refreshing ? 'Refreshing…' : '⟳ Refresh'));
+      h('div', { class: 'topbar-actions' }, themeSwitch(),
+        h('button', { class: 'btn primary', id: 'refresh', disabled: state.refreshing, onclick: () => window.dashboard.refresh() }, state.refreshing ? 'Refreshing…' : '⟳ Refresh')));
+  }
+
+  const THEMES = [['light', '☀', 'Light'], ['dark', '☾', 'Dark'], ['system', '◐', 'System']];
+
+  /** Light / Dark / System. Presentation only: it changes colours and nothing about the data. */
+  function themeSwitch() {
+    const current = state.theme || 'system';
+    return h('div', { class: 'theme-switch', id: 'theme-switch', role: 'group', 'aria-label': 'Appearance' },
+      THEMES.map(([mode, icon, label]) => h('button', {
+        type: 'button', 'data-theme-mode': mode, 'aria-pressed': current === mode ? 'true' : 'false',
+        title: mode === 'system' ? `Follow Windows (currently ${state.resolvedTheme || 'light'})` : `${label} appearance`,
+        onclick: () => window.dashboard.setTheme(mode),
+      }, h('span', { 'aria-hidden': 'true' }, icon), label)));
   }
 
   function banners() {

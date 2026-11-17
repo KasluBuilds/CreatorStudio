@@ -5,6 +5,12 @@ project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
 
+## 2026-11-17 — task `T-DSH-002` dashboard dark mode (complete; release 1.1.0 follows the merge)
+
+- Desktop dashboard 1.1.0 adds **Light / Dark / System** appearance. System is the default and follows Windows live; the choice is saved in its own file (`theme.json`) and applied to Electron's `nativeTheme` before the window is created, so the first paint is already themed. Presentation only: `model.js`, `sync.js`, `github.js` and `controller.js` are unchanged and a test asserts they never mention the theme.
+- The dark palette is designed separately (blue-slate surfaces, softened status colours, glowing travelled road), not inverted; the light palette was retuned where status text on tinted pills was below 4.5:1. Every colour in the stylesheet is a token (a test fails on any hard-coded colour). Both themes are measured by tests (contrast of 40 pairings, status colour distinctness, glyphs not colour alone) and by the packaged app's self-test, which audits the contrast of every rendered text element on overview, global roadmap, an agent roadmap and the gate in all three modes.
+- Tests: 18 new Node tests (79 in total), self-test checks added after the existing ones (existing checks unchanged). Windows notifications, tooltips and scrollbars follow Windows; the app has no dialogs of its own. macOS and Linux NOT TESTED.
+
 ## Unreleased — task `T-CRD-001` implementation (branch `task/t-crd-001-impl`, `COMPLETED`, ChatGPT-approved; PR #27 merge pending)
 
 - `S-CRD-001-01` in one batch: `ResearchContext.from_packet()` accepts only `research->creative_director/0.3` (missing, non-string, malformed, older or newer versions make the whole packet unusable, with a high-severity issue); `ResearchItem` preserves the original claim kind/status, `safety_critical`, `unresolved_safety_warning` and the producer `usage` as typed metadata, separate from the derived usage; missing or malformed safety metadata, an unresolved warning, an unverified safety-critical claim or a producer-usage mismatch restrict the claim (capped below verified, usage `unresolved_safety_do_not_recommend`); a verified safety-critical claim may stay verified but can never be a hook; verified facts require complete supporting provenance (recognized review label and verification level), with missing metadata failing closed.
