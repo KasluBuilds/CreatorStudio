@@ -4,6 +4,11 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## 2026-11-17 — task `T-AST-002` closeout (complete; lease and owned paths released)
+
+- `T-AST-002` is complete. Step-start PR #24 (merge commit `8c0b5c5939aaf298734a7fd8029ebe6b57285194`) and implementation PR #25 (merge commit `b462219e45f54b97d4264825cdf9276f77be5c63`; reviewed head `9a48c9faef83f38a8089a380d595f2b0dbb85f88`) were technically approved by ChatGPT under Lukas's standing delegation and merged, after takeover claim PR #22 and Step 0 closeout PR #23. This closeout moves `S-AST-002-01` to `COMPLETED` with a `REPORTED` completion record (this does not claim Lukas personally reviewed the code), sets `T-AST-002` `COMPLETED` and clears its lease and owned paths. `SESSION_HANDOFF.md` regenerated with the official command.
+- Scope of the work: `evaluate_rights` now quarantines a non-empty `required_uses` against an empty `allowed_uses` with the new reason code `USE_NOT_DECLARED`; three synthetic regression tests. Implemented on synthetic data only; not VERIFIED on real asset records. `PROJECT_STATUS.json` is unchanged. `T-AST-001` stays `RELEASED`; open PR #17 and the abandoned branch/worktree were left untouched for the integrator to dispose of.
+
 ## Unreleased — task `T-AST-002` Step 1 (branch `task/asset-required-uses-fail-closed-recovery`, `READY_FOR_REVIEW`, pending review)
 
 - `evaluate_rights` in `orchestrator/assets/rights.py` now fails closed: a non-empty `UseContext.required_uses` against an empty `allowed_uses` quarantines with the new reason code `USE_NOT_DECLARED` instead of passing silently (found in the Asset Agent rights audit of 2026-11-13). Explicitly allowed uses still pass and a required use missing from a non-empty `allowed_uses` still quarantines as `USE_NOT_ALLOWED`. No other rights-policy change.

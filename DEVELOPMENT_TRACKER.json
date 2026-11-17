@@ -485,7 +485,7 @@
         {
           "id": "S-AST-002-01",
           "title": "Step 1: required-use fail-closed fix and regression tests (continue from cc98875)",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Non-empty required_uses with empty allowed_uses returns QUARANTINE (new reason code, no other severity change)",
             "Explicitly allowed uses still reach PERMITTED when all other checks pass",
@@ -497,8 +497,26 @@
             {
               "type": "observation",
               "summary": "Re-applied the intended change from the preserved T-AST-001 implementation (branch task/asset-required-uses-fail-closed, cc988755b8137d4e7baf54d71c89542a5dda3f6b) by applying only its rights.py and test_assets.py diff onto origin/main c9c61ab; PR #17 was not merged and the abandoned branch/worktree were not touched. orchestrator/assets/rights.py: non-empty required_uses with empty allowed_uses now quarantines with new reason code USE_NOT_DECLARED; the USE_NOT_ALLOWED path is unchanged. Three synthetic regression tests added to orchestrator/tests/test_assets.py (empty allowed_uses quarantined, explicitly allowed use still permitted, required use missing from non-empty allowed_uses still USE_NOT_ALLOWED). With the fix reverted, test_assets.py fails (1 failure, the empty-allowed_uses test); with it applied, test_assets.py passes (149 tests, 1 skipped) and the full suite passes (1270 tests, skipped=1). Synthetic data only; not verified against real asset records or real footage. Command results are in the stop report; the commit cannot cite its own SHA."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Step-start PR #24 merged into main (merge commit shown); head 398dd1253e41516cba67ccbb9d2b7ed02f7db69f set S-AST-002-01 to IN_PROGRESS. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:29:52Z) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/24",
+              "commit": "8c0b5c5939aaf298734a7fd8029ebe6b57285194"
+            },
+            {
+              "type": "pull_request",
+              "summary": "Implementation PR #25 merged into main (merge commit shown); reviewed head is 9a48c9faef83f38a8089a380d595f2b0dbb85f88. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:30:13Z) and merge commit confirmed to be an ancestor of origin/main; origin/main contains USE_NOT_DECLARED in orchestrator/assets/rights.py.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/25",
+              "commit": "b462219e45f54b97d4264825cdf9276f77be5c63"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator, technically approved Step 1 under Lukas's standing delegation and merged PR #25 (merge commit b462219e45f54b97d4264825cdf9276f77be5c63; reviewed head 9a48c9faef83f38a8089a380d595f2b0dbb85f88) and step-start PR #24, and told Claude in this session. This is ChatGPT's delegated technical approval, not a claim that Lukas personally reviewed the implementation. Claude verified only that both PRs are MERGED on GitHub, that the merge commits are ancestors of origin/main and that rights.py on origin/main contains USE_NOT_DECLARED; Claude did not re-run ChatGPT's review. Implemented and tested on synthetic data only; not VERIFIED on real asset records."
+          }
         }
       ]
     }
