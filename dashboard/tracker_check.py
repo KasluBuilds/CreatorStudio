@@ -4,9 +4,9 @@ The working-step limit (at most one IN_PROGRESS or READY_FOR_REVIEW step) and th
 Standard library only. Read-only: it never writes any project file. The tracker records *steps*; it must not
 duplicate milestone states or percentages (PROJECT_STATUS.json) or task ownership and leases (ACTIVE_TASKS.json).
 Usage from the repository root:
-    python -B dashboard/tracker_check.py [--root DIR] [--against REF]
+    python -B dashboard/tracker_check.py [--root DIR] [--against REF] [--head REF]
 Without --against it validates the current file only. With --against REF (for example origin/main), REF must be
-an ancestor of HEAD. The checker finds the branch fork point shared with REF, then reads every committed
+an ancestor of the selected head (HEAD by default; CI passes the actual PR head with --head). The checker finds the branch fork point shared with REF, then reads every committed
 DEVELOPMENT_TRACKER.json snapshot on the first-parent path from that point to HEAD (`git show`, read-only), in
 order, and compares the working-tree file with HEAD. It rejects every illegal intermediate transition, an edit to a
 COMPLETED step, or a removed step; later commits cannot hide an earlier violation. Exit codes: 0 ok, 1 problems
@@ -238,7 +238,7 @@ def load_base(root: Path, ref: str) -> Optional[Dict[str, Any]]:
         raise BaseError(f"{spec} is not valid JSON: {exc}")
 
 
-def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any]) -> List[str]:
+def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any], head_ref: str = "HEAD") -> List[str]:
     """Check each committed tracker snapshot from the branch fork point through HEAD.
 
     The supplied base ref must be an ancestor of HEAD (the branch is up to date). If
@@ -256,13 +256,15 @@ def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any
 
     if not ref or ref.startswith("-"):
         raise BaseError(f"invalid ref {ref!r}")
+    if not head_ref or head_ref.startswith("-"):
+        raise BaseError(f"invalid head ref {head_ref!r}")
     base = git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
-    head = git("rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+    head = git("rev-parse", "--verify", "--quiet", f"{head_ref}^{{commit}}")
     if base.returncode != 0 or head.returncode != 0:
-        raise BaseError(f"cannot resolve history from {ref!r} to HEAD")
+        raise BaseError(f"cannot resolve history from {ref!r} to {head_ref!r}")
     base_sha, head_sha = base.stdout.strip(), head.stdout.strip()
     if git("merge-base", "--is-ancestor", base_sha, head_sha).returncode != 0:
-        raise BaseError(f"{ref!r} is not an ancestor of HEAD; update the branch before checking")
+        raise BaseError(f"{ref!r} is not an ancestor of {head_ref!r}; update the branch before checking")
 
     first_parent = git("rev-list", "--first-parent", head_sha)
     if first_parent.returncode != 0:
@@ -281,7 +283,7 @@ def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any
     previous = load_base(root, fork_base)
     commits = git("rev-list", "--first-parent", "--reverse", f"{fork_base}..{head_sha}")
     if commits.returncode != 0:
-        raise BaseError(f"cannot read first-parent history from {fork_base} to HEAD")
+        raise BaseError(f"cannot read first-parent history from {fork_base} to {head_ref!r}")
 
     problems: List[str] = []
     for sha in commits.stdout.split():
@@ -311,11 +313,14 @@ def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any
 def main(argv: List[str]) -> int:
     root = Path(__file__).resolve().parents[1]
     against = None
+    head_ref = "HEAD"
     try:
         if "--root" in argv:
             root = Path(argv[argv.index("--root") + 1])
         if "--against" in argv:
             against = argv[argv.index("--against") + 1]
+        if "--head" in argv:
+            head_ref = argv[argv.index("--head") + 1]
     except IndexError:
         print("ERROR: --root and --against need a value", file=sys.stderr)
         return 2
@@ -333,7 +338,7 @@ def main(argv: List[str]) -> int:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
         try:
-            history_problems = transition_history_problems(root, against, doc)
+            history_problems = transition_history_problems(root, against, doc, head_ref)
         except BaseError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
@@ -341,7 +346,7 @@ def main(argv: List[str]) -> int:
         if base is None:
             note = f" (no tracker at {against}; branch history checked from its fork point)"
         else:
-            note = f" (transitions checked against {against} across first-parent history)"
+            note = f" (transitions checked against {against} across first-parent history of {head_ref})"
     for p in problems:
         print("PROBLEM:", p)
     if not problems:
