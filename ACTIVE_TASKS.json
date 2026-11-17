@@ -482,7 +482,7 @@
       "title": "Desktop dashboard dark mode (Light, Dark, System)",
       "description": "Add Light, Dark and System appearance to the existing Windows desktop dashboard: System by default, saved across restarts, applied to the whole application with an intentionally designed dark palette and accessible contrast. Presentation only: progress calculations, GitHub synchronization, canonical data interpretation, agent registration, the filming gate and notification logic are not changed.",
       "owner": "claude:governance-session",
-      "branch": "task/t-dsh-002-theme",
+      "branch": "task/t-dsh-002-theme-v2",
       "worktree": "../CreatorStudio-worktrees/t-dsh-002-theme",
       "status": "ACTIVE",
       "depends_on": [
