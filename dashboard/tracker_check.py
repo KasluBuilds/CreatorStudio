@@ -241,7 +241,7 @@ def load_base(root: Path, ref: str) -> Optional[Dict[str, Any]]:
 def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any], head_ref: str = "HEAD") -> List[str]:
     """Check each committed tracker snapshot from the branch fork point through HEAD.
 
-    The supplied base ref must be an ancestor of HEAD (the branch is up to date). If
+    The supplied base ref must be an ancestor of the selected head ref (the branch is up to date). If
     main was merged into the task branch, the fork point is the nearest first-parent
     commit that is also an ancestor of the base ref. This avoids comparing an older
     task-branch snapshot directly with a newer main snapshot and catches intermediate
@@ -268,7 +268,7 @@ def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any
 
     first_parent = git("rev-list", "--first-parent", head_sha)
     if first_parent.returncode != 0:
-        raise BaseError("cannot read first-parent history from HEAD")
+        raise BaseError("cannot read first-parent history from {head_ref!r}")
     fork_base = None
     for candidate in first_parent.stdout.split():
         ancestry = git("merge-base", "--is-ancestor", candidate, base_sha)
@@ -304,8 +304,8 @@ def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any
             problems.extend(transition_problems(previous, snapshot))
         previous = snapshot
 
-    # Also compare the working-tree file with HEAD. This keeps local --against checks
-    # useful before a commit, while CI normally sees an identical HEAD/worktree snapshot.
+    # Also compare the working-tree file with the selected head's snapshot. This keeps local --against checks
+    # useful before a commit; CI passes the PR head ref while checking out GitHub's synthetic merge tree.
     if previous is not None and previous != current_doc:
         problems.extend(transition_problems(previous, current_doc))
     return sorted(set(problems))
@@ -322,7 +322,7 @@ def main(argv: List[str]) -> int:
         if "--head" in argv:
             head_ref = argv[argv.index("--head") + 1]
     except IndexError:
-        print("ERROR: --root and --against need a value", file=sys.stderr)
+        print("ERROR: --root, --against and --head need a value", file=sys.stderr)
         return 2
     try:
         doc, at = load(root)
