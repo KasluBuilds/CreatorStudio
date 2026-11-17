@@ -373,7 +373,7 @@
         {
           "id": "S-DNA-001-00",
           "title": "Step 0: claim branch",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-DNA-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
             "No overlap with another task and no edit to a package owned by someone else",
@@ -384,13 +384,25 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main 12c5964 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #15 merged into main (merge commit shown); reviewed head is c559117e46a62b545d9994d6b8e417b6050e7464. Merge confirmed on GitHub by Claude (state MERGED) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/15",
+              "commit": "e164f5ca28b5d5de063edfe8a29685699131b5f8"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-14",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, told Claude in this session that claim PR #15 was technically approved and merged and authorized Step 1; Claude verified only that PR #15 is MERGED on GitHub (merge commit e164f5c, head c559117). Does not claim Lukas reviewed the claim or that ChatGPT re-ran any command."
+          }
         },
         {
           "id": "S-DNA-001-01",
           "title": "Step 1: revocation/restore event model, regression tests and documentation",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "Independent creator_rejected and attribution_revoked state; rejected remains a read-only compatibility property",
             "Distinct attribution_revoked event (schema v4); evidence_review strict to reject and restore",
