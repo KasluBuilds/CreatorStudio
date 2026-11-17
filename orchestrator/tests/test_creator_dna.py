@@ -692,5 +692,282 @@ class CreatorSelfReportDistinct(Base):
             self.store.reclassify(new, Layer.OBSERVED, "x", "promote")
 
 
+def dna_attribution(decision_id, t):
+    from creator_dna import EvidenceAttribution
+    return EvidenceAttribution(decision_id=decision_id, candidate_record_id=f"rec_{decision_id}_{t}", media_id="m_test",
+                               channel="speech", start_s=0.0, end_s=t + 2, identity_basis="test_fixture",
+                               confidence=0.95, policy_version="test", attribution_evidence_ids=("ae_test",))
+
+
+class RevocationAndRestore(Base):
+    """T-DNA-001: creator rejection and attribution revocation are independent, replay-consistent state."""
+
+    def stamped(self, src, t, quote, decision_id):
+        return dataclasses.replace(verb(src, t, quote), attribution=dna_attribution(decision_id, t))
+
+    def trait_with(self, *decisions):
+        tid = self.store.propose_trait(Category.VOCABULARY, "Says 'fiktivno'", Layer.OBSERVED, "t")
+        for n, dec in enumerate(decisions):
+            self.store.add_evidence(tid, self.stamped(f"s{n}", float(n) * 10, "fiktivno", dec), "t")
+        return tid
+
+    def items(self, tid):
+        return self.store.get(tid).evidence_items
+
+    def log_events(self):
+        return [json.loads(x) for x in self.store.log_path.read_text(encoding="utf-8").splitlines()]
+
+    def append_raw(self, *events):
+        """Append hand-written events (synthetic legacy or malformed history) to the log."""
+        seq = len(self.store.log_path.read_text(encoding="utf-8").splitlines())
+        with open(self.store.log_path, "ab") as fh:
+            for ev in events:
+                seq += 1
+                line = {"seq": seq, "ts": f"2026-02-01T00:00:{seq % 60:02d}+00:00", "actor": "t", **ev}
+                fh.write((json.dumps(line, sort_keys=True) + "\n").encode("utf-8"))
+
+    def as_v3(self):
+        """Rewrite the log as if written by schema v3 (the way existing logs look)."""
+        out = [json.dumps({**e, "v": 3}, sort_keys=True) for e in self.log_events()]
+        self.store.log_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+    @staticmethod
+    def snapshot(store):
+        return {tid: tr.to_dict() for tid, tr in store.traits.items()}
+
+    # ---- revoke -> restore
+    def test_revoke_then_restore_is_refused_and_stays_excluded(self):
+        tid = self.trait_with("dec_a", "dec_b")
+        a, b = self.items(tid)
+        before = self.store.get(tid).assessment().confidence
+        self.assertEqual(self.store.revoke_attribution("dec_a", "was the friend", "sa"), [(tid, a.evidence_id)])
+        self.assertTrue(a.rejected and a.attribution_revoked and not a.creator_rejected)
+        self.assertFalse(b.rejected)
+        self.assertLess(self.store.get(tid).assessment().confidence, before)
+        n = len(self.log_events())
+        with self.assertRaises(DNAError):
+            self.store.restore_evidence(tid, a.evidence_id)
+        self.assertEqual(len(self.log_events()), n)                    # refusal writes nothing
+        self.assertTrue(a.rejected)
+        ra = self.new_store().get(tid).evidence_items[0]               # replay gives the same answer
+        self.assertTrue(ra.rejected and ra.attribution_revoked and not ra.creator_rejected)
+
+    def test_restore_event_in_the_log_never_undoes_a_revocation_on_replay(self):
+        tid = self.trait_with("dec_a")
+        item = self.items(tid)[0]
+        self.store.revoke_attribution("dec_a", "wrong person", "sa")
+        self.append_raw({"v": 4, "type": "evidence_review",
+                         "data": {"trait_id": tid, "evidence_id": item.evidence_id, "action": "restore", "note": "x"}})
+        replayed = self.new_store().get(tid).evidence_items[0]
+        self.assertTrue(replayed.attribution_revoked)
+        self.assertTrue(replayed.rejected)
+
+    def test_revocation_is_a_distinct_v4_event_with_decision_and_reason(self):
+        tid = self.trait_with("dec_a")
+        self.store.revoke_attribution("dec_a", "wrong person", "sa")
+        ev = self.log_events()[-1]
+        self.assertEqual((ev["type"], ev["v"]), ("attribution_revoked", 4))
+        self.assertEqual(ev["data"], {"trait_id": tid, "evidence_id": self.items(tid)[0].evidence_id,
+                                      "decision_id": "dec_a", "reason": "wrong person"})
+        with self.assertRaises(DNAError):
+            self.store.revoke_attribution("dec_a", "  ", "sa")
+
+    # ---- creator reject <-> revoke
+    def test_creator_reject_then_revoke_still_records_the_revocation(self):
+        tid = self.trait_with("dec_a")
+        item = self.items(tid)[0]
+        self.store.reject_evidence(tid, item.evidence_id, "not a joke")
+        self.assertEqual(self.store.revoke_attribution("dec_a", "wrong person", "sa"), [(tid, item.evidence_id)])
+        self.assertEqual(self.log_events()[-1]["type"], "attribution_revoked")
+        self.assertTrue(item.creator_rejected and item.attribution_revoked)
+        with self.assertRaises(DNAError):
+            self.store.restore_evidence(tid, item.evidence_id)
+        self.assertTrue(item.rejected)
+
+    def test_revoke_then_creator_reject_keeps_both_reasons_across_reload(self):
+        tid = self.trait_with("dec_a")
+        item = self.items(tid)[0]
+        self.store.revoke_attribution("dec_a", "wrong person", "sa")
+        self.store.reject_evidence(tid, item.evidence_id, "also not a joke")      # independent state
+        self.assertTrue(item.creator_rejected and item.attribution_revoked)
+        again = self.new_store().get(tid).evidence_items[0]
+        self.assertTrue(again.creator_rejected and again.attribution_revoked and again.rejected)
+
+    def test_plain_creator_reject_and_restore_still_work_and_never_touch_revocations(self):
+        tid = self.trait_with("dec_a", "dec_b")
+        a, b = self.items(tid)
+        self.store.revoke_attribution("dec_a", "wrong person", "sa")
+        self.store.reject_evidence(tid, b.evidence_id, "no")
+        self.assertTrue(b.rejected)
+        self.store.restore_evidence(tid, b.evidence_id)
+        self.assertFalse(b.rejected)
+        self.assertTrue(a.rejected and a.attribution_revoked)
+
+    # ---- idempotent synchronisation
+    def test_repeated_revocation_for_the_same_decision_writes_nothing(self):
+        tid = self.trait_with("dec_a", "dec_a", "dec_b")
+        self.assertEqual(len(self.store.revoke_attribution("dec_a", "wrong person", "sa")), 2)
+        raw = self.store.log_path.read_bytes()
+        self.assertEqual(self.store.revoke_attribution("dec_a", "wrong person", "sa"), [])
+        self.assertEqual(self.store.revoke_attribution("dec_a", "a different reason", "other"), [])
+        self.assertEqual(self.store.revoke_attribution("dec_unknown", "x", "sa"), [])
+        self.assertEqual(self.store.log_path.read_bytes(), raw)
+        self.assertEqual(self.new_store().get(tid).evidence_items[0].revocation_reason, "wrong person")
+
+    # ---- strict event actions
+    def test_unknown_review_action_is_refused_on_replay_not_read_as_restore(self):
+        for version in (3, 4):
+            with self.subTest(version=version):
+                self.setUp()
+                tid = self.trait_with("dec_a")
+                item = self.items(tid)[0]
+                self.store.reject_evidence(tid, item.evidence_id, "no")
+                self.append_raw({"v": version, "type": "evidence_review",
+                                 "data": {"trait_id": tid, "evidence_id": item.evidence_id, "action": "approve"}})
+                with self.assertRaises(DNALogError) as cm:
+                    self.new_store()
+                self.assertIn("unknown evidence_review action", str(cm.exception))
+
+    def test_malformed_or_duplicate_revocation_events_fail_replay(self):
+        for change in ({"decision_id": "dec_other"}, {"reason": " "}, {"reason": None}, {"evidence_id": "ev_nope"}, {"reason": "-"}):
+            with self.subTest(change=change):
+                self.setUp()
+                tid = self.trait_with("dec_a")
+                data = {"trait_id": tid, "evidence_id": self.items(tid)[0].evidence_id, "decision_id": "dec_a",
+                        "reason": "r"} | change
+                self.append_raw({"v": 4, "type": "attribution_revoked", "data": data})
+                if change == {"reason": "-"}:
+                    self.assertTrue(self.new_store().get(tid).evidence_items[0].attribution_revoked)
+                else:
+                    with self.assertRaises(DNALogError):
+                        self.new_store()
+        self.setUp()
+        tid = self.trait_with("dec_a")
+        data = {"trait_id": tid, "evidence_id": self.items(tid)[0].evidence_id, "decision_id": "dec_a", "reason": "r"}
+        self.append_raw({"v": 4, "type": "attribution_revoked", "data": data},
+                        {"v": 4, "type": "attribution_revoked", "data": data})
+        with self.assertRaises(DNALogError):                     # a second revocation of the same item is inconsistent
+            self.new_store()
+        self.setUp()
+        tid = self.trait_with("dec_a")
+        del data["reason"]
+        self.append_raw({"v": 4, "type": "attribution_revoked", "data": {**data, "trait_id": tid}})
+        with self.assertRaises(DNALogError):
+            self.new_store()
+
+    # ---- replay equivalence and exports
+    def test_reload_gives_identical_state_and_export(self):
+        tid = self.trait_with("dec_a", "dec_b", "dec_c")
+        a, b, c = self.items(tid)
+        self.store.reject_evidence(tid, a.evidence_id, "no")
+        self.store.revoke_attribution("dec_a", "wrong person", "sa")
+        self.store.revoke_attribution("dec_b", "wrong person too", "sa")
+        self.store.reject_evidence(tid, c.evidence_id, "no")
+        self.store.restore_evidence(tid, c.evidence_id)
+        live = self.snapshot(self.store)
+        reloaded = self.new_store()
+        self.assertEqual(self.snapshot(reloaded), live)
+        self.assertEqual(self.snapshot(self.new_store()), live)                       # and again
+        e1, e2 = self.store.export(), reloaded.export()
+        for e in (e1, e2):
+            e.pop("generated_at")
+        self.assertEqual(e1, e2)
+
+    def test_export_keeps_creator_rejection_and_revocation_apart(self):
+        tid = self.trait_with("dec_a", "dec_b")
+        a, b = self.items(tid)
+        self.store.revoke_attribution("dec_a", "wrong person", "sa")
+        self.store.reject_evidence(tid, b.evidence_id, "no")
+        support = {d["evidence_id"]: d for d in self.store.get(tid).to_dict()["support"]}
+        da, db = support[a.evidence_id], support[b.evidence_id]
+        self.assertFalse(da["rejected_by_creator"])
+        self.assertTrue(da["attribution_revoked"])
+        self.assertEqual((da["revocation_decision_id"], da["revocation_reason"]), ("dec_a", "wrong person"))
+        self.assertTrue(db["rejected_by_creator"])
+        self.assertFalse(db["attribution_revoked"])
+        self.assertIsNone(db["revocation_decision_id"])
+
+    def test_rejected_property_is_read_only_and_covers_both_reasons(self):
+        tid = self.trait_with("dec_a")
+        item = self.items(tid)[0]
+        with self.assertRaises(AttributeError):
+            item.rejected = True
+        self.assertFalse(item.rejected)
+        self.store.revoke_attribution("dec_a", "r", "sa")
+        self.assertTrue(item.rejected)
+
+    # ---- legacy (pre-v4) logs
+    def test_legacy_possible_revocation_replays_as_written_with_warning_flags_only(self):
+        tid = self.trait_with("dec_a", "dec_b")
+        a, b = self.items(tid)
+        self.store.reject_evidence(tid, a.evidence_id, "attribution revoked (dec_a): wrong person")   # v3 wording
+        self.store.reject_evidence(tid, b.evidence_id, "not a joke")
+        self.as_v3()
+        s = self.new_store()
+        la, lb = s.get(tid).evidence_items
+        self.assertTrue(la.creator_rejected and la.rejected and not la.attribution_revoked)   # NOT reinterpreted
+        self.assertTrue(la.legacy_possible_revocation)
+        self.assertFalse(lb.legacy_possible_revocation)
+        self.assertEqual(s.legacy_warnings(), [{"trait_id": tid, "evidence_id": a.evidence_id,
+                                                "warning": "legacy_possible_revocation",
+                                                "restored_since": False, "currently_excluded": True}])
+        exported = {d["evidence_id"]: d for d in s.get(tid).to_dict()["support"]}[a.evidence_id]
+        self.assertTrue(exported["legacy_possible_revocation"])
+        self.assertEqual(s.export()["legacy_evidence_warnings"], s.legacy_warnings())
+        n = len(self.log_events())
+        with self.assertRaises(DNAError):                       # new restores are refused on the flagged item
+            s.restore_evidence(tid, a.evidence_id)
+        self.assertEqual(len(self.log_events()), n)
+        s.restore_evidence(tid, b.evidence_id)                  # the unflagged creator reject restores normally
+        self.assertFalse(s.get(tid).evidence_items[1].rejected)
+
+    def test_legacy_restore_after_possible_revocation_replays_unchanged_but_is_reported(self):
+        tid = self.trait_with("dec_a")
+        item = self.items(tid)[0]
+        self.store.reject_evidence(tid, item.evidence_id, "attribution revoked (dec_a): wrong person")
+        self.append_raw({"v": 3, "type": "evidence_review",         # old code allowed this restore
+                         "data": {"trait_id": tid, "evidence_id": item.evidence_id, "action": "restore", "note": ""}})
+        self.as_v3()
+        s = self.new_store()
+        li = s.get(tid).evidence_items[0]
+        self.assertFalse(li.rejected)                            # replayed exactly as the old system did
+        self.assertTrue(li.legacy_possible_revocation and li.legacy_restored_after_possible_revocation)
+        self.assertTrue(s.legacy_warnings()[0]["restored_since"])
+        self.assertFalse(s.legacy_warnings()[0]["currently_excluded"])
+        with self.assertRaises(DNAError):
+            s.restore_evidence(tid, item.evidence_id)
+
+    def test_v4_reject_with_revocation_like_note_is_an_ordinary_creator_rejection(self):
+        tid = self.trait_with("dec_a")
+        item = self.items(tid)[0]
+        self.store.reject_evidence(tid, item.evidence_id, "attribution revoked (dec_a): typed by the creator")
+        s = self.new_store()
+        self.assertFalse(s.get(tid).evidence_items[0].legacy_possible_revocation)
+        self.assertEqual(s.legacy_warnings(), [])
+        s.restore_evidence(tid, item.evidence_id)
+        self.assertFalse(s.get(tid).evidence_items[0].rejected)
+
+    def test_new_revocation_on_a_legacy_flagged_item_is_recorded_explicitly(self):
+        tid = self.trait_with("dec_a")
+        item = self.items(tid)[0]
+        self.store.reject_evidence(tid, item.evidence_id, "attribution revoked (dec_a): wrong person")
+        self.as_v3()
+        s = self.new_store()
+        self.assertEqual(s.revoke_attribution("dec_a", "confirmed upstream", "sa"), [(tid, item.evidence_id)])
+        self.assertEqual(s.revoke_attribution("dec_a", "confirmed upstream", "sa"), [])
+        li = self.new_store().get(tid).evidence_items[0]
+        self.assertTrue(li.attribution_revoked and li.creator_rejected and li.legacy_possible_revocation)
+
+    def test_events_appended_to_a_v3_log_carry_the_new_version(self):
+        tid = self.trait_with("dec_a")
+        self.store.reject_evidence(tid, self.items(tid)[0].evidence_id, "no")
+        self.as_v3()
+        s = self.new_store()
+        s.restore_evidence(tid, s.get(tid).evidence_items[0].evidence_id)
+        self.assertEqual([e["v"] for e in self.log_events()][-1], 4)
+        self.assertEqual({e["v"] for e in self.log_events()[:-1]}, {3})
+        self.assertFalse(self.new_store().get(tid).evidence_items[0].rejected)
+
+
 if __name__ == "__main__":
     unittest.main()

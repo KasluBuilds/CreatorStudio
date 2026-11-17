@@ -7,16 +7,45 @@ before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed
 ## Unreleased — task `T-CRD-001` claim (branch `task/t-crd-001-claim`, pending review)
 
 - Claim only: registers `T-CRD-001` (owner `claude:creative-director-stream`, 24-hour lease, references `AGR-GOV-REGISTRY-01`) and its steps `S-CRD-001-00` (claim, `READY_FOR_REVIEW`) and `S-CRD-001-01` (implementation, `PLANNED`, not started). Owned paths: `orchestrator/creative_director/` (includes the new `README.md`), `orchestrator/tests/test_creative_director.py` and the four shared registry files. No source, test, documentation, status or milestone change.
+- Refreshed 2026-11-17: `origin/main` merged into the branch (no force-push) to resolve conflicts after PR #18's base went stale; the lease was renewed for 24 hours. Task definition, owned paths and scope unchanged; still claim only.
 - Planned fix, not yet made: `ResearchContext.from_packet()` accepts any `research->creative_director/` prefix and ignores `safety_critical`, `unresolved_safety_warning` and producer `usage`; Step 1 requires exactly `research->creative_director/0.3`, preserves the original claim status and safety metadata, fails closed on missing or malformed safety metadata, caps unresolved safety claims below verified, forbids safety-critical claims as hooks and adds a research digest (integrity consistency check, not authentication). `SESSION_HANDOFF.md` regenerated with the official command.
+
+## 2026-11-17 — task `T-AST-002` closeout (complete; lease and owned paths released)
+
+- `T-AST-002` is complete. Step-start PR #24 (merge commit `8c0b5c5939aaf298734a7fd8029ebe6b57285194`) and implementation PR #25 (merge commit `b462219e45f54b97d4264825cdf9276f77be5c63`; reviewed head `9a48c9faef83f38a8089a380d595f2b0dbb85f88`) were technically approved by ChatGPT under Lukas's standing delegation and merged, after takeover claim PR #22 and Step 0 closeout PR #23. This closeout moves `S-AST-002-01` to `COMPLETED` with a `REPORTED` completion record (this does not claim Lukas personally reviewed the code), sets `T-AST-002` `COMPLETED` and clears its lease and owned paths. `SESSION_HANDOFF.md` regenerated with the official command.
+- Scope of the work: `evaluate_rights` now quarantines a non-empty `required_uses` against an empty `allowed_uses` with the new reason code `USE_NOT_DECLARED`; three synthetic regression tests. Implemented on synthetic data only; not VERIFIED on real asset records. `PROJECT_STATUS.json` is unchanged. `T-AST-001` stays `RELEASED`; open PR #17 and the abandoned branch/worktree were left untouched for the integrator to dispose of.
+
+## Unreleased — task `T-AST-002` Step 1 (branch `task/asset-required-uses-fail-closed-recovery`, `READY_FOR_REVIEW`, pending review)
+
+- `evaluate_rights` in `orchestrator/assets/rights.py` now fails closed: a non-empty `UseContext.required_uses` against an empty `allowed_uses` quarantines with the new reason code `USE_NOT_DECLARED` instead of passing silently (found in the Asset Agent rights audit of 2026-11-13). Explicitly allowed uses still pass and a required use missing from a non-empty `allowed_uses` still quarantines as `USE_NOT_ALLOWED`. No other rights-policy change.
+- Three synthetic regression tests added to `orchestrator/tests/test_assets.py`. Continues the abandoned `T-AST-001` work by re-applying its `rights.py`/test diff (from `cc98875`); PR #17 and that branch/worktree are untouched. Implemented and tested on synthetic data only; not VERIFIED on real asset records. `PROJECT_STATUS.json` is unchanged. `SESSION_HANDOFF.md` regenerated with the official command.
+
+## Unreleased — task `T-AST-002` Step 0 closeout (branch `task/t-ast-002-step0-closeout`, pending review)
+
+- Administrative only: takeover claim PR #22 was technically approved by ChatGPT (delegated integrator under Lukas's standing instruction; this does not claim Lukas personally reviewed the code) and merged into `main` (merge commit `db2fb3554ede9655b79aa4f7ad6233a0651805c5`; reviewed head `7c2d35f8ff42d04682a51b427c449689f8cd22ad`). `S-AST-002-00` moves to `COMPLETED` with a `REPORTED` completion record dated 2026-11-17. `T-AST-002` stays `ACTIVE`; `S-AST-002-01` stays `PLANNED` and is not started. `T-AST-001` history, PR #17 and the abandoned branch/worktree are untouched. `SESSION_HANDOFF.md` regenerated with the official command.
+
+## Unreleased — task `T-AST-002` takeover claim (branch `task/asset-required-uses-fail-closed-recovery`, pending review)
+
+- Claim only: Lukas confirmed on 2026-11-17 that `claude:asset-stream` is abandoned (lease expired 2026-11-15). `T-AST-001` is marked `RELEASED` with its lease cleared; the original branch `task/asset-required-uses-fail-closed` (head `cc98875`, PR #17) and its worktree are preserved untouched. `T-AST-002` (owner `claude:asset-recovery`, 24-hour lease, depends on `T-AST-001`) and steps `S-AST-002-00` (claim, `READY_FOR_REVIEW`) and `S-AST-002-01` (implementation, `PLANNED`, not started) are registered; `package_owners.assets` and `AGR-GOV-REGISTRY-01` now name the new owner/task. All `T-AST-001` tracker steps are preserved as history. No source, test, status or milestone change.
+- `SESSION_HANDOFF.md` regenerated with the official command.
+
+## 2026-11-17 — task `T-DNA-001` closeout (complete; lease and owned paths released)
+
+- T-DNA-001 is complete. PR #20 was reviewed by ChatGPT and merged into `main` (merge commit `59b14a6c0215fbeb22321fc790750a4926e3bd19`; reviewed head `30ab9b39fe43c428110c699e577492d574a1d1ca`) after claim PR #15 and step-start PR #19. This closeout pull request moves S-DNA-001-01 to `COMPLETED` with a `REPORTED` completion record (ChatGPT technically approved the step and merged under Lukas's standing delegation; this does not claim Lukas reviewed the code), sets T-DNA-001 `COMPLETED` and releases its lease and owned paths. `SESSION_HANDOFF.md` regenerated with the official command.
+- Scope of the work (recorded in PR #20): schema v4 Creator DNA revocation and restore model, regression tests and `CREATOR_DNA.md`. Implemented on synthetic data only; not VERIFIED on real data. `PROJECT_STATUS.json` is unchanged.
+- The lease had expired on 2026-11-15 before this closeout; no other session took over the paths.
 
 ## Unreleased — extend AGR-GOV-REGISTRY-01 to T-CRD-001 (integrator change)
 
 - Extends the shared-registry integration agreement to include T-CRD-001. The four covered paths and per-task record ownership rules are unchanged; the Creative Director claim must still be registered in its own claim pull request before implementation.
 
-## Unreleased — task `T-DNA-001` claim (branch `task/t-dna-001-claim`, pending review)
+## Unreleased — task `T-DNA-001` safe evidence revocation and restoration (branch `task/t-dna-001-claim`, `READY_FOR_REVIEW`)
 
-- Claim only: registers `T-DNA-001` (owner `claude:creator-dna-stream`, 24-hour lease) and its steps `S-DNA-001-00` (claim, `READY_FOR_REVIEW`) and `S-DNA-001-01` (implementation, `PLANNED`, not started). Owned paths include `orchestrator/creator_dna/`, `orchestrator/tests/test_creator_dna.py` and `AI_Creator_Studio_Documentation/CREATOR_DNA.md`. No source, test, documentation, status or milestone change.
-- Planned fix, not yet made: `revoke_attribution()` and `reject_evidence()` both write `evidence_review/reject` and `restore_evidence()` can make revoked evidence eligible again, also on replay; Step 1 separates creator rejection from attribution revocation. `SESSION_HANDOFF.md` regenerated with the official command.
+- Claim PR #15 merged (merge commit `e164f5ca28b5d5de063edfe8a29685699131b5f8`, reviewed head `c559117e46a62b545d9994d6b8e417b6050e7464`); `S-DNA-001-00` `COMPLETED` (REPORTED approval), `S-DNA-001-01` now `READY_FOR_REVIEW`.
+- `creator_dna` (schema v4): creator rejection and attribution revocation are independent state on an evidence item; `rejected` is a read-only property true for either. Revocation is its own `attribution_revoked` event (decision ID and reason); `evidence_review` accepts only `reject` and `restore`.
+- Fixed: `restore_evidence()` could make revoked evidence count again (also on replay), and revoking evidence the creator had already rejected was not recorded. Restore now clears only the creator's rejection and is refused for revoked evidence; revocation is recorded for creator-rejected evidence and is idempotent per decision.
+- Legacy v1 to v3 logs replay with their original semantics. A pre-v4 `reject` whose note starts `attribution revoked (` only sets read-only warning flags (`legacy_possible_revocation`, `legacy_restored_after_possible_revocation`, `DNAStore.legacy_warnings()`, export key `legacy_evidence_warnings`); new restores on flagged items are refused. An unknown `evidence_review` action now fails replay instead of being read as a restore.
+- 17 synthetic regression tests in `test_creator_dna.py`; `CREATOR_DNA.md` documents the model. `speaker_attribution/` and cross-package tests are untouched (`test_speaker_attribution.py` run unmodified: pass). `SESSION_HANDOFF.md` regenerated with the official command.
 
 ## Unreleased — task `T-AST-001` start and registry agreement (branch `task/asset-required-uses-start`, pending review)
 

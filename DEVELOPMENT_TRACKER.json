@@ -373,7 +373,7 @@
         {
           "id": "S-DNA-001-00",
           "title": "Step 0: claim branch",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-DNA-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
             "No overlap with another task and no edit to a package owned by someone else",
@@ -384,13 +384,25 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main 12c5964 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #15 merged into main (merge commit shown); reviewed head is c559117e46a62b545d9994d6b8e417b6050e7464. Merge confirmed on GitHub by Claude (state MERGED) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/15",
+              "commit": "e164f5ca28b5d5de063edfe8a29685699131b5f8"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-14",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, told Claude in this session that claim PR #15 was technically approved and merged and authorized Step 1; Claude verified only that PR #15 is MERGED on GitHub (merge commit e164f5c, head c559117). Does not claim Lukas reviewed the claim or that ChatGPT re-ran any command."
+          }
         },
         {
           "id": "S-DNA-001-01",
           "title": "Step 1: revocation/restore event model, regression tests and documentation",
-          "status": "PLANNED",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Independent creator_rejected and attribution_revoked state; rejected remains a read-only compatibility property",
             "Distinct attribution_revoked event (schema v4); evidence_review strict to reject and restore",
@@ -399,7 +411,112 @@
             "Synthetic regression tests in test_creator_dna.py; test_speaker_attribution.py passes unmodified; CREATOR_DNA.md updated; the full suite passes",
             "Only orchestrator/creator_dna/, test_creator_dna.py and CREATOR_DNA.md change besides the shared registry files"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Run by Claude Code on the working tree before the commit (the commit cannot cite its own SHA; not independently run by ChatGPT). Known skip: test_symlink_source_refused. test_creator_dna.py has 17 new tests in class RevocationAndRestore; run against the old store.py and schema.py the same file gave 8 failures and 9 errors, so the new tests exercise the fix. Synthetic data only.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1267 tests: OK (skipped=1)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Compatibility check: test_speaker_attribution.py run unmodified (sync_revocations and the readers of rejected and review_note are unchanged).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_speaker_attribution.py",
+              "result": "Ran 56 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "Changed only orchestrator/creator_dna/store.py, orchestrator/creator_dna/schema.py, orchestrator/tests/test_creator_dna.py, AI_Creator_Studio_Documentation/CREATOR_DNA.md and the shared registry files. speaker_attribution/, cross-package tests and unresolved packages are untouched. Implemented but not VERIFIED on real data; no real footage was used."
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #20 reviewed by ChatGPT and merged into main (merge commit shown). It delivered the schema v4 revocation and restore model, its regression tests and the CREATOR_DNA.md update, and moved this step to READY_FOR_REVIEW. Reviewed head 30ab9b39fe43c428110c699e577492d574a1d1ca.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/20",
+              "commit": "59b14a6c0215fbeb22321fc790750a4926e3bd19"
+            },
+            {
+              "type": "commit",
+              "summary": "PR #20 reviewed head, approved by ChatGPT before merge",
+              "commit": "30ab9b39fe43c428110c699e577492d574a1d1ca"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, technically approved this step, merged PR #20 (reviewed head 30ab9b39fe43c428110c699e577492d574a1d1ca, merge commit 59b14a6c0215fbeb22321fc790750a4926e3bd19) and explicitly authorized this closeout; relayed to Claude in the session and not independently verified beyond the merged state of PR #20 on GitHub and the checks Claude re-ran on the PR head. Does not claim Lukas reviewed the code or that ChatGPT re-ran any command. Implemented on synthetic data only; not VERIFIED on real data."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-AST-002",
+      "title": "Recover and complete Asset required-use fail-closed implementation",
+      "steps": [
+        {
+          "id": "S-AST-002-00",
+          "title": "Step 0: takeover claim",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-AST-002 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements; T-AST-001 is RELEASED with its lease cleared",
+            "No overlap with another task and no edit to a package owned by someone else; the abandoned owner's branch and worktree are untouched",
+            "Governance validate, handoff check, scope check and tracker check pass",
+            "The claim pull request is opened and merged by ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Takeover claim branch created from origin/main 91151ea8f73b0ce9cc8f39767196ab0e1fc2d828 in a new worktree after Lukas confirmed claude:asset-stream is abandoned; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Takeover claim PR #22 merged into main (merge commit shown); reviewed head is 7c2d35f8ff42d04682a51b427c449689f8cd22ad. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:19:00Z) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/22",
+              "commit": "db2fb3554ede9655b79aa4f7ad6233a0651805c5"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, told Claude in this session that takeover claim PR #22 was technically approved and merged (merge commit db2fb35); this is ChatGPT's delegated technical approval under Lukas's standing instruction, not a claim that Lukas personally reviewed the code. Claude verified only that PR #22 is MERGED on GitHub (merge commit db2fb3554ede9655b79aa4f7ad6233a0651805c5, head 7c2d35f) and that the merge commit is an ancestor of origin/main. Does not claim ChatGPT re-ran any command."
+          }
+        },
+        {
+          "id": "S-AST-002-01",
+          "title": "Step 1: required-use fail-closed fix and regression tests (continue from cc98875)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Non-empty required_uses with empty allowed_uses returns QUARANTINE (new reason code, no other severity change)",
+            "Explicitly allowed uses still reach PERMITTED when all other checks pass",
+            "A required use missing from a non-empty allowed_uses stays QUARANTINE",
+            "Synthetic regression tests for all three cases are added to orchestrator/tests/test_assets.py",
+            "Only orchestrator/assets/rights.py and orchestrator/tests/test_assets.py change besides the shared registry files; the full suite passes"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Re-applied the intended change from the preserved T-AST-001 implementation (branch task/asset-required-uses-fail-closed, cc988755b8137d4e7baf54d71c89542a5dda3f6b) by applying only its rights.py and test_assets.py diff onto origin/main c9c61ab; PR #17 was not merged and the abandoned branch/worktree were not touched. orchestrator/assets/rights.py: non-empty required_uses with empty allowed_uses now quarantines with new reason code USE_NOT_DECLARED; the USE_NOT_ALLOWED path is unchanged. Three synthetic regression tests added to orchestrator/tests/test_assets.py (empty allowed_uses quarantined, explicitly allowed use still permitted, required use missing from non-empty allowed_uses still USE_NOT_ALLOWED). With the fix reverted, test_assets.py fails (1 failure, the empty-allowed_uses test); with it applied, test_assets.py passes (149 tests, 1 skipped) and the full suite passes (1270 tests, skipped=1). Synthetic data only; not verified against real asset records or real footage. Command results are in the stop report; the commit cannot cite its own SHA."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Step-start PR #24 merged into main (merge commit shown); head 398dd1253e41516cba67ccbb9d2b7ed02f7db69f set S-AST-002-01 to IN_PROGRESS. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:29:52Z) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/24",
+              "commit": "8c0b5c5939aaf298734a7fd8029ebe6b57285194"
+            },
+            {
+              "type": "pull_request",
+              "summary": "Implementation PR #25 merged into main (merge commit shown); reviewed head is 9a48c9faef83f38a8089a380d595f2b0dbb85f88. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:30:13Z) and merge commit confirmed to be an ancestor of origin/main; origin/main contains USE_NOT_DECLARED in orchestrator/assets/rights.py.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/25",
+              "commit": "b462219e45f54b97d4264825cdf9276f77be5c63"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator, technically approved Step 1 under Lukas's standing delegation and merged PR #25 (merge commit b462219e45f54b97d4264825cdf9276f77be5c63; reviewed head 9a48c9faef83f38a8089a380d595f2b0dbb85f88) and step-start PR #24, and told Claude in this session. This is ChatGPT's delegated technical approval, not a claim that Lukas personally reviewed the implementation. Claude verified only that both PRs are MERGED on GitHub, that the merge commits are ancestors of origin/main and that rights.py on origin/main contains USE_NOT_DECLARED; Claude did not re-run ChatGPT's review. Implemented and tested on synthetic data only; not VERIFIED on real asset records."
+          }
         }
       ]
     },

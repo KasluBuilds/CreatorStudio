@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-13",
+  "updated": "2026-11-17",
   "lease_policy": {
     "default_hours": 24,
     "max_hours": 72
@@ -62,8 +62,8 @@
         "orchestrator/assets/",
         "orchestrator/tests/test_assets.py"
       ],
-      "owner": "claude:asset-stream",
-      "owner_status": "REPORTED - Lukas's brief names the Asset Agent as one of four subsystem assignments; the stream identity is assumed, confirm it"
+      "owner": "claude:asset-recovery",
+      "owner_status": "ASSIGNED - Lukas confirmed on 2026-11-17 that claude:asset-stream is abandoned and authorized the takeover of T-AST-001 by claude:asset-recovery (task T-AST-002)"
     },
     "creative_director": {
       "paths": [
@@ -100,9 +100,9 @@
   },
   "integration_agreements": {
     "AGR-GOV-REGISTRY-01": {
-      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-001, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time.",
+      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-002, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time.",
       "task_ids": [
-        "T-AST-001",
+        "T-AST-002",
         "T-DNA-001",
         "T-CRD-001"
       ],
@@ -215,12 +215,9 @@
       "owner": "claude:asset-stream",
       "branch": "task/asset-required-uses-fail-closed",
       "worktree": "../CreatorStudio-worktrees/task-asset-required-uses-fail-closed",
-      "status": "ACTIVE",
+      "status": "RELEASED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-14T09:23:38+00:00",
-        "expires": "2026-11-15T09:23:38+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
@@ -248,7 +245,41 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Claim branch created from origin/main bd33aa1 on 2026-11-13, refreshed by merging origin/main adc0f9976b9929f18f06bebe5530d2ce697a603f on 2026-11-14 (lease restarted at refresh); Step 00 is the claim and Step 01 (implementation and tests) is not started and needs ChatGPT's written authorization after the claim is merged. Owner identity claude:asset-stream was assigned by Lukas for this task. Shared registry, tracker, generated handoff and changelog files are owned for the duration of the task as the governance protocol requires. Synthetic data only; no real footage."
+      "integration_notes": "Claim branch created from origin/main bd33aa1 on 2026-11-13, refreshed by merging origin/main adc0f9976b9929f18f06bebe5530d2ce697a603f on 2026-11-14 (lease restarted at refresh); Step 00 is the claim and Step 01 (implementation and tests) is not started and needs ChatGPT's written authorization after the claim is merged. Owner identity claude:asset-stream was assigned by Lukas for this task. Shared registry, tracker, generated handoff and changelog files are owned for the duration of the task as the governance protocol requires. Synthetic data only; no real footage. RELEASED 2026-11-17 by takeover claim T-AST-002 after Lukas confirmed that the owner claude:asset-stream (session eec2f330-124a-4c30-8c0e-2c1c03ee7c3f) is abandoned; its lease had expired 2026-11-15T09:23:38+00:00. Left behind: branch task/asset-required-uses-fail-closed (origin head cc988755b8137d4e7baf54d71c89542a5dda3f6b, open PR #17, step S-AST-001-01 READY_FOR_REVIEW on that branch, not merged, conflicting with main in the shared registry files only), preserved worktree ../CreatorStudio-worktrees/task-asset-required-uses-fail-closed (clean, unmodified, not to be overwritten), and local backup branch backup/t-ast-001-pre-rebase. Continued by T-AST-002."
+    },
+    {
+      "id": "T-AST-002",
+      "title": "Recover and complete Asset required-use fail-closed implementation",
+      "description": "Takeover of abandoned T-AST-001 (Lukas confirmed 2026-11-17). Continue from the preserved implementation on branch task/asset-required-uses-fail-closed (head cc98875, PR #17): when UseContext.required_uses is non-empty and the record's allowed_uses is empty, evaluate_rights in orchestrator/assets/rights.py must quarantine instead of passing silently. Explicitly allowed uses keep working and a missing required use stays quarantined. Synthetic regression tests for all three cases. No other rights-policy change; no providers, downloader, licence automation or external calls. This claim step changes only the shared registry files.",
+      "owner": "claude:asset-recovery",
+      "branch": "task/asset-required-uses-fail-closed-recovery",
+      "worktree": "../CreatorStudio-worktrees/task-asset-required-uses-fail-closed-recovery",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-AST-001"
+      ],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "When UseContext.required_uses is non-empty but AssetRecord.allowed_uses is empty, evaluate_rights returns QUARANTINE",
+        "Explicitly allowed uses (required_uses a subset of a non-empty allowed_uses) continue to be permitted when every other check passes",
+        "A required use missing from a non-empty allowed_uses remains QUARANTINE",
+        "Synthetic regression tests cover all three cases in orchestrator/tests/test_assets.py",
+        "No unrelated rights-policy change; the full suite passes with python -B -I"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Takeover claim created from origin/main 91151ea on 2026-11-17 in a new worktree; the abandoned owner's branch and worktree are not modified. Step 00 is this claim; Step 01 (implementation and tests, continuing from the preserved cc98875 implementation by fetching that branch, not by merging it into the claim) is not started and needs ChatGPT's written authorization after the claim is merged. PR #17 handling (update in place or supersede) is the integrator's decision. Owner claude:asset-recovery assigned by Lukas for this task. Shared registry, tracker, generated handoff and changelog files are owned for the duration of the task as the governance protocol requires. Synthetic data only; no real footage. COMPLETED 2026-11-17: Step 0 takeover claim merged as PR #22 (merge commit db2fb3554ede9655b79aa4f7ad6233a0651805c5; closeout PR #23, merge commit c9c61abc8d1917948753ac39fce6e4ae9a697ea4); step-start PR #24 merged (merge commit 8c0b5c5939aaf298734a7fd8029ebe6b57285194); Step 1 implementation PR #25 merged (merge commit b462219e45f54b97d4264825cdf9276f77be5c63; reviewed head 9a48c9faef83f38a8089a380d595f2b0dbb85f88) after ChatGPT's technical approval under Lukas's standing delegation (not a claim that Lukas personally reviewed the code). Lease cleared and owned paths released by this closeout. PR #17 and the abandoned branch task/asset-required-uses-fail-closed (cc988755b8137d4e7baf54d71c89542a5dda3f6b) and its worktree were not merged, modified or closed by this task; the integrator decides their disposition. T-AST-001 remains RELEASED. Synthetic data only; nothing VERIFIED."
     },
     {
       "id": "T-DNA-001",
@@ -257,25 +288,14 @@
       "owner": "claude:creator-dna-stream",
       "branch": "task/t-dna-001-claim",
       "worktree": "../CreatorStudio-worktrees/t-dna-001-claim",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-14T09:38:12+00:00",
-        "expires": "2026-11-15T09:38:12+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
       ],
-      "owned_paths": [
-        "orchestrator/creator_dna/",
-        "orchestrator/tests/test_creator_dna.py",
-        "AI_Creator_Studio_Documentation/CREATOR_DNA.md",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "Creator rejection and attribution revocation are independent state; EvidenceItem.rejected stays a read-only property true for either, and existing readers of rejected and review_note are unchanged",
         "Revocation is written as a distinct attribution_revoked event with decision ID and reason (schema v4); evidence_review accepts only reject and restore and any other action fails replay",
@@ -295,7 +315,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Claim branch created from origin/main 12c5964 (T-AST-001 claim PR #13 merged) on 2026-11-14. Step 00 is the claim only; Step 01 (implementation, tests, documentation) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved in principle by Lukas with eight safeguards (independent state, strict evidence_review, restore never undoes revocation, idempotent revocation, exact legacy v1-v3 replay, heuristic only sets warning flags, creator-specific exports, unchanged cross-package readers). Documentation file added to owned_paths by Lukas. orchestrator/speaker_attribution/ (caller sync_revocations), cross-package tests and UNRESOLVED packages are NOT claimed and must not change; test_speaker_attribution.py is run unchanged as a compatibility check only. T-AST-001 also lists the shared registry, tracker, handoff and changelog files, so merge order matters there. Synthetic data only; no real footage."
+      "integration_notes": "Claim branch created from origin/main 12c5964 (T-AST-001 claim PR #13 merged) on 2026-11-14. Step 00 is the claim only; Step 01 (implementation, tests, documentation) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved in principle by Lukas with eight safeguards (independent state, strict evidence_review, restore never undoes revocation, idempotent revocation, exact legacy v1-v3 replay, heuristic only sets warning flags, creator-specific exports, unchanged cross-package readers). Documentation file added to owned_paths by Lukas. orchestrator/speaker_attribution/ (caller sync_revocations), cross-package tests and UNRESOLVED packages are NOT claimed and must not change; test_speaker_attribution.py is run unchanged as a compatibility check only. T-AST-001 also lists the shared registry, tracker, handoff and changelog files, so merge order matters there. Synthetic data only; no real footage. Completed 2026-11-17. Claim PR #15 (merge commit e164f5ca28b5d5de063edfe8a29685699131b5f8), step-start PR #19 (merge commit 346aacd1d547dc76864bd605f1cf198fd4f83cd0) and implementation PR #20 (merge commit 59b14a6c0215fbeb22321fc790750a4926e3bd19, reviewed head 30ab9b39fe43c428110c699e577492d574a1d1ca) were reviewed and merged by ChatGPT as delegated integrator. Lease released and paths freed by this closing pull request, which cannot itself hold a claim because it only closes this task. The task lease had expired on 2026-11-15; no other session took over the paths. Branches task/t-dna-001-claim and task/t-dna-001-step-start are merged and may be deleted by Lukas."
     },
     {
       "id": "T-CRD-001",
@@ -307,8 +327,8 @@
       "status": "ACTIVE",
       "depends_on": [],
       "lease": {
-        "acquired": "2026-11-14T10:08:13+00:00",
-        "expires": "2026-11-15T10:08:13+00:00"
+        "acquired": "2026-11-17T13:39:25+00:00",
+        "expires": "2026-11-18T13:39:25+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -341,7 +361,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage."
+      "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14; refreshed 2026-11-17 by merging origin/main 9317119 (no force-push) with the lease renewed for 24 hours. Task definition, owned paths and scope unchanged. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage."
     }
   ]
 }
