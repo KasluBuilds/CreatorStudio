@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-09",
+  "updated": "2026-11-17",
   "repository": "https://github.com/KasluBuilds/CreatorStudio",
   "authority": "Authoritative for current milestone status and progress. Design and decisions stay authoritative in AI_Creator_Studio_Documentation/. Scoring rules: orchestrator/governance/status.py and PROJECT_OPERATING_PROTOCOL.md section 9.",
   "weights_status": "PROPOSED",
@@ -238,6 +238,34 @@
       "summary": "After T-GOV-004 merged (merge commit 984593b3e764a1b4f099a95aada6434a25475e7e) the Repository Coordinator configured branch protection on main and read it back: required status check validate with strict (up to date) true, enforce_admins true, pull request required with 0 approvals, force-pushes false, deletions false, linear history false (merge commits stay allowed); GET branches/main reported protected true. Merge-commit-only is still procedural (squash and rebase are allowed by the repository settings).",
       "ref": "gh api repos/KasluBuilds/CreatorStudio/branches/main/protection",
       "observer": "claude:repository-coordinator"
+    },
+    "E-DNA-0002": {
+      "id": "E-DNA-0002",
+      "type": "test_run",
+      "date": "2026-11-17",
+      "summary": "T-DNA-002: Creator DNA tests, run at the implementation commit. test_creator_dna.py 86 (unchanged), new test_creator_dna_learning.py 141, test_speaker_attribution.py 56, test_integration_phase2_phase3.py 38. Synthetic data only; no real recording.",
+      "ref": "orchestrator/tests/test_creator_dna_learning.py",
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p <test_creator_dna|test_creator_dna_learning|test_speaker_attribution|test_integration_phase2_phase3>.py",
+      "result": "86 + 141 + 56 + 38 tests: OK (0 failures, 0 errors)",
+      "commit": "56bcc9389f25c5581db3daf34f0659ed96261680"
+    },
+    "E-DNA-0003": {
+      "id": "E-DNA-0003",
+      "type": "test_run",
+      "date": "2026-11-17",
+      "summary": "T-DNA-002: full suite at the implementation commit. One error remains by design: test_creative_director.py::TestCreatorDNA::test_real_store_export_is_accepted_and_unchanged builds a DNAStore with a hand-made stamp and no verifier, which is exactly what the store now refuses. That file belongs to active T-CRD-001 and is not claimed by T-DNA-002, so it was not edited; the fix is one constructor line (use a strict store with a verifier and consent) once T-CRD-001 releases the file. All other tests pass.",
+      "ref": "orchestrator/tests",
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+      "result": "Ran 1534 tests: FAILED (errors=1, skipped=1); the one error is the creative_director test described in the summary",
+      "commit": "56bcc9389f25c5581db3daf34f0659ed96261680"
+    },
+    "E-DNA-0004": {
+      "id": "E-DNA-0004",
+      "type": "observation",
+      "date": "2026-11-17",
+      "summary": "Mutation check by the author: with the verifier outcome check disabled in DNAStore._check_attribution, test_creator_dna_learning.py failed 10 tests (restored afterwards, 141 pass). Shows the new tests exercise the verification gate; it is not an independent review.",
+      "ref": "orchestrator/tests/test_creator_dna_learning.py",
+      "observer": "claude:creator-dna-stream"
     }
   },
   "milestones": [
@@ -512,20 +540,24 @@
       "weight_rationale": "Core of the authenticity requirement; well-bounded library of moderate size.",
       "implementation": {
         "state": "IMPLEMENTED",
-        "summary": "Library-level store and contracts; no analyzers beyond a reference phrase analyzer; no creator-facing tool."
+        "summary": "Library-level store and contracts (schema v5): evidence store, confidence with session-aware witnesses, injected attribution verifier with audit, purpose-scoped consent with withdrawal and quarantine, review queue, batch decisions and profile diff. No creator-facing tool."
       },
       "verification": {
         "state": "IN_PROGRESS",
         "level": "UNIT_ISOLATED",
-        "summary": "69 unit tests on synthetic data; no real recording analysed; no profile exists.",
+        "summary": "86 + 141 unit tests on synthetic data (test_creator_dna.py, test_creator_dna_learning.py); 56 speaker-attribution and 38 media-analysis integration tests pass with constructor-level adaptation; no real recording analysed; no profile exists; not real-input verified. One creative_director test is pending its owner's release (E-DNA-0003).",
         "evidence": [
-          "E-MOD-DNA"
+          "E-MOD-DNA",
+          "E-DNA-0002",
+          "E-DNA-0003",
+          "E-DNA-0004"
         ]
       },
       "depends_on": [],
       "commit": "51fcd85022f0687d1d3a5f6ce6bda9bc3b61a2c9",
       "open_questions": [
-        "Where DNA learning sits in the stage sequence and where the profile lives (Q31, Q32)."
+        "Where DNA learning sits in the stage sequence and where the profile lives (Q31, Q32).",
+        "OPEN product defaults chosen by the implementer, not approved by Lukas: consent purposes (style_learning, editing_guidance, profile_review), whether consent expiry should quarantine, quarantine versus physical deletion on withdrawal, sentence/pause/energy bucket boundaries, grouping recordings of one session as one witness (Q12, Q26)."
       ],
       "blockers": []
     },
@@ -568,13 +600,13 @@
       "weight": 8,
       "weight_rationale": "Largest Creator DNA effort and the real test of the whole evidence pipeline; needs several analyzers and real input.",
       "implementation": {
-        "state": "NOT_STARTED",
-        "summary": "Only a reference phrase analyzer exists."
+        "state": "IN_PROGRESS",
+        "summary": "Sub-milestone M-DNA-02a delivered on synthetic data only (T-DNA-002): attribution verifier contract, consent/withdrawal/quarantine, sentence-rhythm, pause and energy analyzers, session independence, review loop. Not started and not possible yet: analysis of real recordings (needs a transcription engine, M-MED-02, and a concrete verifier adapter plus consent capture), humor/gesture/expression/camera-presence analyzers."
       },
       "verification": {
         "state": "NOT_STARTED",
         "level": "NONE",
-        "summary": "Nothing to verify.",
+        "summary": "Nothing verified on real input; only M-DNA-01 unit evidence applies to the new core.",
         "evidence": []
       },
       "depends_on": [
@@ -583,7 +615,8 @@
       ],
       "commit": null,
       "open_questions": [
-        "MVI_0879.MOV is a friend's narration and must not be used as Creator DNA evidence."
+        "MVI_0879.MOV is a friend's narration and must not be used as Creator DNA evidence.",
+        "Integration milestone needs a named owner for media_analysis and speaker_attribution (M-INT-02): a verifier adapter, project and session ids on Origin, consent capture (CREATOR_DNA.md section 8f)."
       ],
       "blockers": []
     },
@@ -1026,7 +1059,7 @@
     }
   ],
   "computed": {
-    "implementation_percent": 35.4,
+    "implementation_percent": 37.8,
     "verification_percent": 12.7,
     "total_weight": 164,
     "milestone_count": 29

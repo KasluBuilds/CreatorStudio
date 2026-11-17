@@ -4,7 +4,7 @@
 
 # Session handoff
 
-Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`.
+Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`.
 
 ## User-action gates (things Lukas must be told at a milestone)
 
@@ -26,7 +26,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 
 ## Progress (computed from PROJECT_STATUS.json)
 
-- Implementation: **35.4%**  
+- Implementation: **37.8%**  
 - Verification: **12.7%**  
 - 29 milestones, total weight 164. Verification never exceeds implementation. Weights are PROPOSED: drafted by an AI session and not yet reviewed by Lukas, so these figures are provisional. 
 - How to read them: *implementation* is the weighted share of milestones whose code exists (half credit if in progress); *verification* is the weighted share demonstrated at the level evidence supports. Neither measures effort, time left, or whether the product works on real footage.
@@ -40,7 +40,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 | Phase 0 | 5 | 100.0% | 50.0% |
 | Phase 1 | 10 | 0.0% | 0.0% |
 | Phase 2 | 22 | 59.1% | 29.5% |
-| Phase 3 | 21 | 47.6% | 16.7% |
+| Phase 3 | 21 | 66.7% | 16.7% |
 | Phase 4 | 22 | 54.5% | 13.6% |
 | Phase 5 | 26 | 23.1% | 5.8% |
 | Phase 6 | 22 | 0.0% | 0.0% |
@@ -57,7 +57,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 | M-CRD-01 | Creative Director offline foundation | 6 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |
 | M-CRD-02 | Creative Director on real transcripts with Research and Creator DNA | 4 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-DNA-01 | Creator DNA evidence store and confidence model | 6 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |
-| M-DNA-02 | Creator DNA learned from real recordings | 8 | NOT_STARTED | NONE (NOT_STARTED) |
+| M-DNA-02 | Creator DNA learned from real recordings | 8 | IN_PROGRESS | NONE (NOT_STARTED) |
 | M-DNA-03 | Creator-facing review of transcripts, speakers and traits | 3 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-EDT-01 | Validated edit-plan schema and Editor planning workflow | 8 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-EDT-02 | High-level validated Resolve wrapper | 8 | NOT_STARTED | NONE (NOT_STARTED) |

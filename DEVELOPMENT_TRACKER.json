@@ -782,27 +782,43 @@
       "steps": [
         {
           "id": "S-DNA-002-00",
-          "title": "Step 0: claim branch",
+          "title": "Step 0: claim, implementation, documentation and records (one milestone, one pull request)",
           "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
-            "T-DNA-002 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
-            "No overlap with another active task beyond AGR-GOV-REGISTRY-01 paths; no other task's record is edited except the shared agreement member list",
-            "Governance validate, handoff check, scope check and tracker check pass",
-            "The claim pull request is opened and merged by the Repository Coordinator, ChatGPT or Lukas, not by Claude"
+            "Footage evidence is admitted only when an injected verifier answers VERIFIED and a current consent covers style learning; no insecure default; audit_attributions revokes stale, invalid and unknown stamps idempotently",
+            "Schema v5 consent, withdrawal and quarantine; v1-v4 logs replay unchanged; older readers refuse v5 events",
+            "SentenceRhythm, PauseProfile and EnergyRange analyzers: deterministic, validated, no humor or emotion labels, counter-evidence kept",
+            "Session-aware witness grouping with legacy behaviour unchanged when no session id exists",
+            "review_queue, apply_decisions (all-or-nothing, dry run) and diff_exports with golden tests",
+            "At least 60 new tests, existing tests not weakened, documentation and records reconciled, nothing claimed real-input verified"
           ],
           "evidence": [
             {
-              "type": "observation",
-              "summary": "Claim branch created from origin/main 18e970e in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed."
+              "type": "commit",
+              "summary": "Implementation commit on task/t-dna-002-claim: Creator DNA code, tests and CREATOR_DNA.md; tests below were run at this commit.",
+              "commit": "56bcc9389f25c5581db3daf34f0659ed96261680"
+            },
+            {
+              "type": "test_run",
+              "summary": "Creator DNA and adjacent suites at the implementation commit: 86 + 141 + 56 + 38 tests OK, synthetic data only.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p <module>.py",
+              "result": "OK for test_creator_dna (86), test_creator_dna_learning (141), test_speaker_attribution (56), test_integration_phase2_phase3 (38)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite at the implementation commit: 1534 tests, one known error in test_creative_director.py (file owned by active T-CRD-001, see E-DNA-0003).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1534 tests: FAILED (errors=1, skipped=1)"
             }
           ]
         },
         {
           "id": "S-DNA-002-01",
-          "title": "Step 1: verifier, consent, analyzers, independence, review loop, tests and documentation",
+          "title": "Step 1 (follow-up): adapt tests/test_creative_director.py to the strict store after T-CRD-001 releases the file",
           "status": "PLANNED",
           "acceptance_criteria": [
-            "See the task's acceptance criteria in ACTIVE_TASKS.json"
+            "test_real_store_export_is_accepted_and_unchanged builds its store with tests/_dna_verifiers.py strict_test_store (constructor-level change only, no assertion weakened)",
+            "The full suite passes with 0 errors and 0 failures"
           ],
           "evidence": []
         }
