@@ -527,7 +527,7 @@ def _canon(r: Any) -> str:
 
 
 _RANKS = {
-    "stance": lambda v: {"contradicts": 0, "context": 1, "supports": 2}.get(v, -1),
+    "stance": lambda v: {"contradicts": 0, "context": 1, "supports": 2}.get(v, -1) if isinstance(v, str) else -1,
     "counted_as_evidence": lambda v: {False: 0, True: 1}.get(v, -1) if isinstance(v, bool) else -1,
     "review_label": lambda v: {"unreviewed": 0, "llm_assessed": 1, "human_reviewed": 2,
                                "process_verified": 3}.get(v, -1) if isinstance(v, str) else -1,
