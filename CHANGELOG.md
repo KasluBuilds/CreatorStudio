@@ -5,6 +5,10 @@ project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
 
+## Unreleased — task `T-RSV-002` claim (branch `task/t-rsv-002`, pending integration)
+
+- Claim only: registers `T-RSV-002` (owner `claude:resolve-stream`, 24-hour lease, exclusive resource `resolve`) for the safe Resolve execution layer (`M-RSV-02`), a new package owner entry `resolve_executor` (assigned directly by Lukas), `AGR-GOV-REGISTRY-01` extended to it, and steps `S-RSV-002-00` (claim, `READY_FOR_REVIEW`) and `S-RSV-002-01` (implementation, `PLANNED`). No source, test, documentation, status or milestone change. `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## Unreleased — task `T-RSR-001` claim (branch `task/t-rsr-001-claim`, pending integration)
 
 - Claim only: registers `T-RSR-001` (owner `claude:research-stream`, 24-hour lease, `AGR-GOV-REGISTRY-01` extended to it) and steps `S-RSR-001-00` (claim, `READY_FOR_REVIEW`) and `S-RSR-001-01` (implementation, `PLANNED`, not started). Owned paths: `orchestrator/research/`, `orchestrator/tests/test_research.py` and the four shared registry files. No source, test, documentation, status or milestone change.
