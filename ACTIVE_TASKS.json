@@ -397,6 +397,34 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Completed 2026-11-17 in this single pull request (claim, implementation and closeout together) under the one-time bootstrap exception, directed by Lukas to the Repository Coordinator session; the gates were run on head 9b248310e721bfc667c6905222fd95ccfa69f28e before the closeout commit. Delivers waves (governance wave), the validate workflow, the pre-push hook, WAVE_PROTOCOL.md and the Repository Coordinator role. AGR-GOV-REGISTRY-01 keeps listing T-GOV-004 only as history. Touches no product package; orchestrator/creative_director/ is untouched. Branch task/t-gov-004-waves is merged by the Coordinator and may be deleted by Lukas."
+    },
+    {
+      "id": "T-GOV-005",
+      "title": "Wave wording follow-up: CLAUDE.md lane rules and protection evidence",
+      "description": "Fix the CLAUDE.md rules that told every session to claim files in ACTIVE_TASKS.json (wrong for a wave lane) and a redundant sentence introduced by T-GOV-004, and record the branch-protection configuration read back after T-GOV-004 merged. Documentation and status record only.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-gov-005-wave-wording",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-GOV-004"
+      ],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "CLAUDE.md tells wave lanes that the manifest is their claim and that they never edit ACTIVE_TASKS.json, and standalone tasks still claim first",
+        "The protection configuration observed after the T-GOV-004 merge is recorded as evidence E-OBS-PROTECTION-0001 and referenced by M-INF-01",
+        "governance validate, handoff --check, tracker_check and the full suite pass"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Opened, delivered and closed in one small pull request as part of the Phase 3 direction Lukas gave the Repository Coordinator on 2026-11-17 (waves are the normal path, remove administrative pull requests). Touches no product package and no Creative Director file. Completion is recorded as DIRECT from that instruction; it is not a code review."
     }
   ]
 }

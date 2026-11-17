@@ -617,6 +617,40 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-GOV-005",
+      "title": "Wave wording follow-up",
+      "steps": [
+        {
+          "id": "S-GOV-005-00",
+          "title": "Step 0: CLAUDE.md lane wording and protection evidence (claim, change and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "CLAUDE.md distinguishes wave lanes from standalone tasks",
+            "Protection evidence recorded",
+            "All governance checks pass"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "T-GOV-004 merge commit after which protection was configured and read back",
+              "commit": "984593b3e764a1b4f099a95aada6434a25475e7e"
+            },
+            {
+              "type": "observation",
+              "summary": "Only CLAUDE.md, PROJECT_STATUS.json and the registry/tracker/changelog/handoff records change; no product package and no Creative Director file."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas directed the Repository Coordinator session on 2026-11-17 to make waves the normal path and remove administrative pull requests. This wording and evidence follow-up implements that direction; it does not claim that Lukas or ChatGPT reviewed the text, and the checks are mechanical (CI, validators, tests)."
+          }
+        }
+      ]
     }
   ]
 }

@@ -21,7 +21,7 @@
     "Q11: which transcription engine. No engine is chosen. Local experiments on one real recording exist (E-OBS-LOCAL-TRANSCRIPTION-EXP); the engine text and the creator's listening notes disagree and the discrepancy is unresolved.",
     "CLAUDE.md, INGESTION.md and SHOT_DETECTION.md still say ingestion and shot detection were tested on synthetic media only, but a real file was ingested (2026-11-08) and shot-detected (2026-11-09) in Projects/my-first-test. Lukas to confirm this was intended and to review the results; those documents belong to the creator_state owner (UNRESOLVED) and were not edited here.",
     "Q33 (when the understand stage may complete) and Q35 (two shot detectors) remain OPEN in DECISIONS_AND_OPEN_QUESTIONS.md.",
-    "The repository became public on 2026-11-17 and branch protection is now available (observed 2026-11-17). Protection on main (pull request required, `validate` check required and up to date, administrators included, no force-push or deletion) is configured by the Repository Coordinator right after T-GOV-004 merges; merge-commit-only remains procedural. The repository being public means everything committed is world-readable: Lukas to confirm that is intended for design documents and history.",
+    "The repository became public on 2026-11-17. Branch protection on main is configured and read back (E-OBS-PROTECTION-0001): pull request required, `validate` required and up to date, administrators included, no force-push or deletion; merge-commit-only remains procedural. A public repository makes everything committed world-readable: Lukas to confirm that is intended for design documents and history.",
     "Worktree access to the git-ignored Projects/ is only partly tested: the read-only `creator_state --root <primary> list` worked from a worktree and changed nothing (observed 2026-11-09). Every other command and any write are NOT TESTED; the serialization rule stays in force.",
     "Milestone-triggered user action G-FIRST-REAL-VIDEO is PENDING (see user_action_gates).",
     "REPORTED by Lukas (not independently verified): ChatGPT retrieved all five canonical files from main through the GitHub connector. Whether it can create branches or pull requests is not recorded."
@@ -230,6 +230,14 @@
       "summary": "GitHub API reported visibility PUBLIC (default branch main); the branch protection endpoint answered 404 'Branch not protected' and the rulesets list was empty (both were HTTP 403 while the repository was private); secret scanning and push protection reported enabled; Actions enabled; a scan of the whole git history for credential patterns found only synthetic test fixtures and no media files.",
       "ref": "gh repo view --json visibility; gh api repos/KasluBuilds/CreatorStudio/branches/main/protection; gh api repos/KasluBuilds/CreatorStudio/rulesets; git log --all -p scanned with the section 10 credential pattern",
       "observer": "claude:repository-coordinator"
+    },
+    "E-OBS-PROTECTION-0001": {
+      "id": "E-OBS-PROTECTION-0001",
+      "type": "observation",
+      "date": "2026-11-17",
+      "summary": "After T-GOV-004 merged (merge commit 984593b3e764a1b4f099a95aada6434a25475e7e) the Repository Coordinator configured branch protection on main and read it back: required status check validate with strict (up to date) true, enforce_admins true, pull request required with 0 approvals, force-pushes false, deletions false, linear history false (merge commits stay allowed); GET branches/main reported protected true. Merge-commit-only is still procedural (squash and rebase are allowed by the repository settings).",
+      "ref": "gh api repos/KasluBuilds/CreatorStudio/branches/main/protection",
+      "observer": "claude:repository-coordinator"
     }
   },
   "milestones": [
@@ -251,13 +259,14 @@
         "evidence": [
           "E-OBS-REMOTE-0001",
           "E-FULLSUITE-0002",
-          "E-OBS-REMOTE-0002"
+          "E-OBS-REMOTE-0002",
+          "E-OBS-PROTECTION-0001"
         ]
       },
       "depends_on": [],
       "commit": "5f6925ebf9d442ab85cfb1266d260d62c7d6f55d",
       "open_questions": [
-        "Branch protection became available when the repository became public (2026-11-17); it is configured on main by the Repository Coordinator after T-GOV-004 merges. Lukas to confirm that a public repository is intended.",
+        "Branch protection on main is configured (observed 2026-11-17, E-OBS-PROTECTION-0001). Lukas to confirm that a public repository is intended.",
         "REPORTED by Lukas, not independently verified: ChatGPT retrieved the five canonical files through its GitHub connector. Whether ChatGPT can create branches or write pull requests has not been tested."
       ],
       "blockers": []
