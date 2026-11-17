@@ -26,7 +26,7 @@ UNRESOLVED = "UNRESOLVED"
 
 TASK_ID = re.compile(r"^T-[A-Z0-9]+-\d{3}$")
 AGREEMENT_ID = re.compile(r"^AGR-[A-Z0-9-]+$")
-BRANCH = re.compile(r"^(task|chatgpt)/[a-z0-9][a-z0-9._-]*$")
+BRANCH = re.compile(r"^((task|chatgpt)/[a-z0-9][a-z0-9._-]*|lane/w\d{2,3}-[a-z0-9][a-z0-9-]*/L\d{1,2})$")
 OWNER = re.compile(r"^(claude|chatgpt|human):[a-z0-9][a-z0-9._-]*$")
 DEFAULT_LEASE_HOURS = 24
 MAX_LEASE_HOURS = 72
@@ -179,8 +179,8 @@ def validate(doc: Any) -> List[str]:
         if not (isinstance(t.get("branch"), str) and BRANCH.match(t["branch"])):
             problems.append(f"{label}: branch must match {BRANCH.pattern}")
         if isinstance(t.get("owner"), str) and isinstance(t.get("branch"), str):
-            if t["owner"].startswith("claude:") and not t["branch"].startswith("task/"):
-                problems.append(f"{label}: a Claude Code task branch must start with 'task/'")
+            if t["owner"].startswith("claude:") and not t["branch"].startswith(("task/", "lane/")):
+                problems.append(f"{label}: a Claude Code task branch must start with 'task/' (or 'lane/' for a wave lane)")
             if t["owner"].startswith("chatgpt:") and not t["branch"].startswith("chatgpt/"):
                 problems.append(f"{label}: a ChatGPT task branch must start with 'chatgpt/'")
         wt = t.get("worktree")

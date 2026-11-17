@@ -20,3 +20,6 @@
 *.jpg  binary
 *.png  binary
 *.bin  binary
+
+# Git hooks are shell scripts: always LF (a CRLF checkout on Windows would break them).
+.githooks/* text eol=lf

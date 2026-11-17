@@ -62,7 +62,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 | M-EDT-01 | Validated edit-plan schema and Editor planning workflow | 8 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-EDT-02 | High-level validated Resolve wrapper | 8 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-HRD-01 | Production hardening | 6 | NOT_STARTED | NONE (NOT_STARTED) |
-| M-INF-01 | Canonical private GitHub repository and safety configuration | 3 | IMPLEMENTED | INTEGRATION (IN_PROGRESS) |
+| M-INF-01 | Canonical GitHub repository and safety configuration | 3 | IMPLEMENTED | INTEGRATION (IN_PROGRESS) |
 | M-INF-02 | Governance layer and deterministic progress calculation | 3 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |
 | M-ING-01 | Hybrid media ingestion and inventory | 5 | IMPLEMENTED | INTEGRATION (IN_PROGRESS) |
 | M-INT-01 | End-to-end Phase 2 to 3 run on one real recording of the creator | 6 | NOT_STARTED | NONE (NOT_STARTED) |
@@ -114,7 +114,7 @@ Unresolved ownership: `creator_state`, `media_analysis`, `speaker_attribution`, 
 - Q11: which transcription engine. No engine is chosen. Local experiments on one real recording exist (E-OBS-LOCAL-TRANSCRIPTION-EXP); the engine text and the creator's listening notes disagree and the discrepancy is unresolved.
 - CLAUDE.md, INGESTION.md and SHOT_DETECTION.md still say ingestion and shot detection were tested on synthetic media only, but a real file was ingested (2026-11-08) and shot-detected (2026-11-09) in Projects/my-first-test. Lukas to confirm this was intended and to review the results; those documents belong to the creator_state owner (UNRESOLVED) and were not edited here.
 - Q33 (when the understand stage may complete) and Q35 (two shot detectors) remain OPEN in DECISIONS_AND_OPEN_QUESTIONS.md.
-- Branch protection and rulesets are not available for this private repository on the current GitHub plan (HTTP 403 observed 2026-11-09); the single-writer rule for main is procedural.
+- The repository became public on 2026-11-17 and branch protection is now available (observed 2026-11-17). Protection on main (pull request required, `validate` check required and up to date, administrators included, no force-push or deletion) is configured by the Repository Coordinator right after T-GOV-004 merges; merge-commit-only remains procedural. The repository being public means everything committed is world-readable: Lukas to confirm that is intended for design documents and history.
 - Worktree access to the git-ignored Projects/ is only partly tested: the read-only `creator_state --root <primary> list` worked from a worktree and changed nothing (observed 2026-11-09). Every other command and any write are NOT TESTED; the serialization rule stays in force.
 - Milestone-triggered user action G-FIRST-REAL-VIDEO is PENDING (see user_action_gates).
 - REPORTED by Lukas (not independently verified): ChatGPT retrieved all five canonical files from main through the GitHub connector. Whether it can create branches or pull requests is not recorded.
@@ -124,7 +124,7 @@ Unresolved ownership: `creator_state`, `media_analysis`, `speaker_attribution`, 
 1. Lukas reviews the milestone weights and confirms or changes package owners.
 2. Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.
 3. Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.
-4. Lukas to confirm, in ChatGPT, that the weekly "Phase 6 Readiness Check" automation can read the private repository and to report the result of its first completed run; until then its successful access is NOT VERIFIED.
+4. Lukas to confirm, in ChatGPT, that the weekly "Phase 6 Readiness Check" automation can read the repository (public since 2026-11-17) and to report the result of its first completed run; until then its successful access is NOT VERIFIED.
 
 ## Where things live
 

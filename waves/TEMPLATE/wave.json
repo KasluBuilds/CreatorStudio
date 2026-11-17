@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "wave_id": "w01-example-wave",
+  "title": "One-line goal of the whole wave",
+  "integration_branch": "wave/w01-example-wave",
+  "base_commit": "AUTO",
+  "created": "2026-01-01",
+  "inactivity_hours": 48,
+  "lanes": [
+    {
+      "id": "L1",
+      "task_id": "T-EXA-001",
+      "title": "What this lane delivers",
+      "owner": "claude:example-stream",
+      "branch": "lane/w01-example-wave/L1",
+      "owned_paths": ["orchestrator/example_package/", "orchestrator/tests/test_example_package.py"],
+      "test_modules": ["test_example_package.py"],
+      "acceptance_criteria": ["A concrete, testable statement of done"],
+      "depends_on": [],
+      "authorizations": []
+    },
+    {
+      "id": "L2",
+      "task_id": "T-EXB-001",
+      "title": "A second, independent lane",
+      "owner": "claude:another-stream",
+      "branch": "lane/w01-example-wave/L2",
+      "owned_paths": ["orchestrator/another_package/", "orchestrator/tests/test_another_package.py"],
+      "test_modules": ["test_another_package.py"],
+      "acceptance_criteria": ["Another testable statement of done"],
+      "depends_on": [],
+      "authorizations": []
+    }
+  ]
+}

@@ -66,7 +66,7 @@ Resolve safety rules live in `CLAUDE.md` and `RESOLVE_INTEGRATION.md`: validated
 
 - Git, GitHub CLI (`gh`, installed with `winget install --id GitHub.cli --scope user`; a shell opened before the install may not have it on `PATH` until restarted) and repository-local identity (`user.name`, `user.email` set per repository, global config untouched).
 - Authentication: `gh auth login --hostname github.com --git-protocol https --web` (device code in the browser). The token is kept in the Windows keyring; scopes granted: `repo`, `read:org`, `gist`. HTTPS pushes worked after login (VERIFIED); which credential helper served them was not inspected.
-- Repository: `https://github.com/KasluBuilds/CreatorStudio`, private, default branch `main`. Branch protection and rulesets are unavailable on this plan (VERIFIED, HTTP 403).
+- Repository: `https://github.com/KasluBuilds/CreatorStudio`, public since 2026-11-17 (private before), default branch `main`. Branch protection is available now that the repository is public (VERIFIED 2026-11-17; it answered HTTP 403 while private) and is configured on `main`: see `PROJECT_OPERATING_PROTOCOL.md` section 7.
 - What is deliberately not in the repository: footage (`Incoming/`, `test_media/`), derived per-project data (`Projects/`), `tools/`, launchers, `.mcp.json`, local settings, media and model files (`.gitignore`).
 
 ## 7. Setting up a second machine (PROPOSED, never exercised)

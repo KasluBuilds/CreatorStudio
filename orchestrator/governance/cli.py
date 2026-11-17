@@ -1,4 +1,4 @@
-"""Command line: python -B -m governance <validate|score|tasks|leases|handoff> (run from orchestrator/)."""
+"""Command line: python -B -m governance <validate|score|tasks|leases|handoff|scope|wave> (run from orchestrator/)."""
 from __future__ import annotations
 
 import argparse
@@ -12,6 +12,7 @@ from typing import List, Optional
 from . import handoff as handoff_mod
 from . import status as status_mod
 from . import tasks as tasks_mod
+from . import waves as waves_mod
 
 ROOT = Path(__file__).resolve().parents[2]
 STATUS_FILE = "PROJECT_STATUS.json"
@@ -66,7 +67,69 @@ def build_parser() -> argparse.ArgumentParser:
     g = ho.add_mutually_exclusive_group()
     g.add_argument("--write", action="store_true")
     g.add_argument("--check", action="store_true", help="exit 1 if the committed file is stale")
+    wv = sub.add_parser("wave", help="parallel waves of lanes integrated through one pull request (WAVE_PROTOCOL.md)")
+    ws = wv.add_subparsers(dest="wcmd", required=True)
+    w = ws.add_parser("init", help="integrator: create wave/<id> with its manifest and lane briefs from origin/main")
+    w.add_argument("manifest", type=Path)
+    w.add_argument("--no-push", action="store_true")
+    w = ws.add_parser("worktrees", help="create one worktree and branch per lane of a wave")
+    w.add_argument("wave_id")
+    w = ws.add_parser("validate", help="validate a manifest file against ACTIVE_TASKS.json")
+    w.add_argument("manifest", type=Path)
+    w = ws.add_parser("submit", help="lane: merge the wave branch in, validate, push to the wave branch")
+    w.add_argument("--attempts", type=int, default=5)
+    w = ws.add_parser("status", help="show every wave and lane (started, submitted, stale)")
+    w.add_argument("wave_id", nargs="?")
+    w.add_argument("--json", action="store_true")
+    w = ws.add_parser("verify", help="whole-wave gate used by CI and before close (run on the wave branch)")
+    w.add_argument("wave_id")
+    w.add_argument("--require-complete", action="store_true", help="every lane report must be DONE and submitted")
+    w.add_argument("--allow-closeout", action="store_true", help="accept the four closeout records")
+    w = ws.add_parser("close", help="integrator only: write registry/tracker/changelog/handoff for the wave and commit")
+    w.add_argument("wave_id")
+    w.add_argument("--source", required=True, help="must begin DIRECT or REPORTED; says where the approval came from")
+    w.add_argument("--date", required=True, help="YYYY-MM-DD")
+    w.add_argument("--approver", required=True, choices=list(waves_mod.APPROVERS),
+                   help="who technically approved the wave (recorded in every lane's completion record)")
+    w.add_argument("--standing-instruction", action="store_true", help="Lukas's standing instruction covers this approval")
     return p
+
+
+def _wave(args, root: Path) -> int:
+    c = args.wcmd
+    if c == "init":
+        return waves_mod.init_wave(root, args.manifest, push=not args.no_push)
+    if c == "worktrees":
+        return waves_mod.make_lane_worktrees(root, args.wave_id)
+    if c == "validate":
+        reg = _load(root / TASKS_FILE)
+        m = _load(args.manifest)
+        return _report(waves_mod.validate_manifest(m, reg, allow_auto_base=True), f"OK: wave manifest {m.get('wave_id')} is valid "
+                                                           f"({len(m.get('lanes', []))} lanes)")
+    if c == "submit":
+        return waves_mod.submit(root, max_attempts=args.attempts)
+    if c == "status":
+        data = waves_mod.status(root, args.wave_id)
+        if args.json:
+            print(json.dumps(data, indent=2))
+            return 0
+        if not data:
+            print("no waves found on origin (run git fetch origin first)")
+        for wv_ in data:
+            print(f"wave {wv_['wave']}: {wv_.get('title', wv_.get('error'))}")
+            for l in wv_.get("lanes", []):
+                flag = ("SUBMITTED" if l["submitted"] else "STALE" if l["stale"] else
+                        "working" if l["started"] else "not started")
+                print(f"  {l['lane']:<4} {flag:<12} report={l.get('report') or '-':<12} {l['owner']}  {l['branch']}"
+                      f"  last={l['last_commit'] or '-'}")
+        return 0
+    if c == "verify":
+        return _report(waves_mod.verify(root, args.wave_id, require_complete=args.require_complete,
+                                        allow_closeout=args.allow_closeout), f"OK: wave {args.wave_id} is valid")
+    if c == "close":
+        return waves_mod.close(root, args.wave_id, source=args.source, date=args.date,
+                               approver=args.approver, lukas_standing=args.standing_instruction)
+    return 2
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -74,6 +137,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     root: Path = args.root
     sfile, tfile, hfile = root / STATUS_FILE, root / TASKS_FILE, root / HANDOFF_FILE
     try:
+        if args.cmd == "wave":
+            return _wave(args, root)
         if args.cmd == "validate":
             sdoc, tdoc = _load(sfile), _load(tfile)
             problems = [f"{STATUS_FILE}: {x}" for x in status_mod.validate(sdoc)]
@@ -151,7 +216,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
     except status_mod.StatusError as exc:
         return _report(exc.problems, "")
-    except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+    except (OSError, json.JSONDecodeError, KeyError, ValueError, waves_mod.WaveError) as exc:
         print(f"ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     return 2

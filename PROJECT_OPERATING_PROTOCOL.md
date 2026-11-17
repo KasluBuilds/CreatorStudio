@@ -2,7 +2,7 @@
 
 How several Claude Code sessions and ChatGPT workstreams work on CreatorStudio **at the same time** without
 losing coordination. Parallel work is the intent; this protocol keeps it safe. Repository:
-<https://github.com/KasluBuilds/CreatorStudio> (private). Established 2026-11-09 by task `T-GOV-001`.
+<https://github.com/KasluBuilds/CreatorStudio> (public since 2026-11-17, private before). Established 2026-11-09 by task `T-GOV-001`.
 
 Labels used here: **VERIFIED** (observed), **PROCEDURE** (a rule people follow; nothing enforces it),
 **UNKNOWN** (not tested).
@@ -28,9 +28,10 @@ fix the documents. Never silently overwrite a decision made by Lukas.
 ## 2. Roles
 
 - **Lukas** is the project owner and final authority; he owns credentials and footage and alone authorises processing of real footage. He has delegated routine technical review, task pull-request opening/merging and task lease release to ChatGPT as the default integrator; he may revoke or reserve any action.
-- **Claude Code sessions** do the implementation in their own task branches and Git worktrees. They stop at `READY_FOR_REVIEW` and never merge pull requests or release leases.
+- **Claude Code sessions** do the implementation in their own task or lane branches and Git worktrees. They stop at `READY_FOR_REVIEW` (task) or after `wave submit` (lane) and never merge pull requests or release leases. The one exception is the Repository Coordinator below.
 - **ChatGPT workstreams** read the repository from GitHub, plan and independently review changes. Under Lukas's explicit standing delegation, ChatGPT is the default integrator: it may open/merge task pull requests and release task leases through follow-up pull requests. It does not process real footage or use credentials without separate authorization.
-- **The integrator** is ChatGPT under the current delegation, or Lukas if he reserves a particular merge. The integrator is the *only* writer to `main`, and merges one pull request at a time.
+- **The Repository Coordinator** is the single Claude Code session Lukas has named so (2026-11-17). Under Lukas's standing delegation it starts, verifies, closes and merges waves and merges other routine pull requests when every gate in section 18 passes. It is the default integrator for wave work; ChatGPT remains an independent reviewer and may still integrate when Lukas asks.
+- **The integrator** is the Repository Coordinator for work covered by section 18, otherwise ChatGPT under the earlier delegation, or Lukas if he reserves a particular merge. The integrator is the *only* writer to `main`, and merges one pull request at a time.
 
 ## 3. Starting a task (every session)
 
@@ -84,6 +85,8 @@ Each task is an entry in `ACTIVE_TASKS.json` with id, owner, branch, worktree, `
 `lease`, `exclusive_resources`, acceptance criteria, test requirements and integration notes. Statuses:
 `PLANNED`, `ACTIVE`, `UNDER_REVIEW` (these two hold their paths), `COMPLETED`, `RELEASED`, `BLOCKED`.
 
+**Waves are the normal path.** Substantial development work is assigned as a wave (section 17, `WAVE_PROTOCOL.md`), which needs no claim, step-start, lease-renewal or closeout pull requests. The rest of this section is for small, single-agent tasks that are not worth a wave, and for the governance work that builds the machinery itself.
+
 **Register (claim).** Branch from `origin/main`, add your task (status `ACTIVE`, `lease.acquired` now, `lease.expires` 24 hours
 later), run `cd orchestrator && python -B -m governance validate` and `python -B -m governance handoff --write`, commit only
 those files, push the branch and open a small *claim pull request*. The integrator merges claim pull requests promptly, in order.
@@ -123,10 +126,8 @@ Read-only inspection of Resolve does not need the resource.
   code, e.g. `E-RSR-...`). This keeps edits to `PROJECT_STATUS.json` from colliding.
 - After a merge, a small follow-up pull request records the final merge/commit SHA as evidence and releases the lease (the commit
   SHA cannot be cited inside the commit that creates it).
-- **Enforcement (VERIFIED 2026-11-09):** GitHub branch protection and rulesets are not available for this private repository on the
-  current plan (the API answers HTTP 403 "Upgrade to GitHub Pro or make this repository public"). The single-writer rule for `main` is
-  therefore a PROCEDURE, not a technical barrier. Options if stronger enforcement is wanted: upgrade the plan; or accept the procedure.
-  Do not make the repository public to obtain protection: it contains the project's private design.
+- **Enforcement (VERIFIED 2026-11-17):** the repository became public on 2026-11-17, which makes GitHub branch protection available (before that the API answered HTTP 403 "Upgrade to GitHub Pro or make this repository public"). Protection on `main` is configured by the Repository Coordinator right after `T-GOV-004` merged and can be read with `gh api repos/KasluBuilds/CreatorStudio/branches/main/protection`: a pull request is required (0 approvals, because the owner cannot approve their own pull request), the `validate` check must pass on a head that is up to date with `main`, administrators are included (`enforce_admins`), and force-pushes and deletions of `main` are refused. Merge commits only remain a PROCEDURE (the repository still allows squash and rebase merges; the Coordinator and the pre-push hook do not use them). `.github/workflows/validate.yml` runs the registry, handoff, tracker, wave and full-suite checks on every pull request into `main` and every push to `wave/**`. `.githooks/pre-push` (enable with `git config core.hooksPath .githooks`) refuses local pushes to `main` and force-updates or deletions of `wave/` and `lane/` branches; a hook can be skipped, so it is only a safety net. Lukas can lift or change protection at any time.
+- **The repository is public.** Everything committed, including history, is world-readable and cannot be recalled. The rules of section 10 are now absolute: no credentials, footage, personal data or local paths in any tracked file. A history scan on 2026-11-17 found only synthetic test fixtures (no credentials, no media).
 
 ## 8. Tests
 
@@ -241,5 +242,36 @@ Every task is divided into numbered steps recorded in `DEVELOPMENT_TRACKER.json`
 2026-11-13: `T-GOV-003` made the development-step working limit per task instead of global (`DEVELOPMENT_STEP_PROTOCOL.md` section 3). Its claim and implementation share one pull request as a one-time bootstrap exception approved by ChatGPT as delegated integrator; every later task still needs a separate claim pull request.
 
 2026-11-13: Lukas delegated routine technical review, task PR opening/merging and lease release to ChatGPT as the default integrator. Claude Code remains prohibited from merging or releasing leases; Lukas retains final authority and may reserve or revoke actions.
+
+2026-11-17: `T-GOV-004` added waves (section 17, `WAVE_PROTOCOL.md`, `governance wave`), a `validate` GitHub Actions workflow and a `pre-push` hook, made waves the normal path for substantial work, recorded that the repository is public with branch protection on `main`, and created the Repository Coordinator role (section 18) under Lukas's standing delegation of the same day. It was claimed and delivered the old way, in one pull request, as a one-time bootstrap exception like `T-GOV-003`; `AGR-GOV-REGISTRY-01` was extended to it for that pull request.
+
+## 17. Waves (parallel lanes, one pull request per wave)
+
+Large, parallel assignments run as a **wave**: an integration branch `wave/<id>` with a manifest of lanes that own disjoint
+paths, each lane worked by one Claude Code agent in its own worktree and branch `lane/<id>/<lane>`. Lanes deliver to the wave
+branch themselves with `python -B -m governance wave submit` (a fast-forward push is the lock), the integrator verifies the whole wave and
+runs `wave close` once, and the wave merges to `main` in **one** pull request. Waves replace, for their lanes only, the claim
+(section 6), step-start, lease-renewal and closeout pull requests and the per-step ChatGPT review (section 15): shared
+registries are written only by `wave close`, so lanes never conflict on them. Every other rule here still applies: one writer to
+`main`, merge commits only (section 7), tests green, evidence for every claim, secrets (section 10), originals immutable.
+The full procedure, roles, recovery and open decisions are in `WAVE_PROTOCOL.md`. Claude lane agents never merge, never run
+`wave close`, never edit a manifest or a shared registry, and never approve their own lane; only the Repository Coordinator (section 18) integrates. Waves are the normal path for substantial work.
+
+## 18. Repository Coordinator (autonomous integrator)
+
+Established 2026-11-17 by Lukas's direct instruction to the session named "Repository Coordinator": it is the autonomous integrator for waves and routine pull requests. Lukas retains final authority and may reserve or revoke any action at any time; ChatGPT remains an independent reviewer.
+
+**May do, without asking, when every gate passes:** run `wave validate`, `wave init` and `wave worktrees`; verify and `wave close` a finished wave with `--approver repository_coordinator`; open and merge pull requests into `main` with a merge commit (`gh pr merge <n> --merge --match-head-commit <reviewed head>`); regenerate handoff, changelog and registry records; release leases of finished non-wave tasks through a follow-up pull request; fast-forward the primary checkout; create and remove worktrees for finished lanes.
+
+**Gates, all required, and each recorded in the pull request:**
+1. The pull request targets `main` from a `task/`, `wave/` or `chatgpt/` branch, is open, not a draft, and is mergeable.
+2. The `validate` check is green on the exact head SHA being merged, and the branch is up to date with `main` (GitHub enforces both).
+3. For a wave: `wave verify <id> --require-complete` is clean on the wave branch, every lane report is `DONE`, `wave close` was committed on the branch, and `wave verify <id> --allow-closeout` is clean afterwards.
+4. The secret scan of added lines is clean and no tracked file is a launcher, credential, media file or machine-local path.
+5. No lane or task owner is waiting on a decision (`unresolved` entries are either recorded as open questions or sent to Lukas; none is silently dropped).
+
+**Must not merge on its own authority (needs Lukas's direct word in the session):** a pull request that changes the governance machinery itself (this protocol, `DEVELOPMENT_STEP_PROTOCOL.md`, `WAVE_PROTOCOL.md`, `CLAUDE.md`, `.github/`, `.githooks/`, `orchestrator/governance/`, `dashboard/tracker_check.py`, branch protection) other than the one Lukas directed on 2026-11-17; any pull request whose implementation the Coordinator itself wrote, other than generated records (closeouts, registry, changelog, handoff); any change that touches an `UNRESOLVED` package or another stream's package without a recorded authorization; any milestone moved to `VERIFIED`; real footage, credentials, Resolve mutations; and any pull request from a task still in progress (another session's active work, such as a Creative Director task, is never merged or edited by the Coordinator).
+
+**Records.** The approval is recorded as `approved_by: repository_coordinator` with a `source` beginning `REPORTED:` that names this standing delegation. It never claims that Lukas or ChatGPT reviewed the code. Only one Coordinator session acts at a time; it never edits a lane's branch or worktree, never force-pushes, and never pushes to `main`.
 
 This protocol is a shared file. Changes go through a pull request that states what rule changed and why, and add a `CHANGELOG.md` entry.
