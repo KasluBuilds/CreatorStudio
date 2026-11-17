@@ -833,7 +833,7 @@
         {
           "id": "S-GOV-006-00",
           "title": "Step 0: verify merge-base fix and workflow closeout allowance (claim, fix and closeout in one pull request)",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "verify ignores main's files and catches real strays",
             "workflow accepts the closeout commit on wave pushes"
@@ -853,8 +853,21 @@
             {
               "type": "observation",
               "summary": "Reproduced on the real wave w01: the push-event run failed after wave close with 'belongs to no lane' for the four closeout files, and verify flagged every file merged in from main until base_commit was moved by hand. The fix removes both."
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate on pull request #38 at the head named in the integration notes: Node tests and the full Python suite (skips 49 on the runner).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1395 tests: OK (skipped=49); Node tests fail 0"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas told the Repository Coordinator session on 2026-11-17 to close wave w01 autonomously and keep the wave infrastructure working; this fixes two defects in that tooling found while doing so. It does not claim that Lukas or ChatGPT reviewed the code, which was written by this same session; the gates were mechanical (CI, validators, tests)."
+          }
         }
       ]
     }
