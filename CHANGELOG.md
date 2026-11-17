@@ -5,6 +5,10 @@ project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
 
+## 2026-11-17 — task `T-GOV-007` wave w01 outcome recorded (complete)
+
+- `PROJECT_STATUS.json`: `M-AST-02` moves from NOT_STARTED to IN_PROGRESS (implementation and verification, unit level) on evidence `E-AST-ACQ-0001`; it is not implemented or verified and the remaining work is named in the milestone. The deferred Research (M-RSR-02) and Creator DNA review (M-DNA-03) work is listed in `next_actions`. `computed` refreshed with `governance score --write`. Record-only: no source, test or documentation change.
+
 ## 2026-11-17 — wave `w01-acquisition-providers-review`: Offline-first asset acquisition (lane L1); research providers and creator review deferred (1 lanes, one pull request)
 
 - `T-AST-003` lane L1 (claude:asset-recovery): T-AST-003 (wave w01, lane L1): Asset acquisition pipeline, offline and transport-injected: bounded fetch, quarantined library records, licence-text evidence with drift detection, LocalFolderProvider (strict sidecar schema) and Openverse request builder/parser (NOT TESTED live); 135 new unit tests; nothing is VERIFIED.

@@ -4,7 +4,7 @@
 
 # Session handoff
 
-Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`.
+Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`.
 
 ## User-action gates (things Lukas must be told at a milestone)
 
@@ -26,8 +26,8 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 
 ## Progress (computed from PROJECT_STATUS.json)
 
-- Implementation: **35.4%**  
-- Verification: **12.7%**  
+- Implementation: **36.9%**  
+- Verification: **13.4%**  
 - 29 milestones, total weight 164. Verification never exceeds implementation. Weights are PROPOSED: drafted by an AI session and not yet reviewed by Lukas, so these figures are provisional. 
 - How to read them: *implementation* is the weighted share of milestones whose code exists (half credit if in progress); *verification* is the weighted share demonstrated at the level evidence supports. Neither measures effort, time left, or whether the product works on real footage.
 - Milestones verified on reviewed real input: 0 of 29 (none).
@@ -41,7 +41,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 | Phase 1 | 10 | 0.0% | 0.0% |
 | Phase 2 | 22 | 59.1% | 29.5% |
 | Phase 3 | 21 | 47.6% | 16.7% |
-| Phase 4 | 22 | 54.5% | 13.6% |
+| Phase 4 | 22 | 65.9% | 19.3% |
 | Phase 5 | 26 | 23.1% | 5.8% |
 | Phase 6 | 22 | 0.0% | 0.0% |
 | Phase 7 | 8 | 0.0% | 0.0% |
@@ -53,7 +53,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 | ID | Title | Weight | Implementation | Verification level |
 |---|---|---:|---|---|
 | M-AST-01 | Asset Agent offline foundation | 6 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |
-| M-AST-02 | Asset acquisition, providers and licence verification | 5 | NOT_STARTED | NONE (NOT_STARTED) |
+| M-AST-02 | Asset acquisition, providers and licence verification | 5 | IN_PROGRESS | UNIT_ISOLATED (IN_PROGRESS) |
 | M-CRD-01 | Creative Director offline foundation | 6 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |
 | M-CRD-02 | Creative Director on real transcripts with Research and Creator DNA | 4 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-DNA-01 | Creator DNA evidence store and confidence model | 6 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |
@@ -87,6 +87,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 | Task | Owner | Branch | Status | Lease expires | Owns |
 |---|---|---|---|---|---|
 | T-CRD-001 Enforce Research contract version and safety-critical signals | claude:creative-director-stream | `task/t-crd-001-impl` | ACTIVE | 2026-11-18T13:39:25+00:00 | orchestrator/creative_director/, orchestrator/tests/test_creative_director.py, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
+| T-GOV-007 Record the outcome of wave w01 in PROJECT_STATUS.json | claude:governance-session | `task/t-gov-007-w01-status` | ACTIVE | 2026-11-18T18:30:42+00:00 | PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
@@ -125,6 +126,7 @@ Unresolved ownership: `creator_state`, `media_analysis`, `speaker_attribution`, 
 2. Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.
 3. Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.
 4. Lukas to confirm, in ChatGPT, that the weekly "Phase 6 Readiness Check" automation can read the repository (public since 2026-11-17) and to report the result of its first completed run; until then its successful access is NOT VERIFIED.
+5. Deferred from wave w01 (waves/w01-acquisition-providers-review/DEFERRED.md): Research providers (M-RSR-02, offline and transport-injected) to be scheduled in a future wave after PR #32 lands or is withdrawn, and the Creator review workflow (M-DNA-03) after PR #34 lands or is withdrawn; Q30 and Q39 (review workflow shape, how the creator is identified) remain decisions for Lukas.
 
 ## Where things live
 
