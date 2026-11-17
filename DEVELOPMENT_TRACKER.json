@@ -573,23 +573,27 @@
           "evidence": [
             {
               "type": "test_run",
-              "summary": "Run by Claude Code on the working tree before the commit (the commit cannot cite its own SHA; not independently run by ChatGPT). Known skip: test_symlink_source_refused. Synthetic data only; git flows run against a throwaway bare origin.",
+              "summary": "Run by Claude Code on the working tree before the commit, before the CLI wiring test was added (the commit cannot cite its own SHA; not independently run by ChatGPT). Known skip: test_symlink_source_refused. Synthetic data only; git flows run against a throwaway bare origin. The GitHub run on the pull request covers the final head.",
               "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
               "result": "Ran 1306 tests: OK (skipped=1)"
             },
             {
               "type": "test_run",
-              "summary": "The new module alone: manifest, scope, report, generated-record, git-flow and pre-push hook tests.",
+              "summary": "The new module alone, run after the last code change: manifest, scope, report, generated-record, git-flow, CLI wiring and pre-push hook tests.",
               "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py",
-              "result": "Ran 36 tests: OK"
+              "result": "Ran 37 tests: OK"
             },
             {
               "type": "observation",
-              "summary": "VERIFIED 2026-11-17 with gh api: branch protection and rulesets answer HTTP 403 (Upgrade to GitHub Pro or make this repository public); GitHub Actions is enabled (allowed_actions all); allow_auto_merge is false. The validate workflow is new and has not yet run on GitHub when this record was written; its first run is reported in the pull request."
+              "summary": "VERIFIED 2026-11-17 with gh api: branch protection and rulesets answer HTTP 403 (Upgrade to GitHub Pro or make this repository public); GitHub Actions is enabled (allowed_actions all); allow_auto_merge is false."
             },
             {
               "type": "observation",
               "summary": "Changed only orchestrator/governance/ (new waves.py, cli.py, __init__.py, tasks.py branch pattern), orchestrator/tests/test_waves.py, .github/, .githooks/, .gitattributes, waves/, WAVE_PROTOCOL.md, the two protocols, CLAUDE.md and the shared registry files. No product package and no orchestrator/creative_director/ file changed. Implemented, not VERIFIED on a real wave."
+            },
+            {
+              "type": "observation",
+              "summary": "The validate workflow ran on this pull request (#28). First run failed on four existing ingest tests that compare an 8.3 short temp path with the long form; after setting TEMP and TMP to the runner's long temp directory the second run passed: governance validate, handoff --check, tracker_check, 1306 tests (skipped=49 on the runner against 1 locally) and the secret scan. The wave gate step is untested in CI until a wave branch exists. Linux runners and Actions minutes are UNKNOWN."
             }
           ]
         },

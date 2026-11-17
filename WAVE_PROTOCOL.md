@@ -146,9 +146,8 @@ wave may still use sections 6 and 15 of the operating protocol.
 - `orchestrator/tests/test_waves.py`: manifest rules, scope, report rules, generated records checked by the real
   `governance` and `tracker_check` validators, and git flows against a throwaway bare origin (init, worktrees, submit,
   concurrent push retry, scope violation, manifest tampering, status/stale, verify, close, pre-push hook).
-- `.github/workflows/validate.yml`: its first real run is recorded in the pull request that introduced it (see `CHANGELOG.md`).
-  UNKNOWN until observed: whether the suite passes on a Linux runner (the workflow uses `windows-latest`, like the
-  development machine), and the monthly Actions minutes it consumes on the free plan.
+- `.github/workflows/validate.yml` (VERIFIED 2026-11-17 on pull request #28): the first run failed on four existing ingest tests that compare an 8.3 short temp path (`RUNNER~1`) with the long form; the workflow now sets `TEMP`/`TMP` to the runner's long temp directory and the second run passed (1306 tests, 54 seconds, about 1.5 minutes for the whole job on `windows-latest` with Python 3.14). CI skips 49 tests that run locally (the local run skips 1), so CI does not exercise whatever those need (probably real media tools). GitHub warns that `actions/checkout@v4` and `actions/setup-python@v5` use the deprecated Node 20 and are forced onto Node 24.
+- UNKNOWN: the wave gate step in CI (it only runs on `wave/**` branches, so it is first exercised by the first real wave), whether the suite passes on a Linux runner, and the monthly Actions minutes it consumes on the free plan (Windows runners are billed at a higher multiplier).
 - NOT TESTED: more than two lanes at once, two waves at once, and a lane agent following the brief without human help.
   The first real wave is the real test; start with two or three lanes.
 

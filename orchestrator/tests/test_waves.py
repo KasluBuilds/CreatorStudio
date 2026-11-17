@@ -1,6 +1,8 @@
 """Tests for governance.waves: manifest rules, scope, closeout records, and the git machinery (init, worktrees,
 submit with a concurrent push, verify, close) run against a throwaway bare origin. Synthetic data only."""
+import contextlib
 import copy
+import io
 import json
 import os
 import shutil
@@ -12,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from governance import cli
 from governance import tasks as tasks_mod
 from governance import waves
 
@@ -439,6 +442,35 @@ class GitFlowTests(unittest.TestCase):
         st = {l["lane"]: l for l in waves.status(self.seed, None, now=later)[0]["lanes"]}
         self.assertTrue(st["L2"]["stale"] and not st["L2"]["submitted"])
         self.assertEqual(waves.status(self.seed, "w99-none"), [])
+
+    def run_cli(self, root, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = cli.main(["--root", str(root), *argv])
+        return rc, out.getvalue()
+
+    def test_cli_commands_are_wired(self):
+        rc, out = self.run_cli(self.seed, "wave", "validate", str(self.mfile))
+        self.assertEqual(rc, 0, out)
+        self.assertIn("w01-demo", out)
+        self.work(self.l1, 1)
+        self.assertEqual(self.submit(self.l1)[0], 0)
+        _git(self.seed, "fetch", "-q", "origin")
+        rc, out = self.run_cli(self.seed, "wave", "status", "w01-demo", "--json")
+        self.assertEqual(rc, 0)
+        data = json.loads(out)
+        self.assertEqual({l["lane"]: l["submitted"] for l in data[0]["lanes"]}, {"L1": True, "L2": False})
+        rc, out = self.run_cli(self.seed, "wave", "status")
+        self.assertEqual(rc, 0)
+        self.assertIn("SUBMITTED", out)
+        _git(self.coord, "pull", "-q", "--ff-only", "origin", "wave/w01-demo")
+        rc, out = self.run_cli(self.coord, "wave", "verify", "w01-demo")
+        self.assertEqual(rc, 0, out)
+        rc, out = self.run_cli(self.coord, "wave", "verify", "w01-demo", "--require-complete")
+        self.assertEqual(rc, 1)                       # lane 2 has not delivered
+        self.assertIn("lane L2", out)
+        rc, out = self.run_cli(self.coord, "wave", "close", "w01-demo", "--source", "REPORTED: x", "--date", "2026-11-17")
+        self.assertEqual(rc, 1)                       # no approval flags: refuses
 
     def test_verify_complete_wave_then_close(self):
         self.work(self.l1, 1)
