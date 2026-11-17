@@ -24,9 +24,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Mapping
 
-SCHEMA_VERSION = 4   # v3: footage evidence carries an eligible-creator `attribution` stamp;
+SCHEMA_VERSION = 5   # v3: footage evidence carries an eligible-creator `attribution` stamp;
                      # v4: attribution revocation is its own `attribution_revoked` event and
-                     #     evidence_review is strict (reject / restore only)
+                     #     evidence_review is strict (reject / restore only);
+                     # v5: purpose-scoped consent (`consent_recorded`, `consent_withdrawn`), evidence
+                     #     quarantine (`evidence_quarantined`, `quarantine_released`) and optional
+                     #     `project_id` / `session_id` on Origin
 
 
 class Category(str, Enum):
@@ -151,10 +154,16 @@ class Origin:
     settings: Mapping | None = None
     analysis_copy_id: str | None = None
     review: ReviewInfo | None = None
+    project_id: str | None = None           # project-local project identity (consent is checked against it)
+    session_id: str | None = None           # one shoot/session: recordings of one session are ONE independent witness
 
     def __post_init__(self) -> None:
         if not self.media_id or not self.media_id.strip():
             raise DNAError("origin needs the original media_id")
+        for name in ("project_id", "session_id"):
+            v = getattr(self, name)
+            if v is not None and (not isinstance(v, str) or not v.strip()):
+                raise DNAError(f"origin {name} must be a non-empty string or None")
         if self.source_sha256 is not None and not re.fullmatch(r"[0-9a-f]{64}", self.source_sha256):
             raise DNAError("source_sha256 must be a 64-character lowercase hex digest")
         if self.record_kind is not None and self.record_kind not in _RECORD_KINDS:
@@ -164,6 +173,9 @@ class Origin:
         d = dict(vars(self))
         d["settings"] = None if self.settings is None else dict(self.settings)
         d["review"] = None if self.review is None else self.review.to_dict()
+        for k in ("project_id", "session_id"):      # only written when set, so older records stay byte-identical
+            if d[k] is None:
+                del d[k]
         return d
 
     @classmethod
@@ -172,7 +184,8 @@ class Origin:
         return cls(media_id=d["media_id"], source_sha256=d.get("source_sha256"), source_path=d.get("source_path"),
                    record_id=d.get("record_id"), record_kind=d.get("record_kind"), engine=d.get("engine"),
                    settings=d.get("settings"), analysis_copy_id=d.get("analysis_copy_id"),
-                   review=None if rv is None else ReviewInfo(**rv))
+                   review=None if rv is None else ReviewInfo(**rv),
+                   project_id=d.get("project_id"), session_id=d.get("session_id"))
 
 
 _CHANNELS = ("speech", "visual")

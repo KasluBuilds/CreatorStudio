@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import creator_dna as dna
 from _dna_lenient import LenientStore
+from _dna_verifiers import strict_test_store
 from creator_state import ingest
 from creator_state.project import Project, StateError
 from media_analysis import (AnalysisCopyRegistry, CapabilityError, DnaEligibility, FixtureProvider, FrameRef,
@@ -549,7 +550,7 @@ class PipelineTests(PipelineBase):
                          (self.mid, sha, self.item["path"], copy_id))
         self.assertEqual(o.review.original_text, "ajde dee to je bilo fejk")
 
-        store = dna.DNAStore(Path(self.project.dir) / ".." / ".." / "dna_store")          # STRICT store
+        store = strict_test_store(Path(self.project.dir) / ".." / ".." / "dna_store")  # STRICT store
         an = dna.RecurringPhraseAnalyzer(["ajde de"])
         r1 = pipeline.ingest_handoff_into_dna(store, h, [an])[0]
         self.assertEqual((r1.evidence_added, r1.refused), (2, []))

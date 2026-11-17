@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import creator_dna as dna
 from _dna_lenient import LenientStore
+from _dna_verifiers import strict_test_store
 from media_analysis import (CapabilityError, DnaEligibility, MediaRef, Provenance, QuietGap, SegmentReview,
                             SourceResolver, Transcript, TranscriptSegment, VisualEvent, ShotBoundary, apply_review,
                             make_review)
@@ -58,7 +59,7 @@ class Base(unittest.TestCase):
         self.tmp = Path(self._t.name)
         self.n = 0
         self.sa = AttributionStore(self.tmp / "attr", clock=self.clock)
-        self.dna = dna.DNAStore(self.tmp / "dna", clock=self.clock)           # STRICT production store
+        self.dna = strict_test_store(self.tmp / "dna", clock=self.clock)       # STRICT store: verifier + consent (test doubles)
         self.resolver = SourceResolver({MID: REF})
         self.t = transcript()
         self.seg1, self.seg2 = self.t.segments

@@ -16,7 +16,10 @@ Model
    `self_report` and does NOT enter mass, consistency or scope. A trait in the SELF_REPORT layer
    (e.g. a creator correction) is scored from the creator statements themselves and its scope is
    UNASSESSED, because stability cannot be judged without footage.
-3. Evidence is grouped by source recording. One recording is one independent witness: its mass
+3. Evidence is grouped into independent WITNESSES. Normally one source recording is one witness; when the
+   evidence's `Origin.session_id` is known, every recording of that session together is ONE witness (a
+   whole shoot is not three independent observations). Evidence without a session id is grouped per
+   recording exactly as before, so historical results do not change. A witness's mass
    is  min(1, strongest + 0.3 * sum(others)).
 4. S = sum of masses of supporting sources, C = same for counterexamples.
    support_score = 1 - exp(-S / k)            (k=2: 1 source .39, 2 .63, 3 .78, 5 .92)
@@ -53,6 +56,7 @@ class ScoringConfig:
     stable_min_sources: int = 3
     stable_min_consistency: float = 0.8
     contextual_min_sources: int = 2
+    group_sessions: bool = True    # OPEN default: recordings that share an Origin.session_id are one witness
 
 
 DEFAULT_CONFIG = ScoringConfig()
@@ -65,13 +69,22 @@ def effective_strength(e) -> float | None:
     return 1.0 if e.method in EXACT_METHODS else None
 
 
+def witness_key(e, cfg: ScoringConfig = DEFAULT_CONFIG) -> str:
+    """The independent witness an evidence item belongs to: its session when one is recorded, else its recording."""
+    o = getattr(e, "origin", None)
+    sid = getattr(o, "session_id", None) if o is not None else None
+    if cfg.group_sessions and sid:
+        return f"session{sid}"
+    return e.source_id
+
+
 def source_masses(evidence, cfg: ScoringConfig = DEFAULT_CONFIG) -> dict[str, float]:
     by_source: dict[str, list[float]] = {}
     for e in evidence:
         s = effective_strength(e)
         if s is None:
             continue
-        by_source.setdefault(e.source_id, []).append(METHOD_WEIGHT[e.method] * s)
+        by_source.setdefault(witness_key(e, cfg), []).append(METHOD_WEIGHT[e.method] * s)
     out = {}
     for src, ws in by_source.items():
         ws.sort(reverse=True)
@@ -150,7 +163,7 @@ def derive_scope(support, counter, s_sources: int, consistency: float,
 def assess(trait, cfg: ScoringConfig = DEFAULT_CONFIG) -> Assessment:
     """`trait` is a store.TraitState (duck-typed: .evidence_items, .layer, .status,
     .creator_authored, .creator_scope)."""
-    live = [i.evidence for i in trait.evidence_items if not i.rejected]
+    live = [i.evidence for i in trait.evidence_items if not i.excluded]
     self_ev = [e for e in live if e.method is Method.CREATOR_STATEMENT]
     all_footage = [e for e in live if e.method is not Method.CREATOR_STATEMENT]
     # Footage evidence only counts as evidence about the CREATOR if an eligibility decision stamped it.
@@ -179,6 +192,10 @@ def assess(trait, cfg: ScoringConfig = DEFAULT_CONFIG) -> Assessment:
         f"base = {support_score:.2f} x {consistency:.2f} = {base:.2f}; "
         f"layer '{trait.layer.value}' caps confidence at {cap:.2f}",
     ]
+    recordings = len({e.source_id for e in rated})
+    if not self_layer and recordings > len(set(sm) | set(cm)):
+        why.append(f"{recordings} recording(s) count as {len(set(sm) | set(cm))} independent witness(es): "
+                   "recordings of one session are one witness")
     if unattributed and not self_layer:
         why.append(f"{unattributed} footage example(s) carry no creator attribution: listed, but never counted")
     if unrated:
