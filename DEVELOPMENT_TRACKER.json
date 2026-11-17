@@ -979,6 +979,41 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-RSR-001",
+      "title": "Research security remediation (Assignment 6)",
+      "steps": [
+        {
+          "id": "S-RSR-001-00",
+          "title": "Step 0: claim branch",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-RSR-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "AGR-GOV-REGISTRY-01 extended to T-RSR-001; no other task's record is edited",
+            "Governance validate, handoff check, scope check and tracker check pass",
+            "The claim pull request is opened by Claude and merged by the integrator, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 18e970e in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md change."
+            }
+          ]
+        },
+        {
+          "id": "S-RSR-001-01",
+          "title": "Step 1: remediate F-01, F-02, F-04, F-05, F-06, F-07 with adversarial tests",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Each finding reproduced against current code, fixed within orchestrator/research/ and covered by adversarial regression tests",
+            "F-02 external signer dependency reported honestly",
+            "Full suite and all governance validators pass",
+            "Only orchestrator/research/ and test_research.py change besides the shared registry files"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }

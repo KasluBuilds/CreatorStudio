@@ -5,6 +5,11 @@ project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
 
+## Unreleased — task `T-RSR-001` claim (branch `task/t-rsr-001-claim`, pending integration)
+
+- Claim only: registers `T-RSR-001` (owner `claude:research-stream`, 24-hour lease, `AGR-GOV-REGISTRY-01` extended to it) and steps `S-RSR-001-00` (claim, `READY_FOR_REVIEW`) and `S-RSR-001-01` (implementation, `PLANNED`, not started). Owned paths: `orchestrator/research/`, `orchestrator/tests/test_research.py` and the four shared registry files. No source, test, documentation, status or milestone change.
+- Scope: findings F-01, F-02, F-04, F-05, F-06, F-07 recovered from the Assignment 5 audit (NOT READY). The audit report is not in the repository and no F-03 finding is established by the available evidence. `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## 2026-11-17 — task `T-GOV-007` wave w01 outcome recorded (complete)
 
 - `PROJECT_STATUS.json`: `M-AST-02` moves from NOT_STARTED to IN_PROGRESS (implementation and verification, unit level) on evidence `E-AST-ACQ-0001`; it is not implemented or verified and the remaining work is named in the milestone. The deferred Research (M-RSR-02) and Creator DNA review (M-DNA-03) work is listed in `next_actions`. `computed` refreshed with `governance score --write`. Record-only: no source, test or documentation change.
