@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "wave_id": "w01-acquisition-providers-review",
+  "title": "Offline-first asset acquisition (lane L1); research providers and creator review deferred",
+  "integration_branch": "wave/w01-acquisition-providers-review",
+  "base_commit": "cdff7e2121fe655fb6e2f5d3c3b59b786d0f9219",
+  "created": "2026-11-17",
+  "inactivity_hours": 48,
+  "lanes": [
+    {
+      "id": "L1",
+      "task_id": "T-AST-003",
+      "title": "Asset acquisition pipeline and rights-evidence handling (offline, transport-injected)",
+      "owner": "claude:asset-recovery",
+      "branch": "lane/w01-acquisition-providers-review/L1",
+      "owned_paths": [
+        "orchestrator/assets/",
+        "orchestrator/tests/test_assets.py",
+        "orchestrator/tests/test_asset_acquisition.py",
+        "AI_Creator_Studio_Documentation/ASSETS.md"
+      ],
+      "test_modules": [
+        "test_assets.py",
+        "test_asset_acquisition.py"
+      ],
+      "acceptance_criteria": [
+        "A new module orchestrator/assets/acquisition.py provides an explicit acquire step: it runs the existing triage/rights decision first, fetches only PERMITTED candidates, records QUARANTINE candidates as quarantined records with their reason codes and never fetches them, and never fetches REJECT candidates; unknown rights are never permission",
+        "Fetching goes through an injected Transport protocol (no real network code is exercised anywhere): https-only URLs, a per-provider host allow-list, a maximum byte size, a content-type allow-list per media type, a timeout parameter; the file is written atomically (temporary file, sha256 verified, then moved into the library layout), refuses path traversal, never overwrites an existing asset, and detects duplicates by sha256",
+        "Every failure path (transport error, truncated or oversize download, wrong content type, hash mismatch, library write error) leaves no partial file behind and records a scrubbed error that contains no credential-like text; each path has its own test",
+        "Rights-evidence handling: the licence evidence captured at acquisition (source URL, retrieval date, a hash of the licence text snapshot, the verifier) is stored with the asset; a re-verification function detects licence drift (stored hash differs from the current text) and moves the asset to quarantine without deleting it; human attestations keep working through the existing Attestation model",
+        "A concrete offline LocalFolderProvider searches a directory of user-supplied files described by sidecar rights files (documented, validated schema, strict: unknown keys and missing rights are quarantined, never permitted); acquisition copies, and original files are never modified, moved or deleted (a test hashes the originals before and after)",
+        "At least one open-licence catalogue adapter (Openverse or Wikimedia Commons) is implemented as a pure request builder plus response parser over the injected transport and tested only against fixture payloads authored from the public API documentation; the documentation and the report state NOT TESTED against the live service",
+        "A single function find_and_acquire(request, registry, library, transport, context) runs search, triage and acquisition and returns a deterministic report listing acquired, quarantined, rejected and failed items with reasons; ordering is stable across runs",
+        "At least 60 new offline tests in orchestrator/tests/test_asset_acquisition.py; one test proves no network is touched (socket creation is patched to fail); synthetic tiny files only, no real media; the existing test_assets.py passes (it may be extended, never weakened)",
+        "ASSETS.md documents the acquisition flow, the sidecar schema, the failure behaviour and what is IMPLEMENTED versus NOT TESTED (live providers, real media); open questions are listed, not decided; the lane report lists anything needing a decision from Lukas"
+      ],
+      "depends_on": [],
+      "authorizations": [],
+      "milestones": [
+        "M-AST-02"
+      ]
+    }
+  ]
+}

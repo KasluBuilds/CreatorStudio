@@ -527,7 +527,7 @@
         {
           "id": "S-CRD-001-00",
           "title": "Step 0: claim branch",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-CRD-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
             "No overlap with another task and no edit to a package owned by someone else; no other task's record is edited",
@@ -538,22 +538,89 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main a6a89a2 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #18 merged into main (merge commit shown); reviewed head is 2e2e48e28b0c6e2d4eee0c2350bf83e60b451921. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:41:11Z) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/18",
+              "commit": "9dfaec269e62461b0a5d27edcf03bece9d466511"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: the integrator (ChatGPT, under Lukas's standing delegation) told Claude in this session that claim PR #18 was merged and that T-CRD-001 is officially authorized, with Step 1 to be completed as one implementation batch in one PR; this is delegated technical approval, not a claim that Lukas personally reviewed the code. Claude verified only that PR #18 is MERGED on GitHub (merge commit 9dfaec269e62461b0a5d27edcf03bece9d466511, head 2e2e48e) and that the merge commit is an ancestor of origin/main. Does not claim ChatGPT re-ran any command."
+          }
         },
         {
           "id": "S-CRD-001-01",
           "title": "Step 1: exact Research contract, safety metadata, research digest, tests and README",
-          "status": "PLANNED",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Exact research->creative_director/0.3 contract; invalid versions produce no partial Research context",
             "Original Research claim status, safety_critical, unresolved_safety_warning and producer usage preserved as typed metadata; missing or malformed safety metadata fails closed",
+            "Verified facts require complete supporting provenance: recognized non-unreviewed review_label and present recognized verification_level; incomplete source metadata cannot establish support.",
             "Unverified safety-critical and warned claims capped below verified; verified safety-critical claims never hooks; producer usage validated against mirrored rules",
             "Deterministic research digest (integrity consistency only); tampering and unsafe hooks rejected by validation",
             "Synthetic regression tests in test_creative_director.py; creative_director/README.md written; the full suite passes",
-            "Only orchestrator/creative_director/ and test_creative_director.py change besides the shared registry files"
+            "Creative Director implementation changes only orchestrator/creative_director/ and orchestrator/tests/test_creative_director.py besides shared registry files; integrator-owned tracker history correction is separately authorized by AGR-CRD-TRACKER-HISTORY-01 and limited to dashboard/tracker_check.py, DEVELOPMENT_STEP_PROTOCOL.md, orchestrator/tests/test_development_tracker.py and .github/workflows/validate.yml."
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Full suite on the final code after merging origin/main 18e970e: 1366 tests, 1 skipped (unchanged), no failures. test_creative_director.py is 189 tests (was 132 before T-CRD-001). Synthetic data only.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1366 tests in 341.783s - OK (skipped=1)"
+            },
+            {
+              "type": "observation",
+              "summary": "Review rework (duplicate claim metadata): from_packet() now judges each duplicate entry on its own metadata, selects the kept entry by a total order (permissiveness, restricted first, kind, status, usage, text, attribution) instead of input position, merges safety flags pessimistically and records any disagreement on producer kind/status/usage/flags in ResearchItem.metadata_conflicts, which restricts the claim. Tests permute every ordering (including entries split across both claim lists) and assert identical results, never-more-permissive, and a recorded conflict. Mutation checks: ignoring the conflict, restoring the order-dependent selection, taking flags from the first entry and not recording kind conflicts each fail tests."
+            },
+            {
+              "type": "observation",
+              "summary": "Also from the review: the research digest additionally covers claim text, attribution, source ids and duplicate conflicts, and is carried and validated by the editor view (brief and view fail on a changed digest even without the brief). Old 0.2 documents are rejected by validation and load()."
+            },
+            {
+              "type": "observation",
+              "summary": "Tracker transition evidence: checkpoint commit 2da5ad8897969bddc5905d2c3c429d056f0b6e6f holds S-CRD-001-01 IN_PROGRESS and the final branch holds READY_FOR_REVIEW. The integrator's history-aware checker validates every committed tracker snapshot from the branch fork point through HEAD, including the merge of newer origin/main, then the working tree. It preserves the legal PLANNED -> IN_PROGRESS -> READY_FOR_REVIEW sequence and rejects skipped intermediate states; no waiver or transition-graph change is used. Regression tests cover the legal chain, a hidden illegal intermediate transition, and a main-merge scenario."
+            },
+            {
+              "type": "document",
+              "summary": "orchestrator/creative_director/README.md documents the fail-closed behavior, preserved fields, restrictions, duplicate resolution, the mirrored producer rule and its manual synchronization risk, the digest and its limits, hook rules and the schema version bump."
+            },
+            {
+              "type": "observation",
+              "summary": "Independent safety review found that a source with missing review_label or verification_level could still count as supporting evidence. source_supports() now requires both fields to be present and recognized; missing, null or unknown values fail closed. Added regression cases, and README documents the provenance requirements."
+            },
+            {
+              "type": "observation",
+              "summary": "Reviewer rework opened: require complete supporting-source review metadata; source_supports now fails closed for missing or unrecognized review_label and verification_level. Re-run the full validation gate before returning to READY_FOR_REVIEW."
+            },
+            {
+              "type": "observation",
+              "summary": "Reviewer rework complete: verified facts require complete recognized supporting-source review metadata, and malformed duplicate source stances are handled safely as unrecognized input. Regression coverage added for missing/null/unknown provenance fields and malformed duplicate stances. History-aware tracker validation covers actual PR head refs, synthetic merge checkouts and main-side changes inherited through merge commits."
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #27 reviewed by ChatGPT at head b8ad11a629ea56353a7c716372a29bc68e4581e7; one-PR implementation retained, branch up to date with main, no unresolved review threads.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/27",
+              "commit": "b8ad11a629ea56353a7c716372a29bc68e4581e7"
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate run #52 on reviewed head b8ad11a629ea56353a7c716372a29bc68e4581e7: registry/status validation and handoff passed; tracker-history check passed; desktop dashboard tests passed (61/61); full Python suite ran 1393 tests in 47.684s, OK (49 skipped); added-lines secret scan passed.",
+              "command": "GitHub Actions workflow validate, run #52",
+              "result": "Success: 1393 Python tests OK (skipped=49); 61 desktop tests pass; governance, handoff, tracker and secret scan pass.",
+              "commit": "b8ad11a629ea56353a7c716372a29bc68e4581e7"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT's written technical approval under Lukas's standing delegation, based on independent review of commit b8ad11a629ea56353a7c716372a29bc68e4581e7 and GitHub Actions validate run #52. Lukas did not directly review this code; no direct Lukas review is claimed."
+          }
         }
       ]
     },
@@ -648,6 +715,267 @@
             "lukas_confirmed": true,
             "date": "2026-11-17",
             "source": "DIRECT: Lukas directed the Repository Coordinator session on 2026-11-17 to make waves the normal path and remove administrative pull requests. This wording and evidence follow-up implements that direction; it does not claim that Lukas or ChatGPT reviewed the text, and the checks are mechanical (CI, validators, tests)."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DSH-001",
+      "title": "Creator Studio desktop development dashboard",
+      "steps": [
+        {
+          "id": "S-DSH-001-00",
+          "title": "Step 0: registry, desktop app, tests, packaging and documentation (claim, implementation and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Agent registry and validator exist and pass against the real records",
+            "The Electron app, its data layer, views and self-test exist; JS tests pass; the JS model agrees with governance.status on the current records",
+            "The packaged exe passes its self-test live, offline and against a fixture",
+            "README documents install, refresh, update and troubleshooting"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Pull request head on which the gates were run (validate green on GitHub) before this closeout commit.",
+              "commit": "32e96d57d8c0bd12dfed4f036e128fafadcc3241"
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions workflow validate on pull request #33 at the commit above: Node tests for the desktop app.",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "61 tests: pass 61, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Same workflow run: full Python suite, which includes the 17 agent-registry tests and the 7 cross-language tests proving the app's credits, phase figures, agent assignment and gate state equal governance.status on the current records (skips 49 on the runner, 1 locally).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1333 tests: OK (skipped=49)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run locally by Claude Code on the working tree before the commit (not independently run by ChatGPT).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1333 tests: OK (skipped=1)"
+            },
+            {
+              "type": "observation",
+              "summary": "Packaged electron-builder portable exe (110 MB), built before a later F5 key-handler change and driven by its own --selftest, reviewed with screenshots: local fixture 38 of 38 checks, live GitHub (read main 18e970e) 41 of 41, offline from the saved snapshot 40 of 40. The release exe is rebuilt from merged main and re-tested before it is published; the release is recorded in a follow-up."
+            },
+            {
+              "type": "observation",
+              "summary": "Only the four shared registry files, .github/workflows/validate.yml (one added Node step), .gitignore, PROJECT_OPERATING_PROTOCOL.md (one table row), orchestrator/governance/ and the new dashboard/desktop, AGENT_REGISTRY.json and test files changed. No product package, no Creative Director file and nothing of the active wave w01 changed. Implemented and tested; not VERIFIED on a user's real workflow."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas assigned this work to the Repository Coordinator session on 2026-11-17 and told it to take responsibility for the complete implementation, testing, self-review and integration. This records that direct assignment; it does not claim that Lukas or ChatGPT reviewed the code, which was written by this same session. The gates were mechanical (CI, validators, tests) plus the self-review recorded in the pull request."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DSH-002",
+      "title": "Desktop dashboard dark mode",
+      "steps": [
+        {
+          "id": "S-DSH-002-00",
+          "title": "Step 0: appearance switch, palettes, persistence, tests, packaging and documentation (claim, implementation and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Light, Dark and System with persistence and live System following",
+            "Both palettes meet contrast; the rendered-window audit passes in every mode",
+            "Existing business logic and the original self-test checks are unchanged and pass"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Pull request head on which the gates were run (validate green on GitHub) before the closeout commits.",
+              "commit": "c5d92dca144eb5cf1e79c4952cc5179bd6b22c5b"
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate on pull request #35 at the commit above (same tree as this branch's head before the closeout): Node tests (79: 61 original + 18 theme tests) and the full Python suite (skips 49 on the runner).",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "79 tests, fail 0; full Python suite Ran 1393 tests OK (skipped=49)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Dev-mode application self-test against local fixtures, run locally by Claude Code before the commit: the original checks plus Light/Dark/System switching, prefers-color-scheme, page background, saved file, unchanged canonical figure, and a rendered contrast audit of every visible text element on four screens in each mode.",
+              "command": "electron . --selftest --fixture=<checkout>",
+              "result": "76 of 76 checks passed"
+            },
+            {
+              "type": "observation",
+              "summary": "The first audit run reported 12 false positives (it could not see SVG node fills or CSS gradients behind text); the audit was corrected and no threshold was lowered. Screenshots of both themes were reviewed. The release exe is built from merged main and re-tested live, offline and across two launches for persistence before publication."
+            },
+            {
+              "type": "observation",
+              "summary": "Only dashboard/desktop/ and the four shared registry records changed. model.js, sync.js, github.js and controller.js are unchanged (a test asserts they never mention the theme). No governance machinery, product package, wave w01 file or other session's pull request was touched. The first pull request for this task (#35) was closed because its history contained a step jump the tracker rule rejects; this branch walks the step IN_PROGRESS, READY_FOR_REVIEW, COMPLETED."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas assigned this dark-mode work to the Repository Coordinator session on 2026-11-17 and told it to proceed autonomously, including building and publishing a new release. This records that direct assignment; it does not claim that Lukas or ChatGPT reviewed the code, which was written by this same session. The gates were mechanical (CI, validators, tests, rendered audit) plus the self-review recorded in the pull request."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-GOV-006",
+      "title": "Wave tooling fixes",
+      "steps": [
+        {
+          "id": "S-GOV-006-00",
+          "title": "Step 0: verify merge-base fix and workflow closeout allowance (claim, fix and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "verify ignores main's files and catches real strays",
+            "workflow accepts the closeout commit on wave pushes"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Head on which the checks below were run before the closeout commits.",
+              "commit": "b88adbfae81ab35e2b8d4c92a71b06cd27038ec9"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run locally by Claude Code: the verify tests including the new git test (main merged into the wave branch, a real stray still caught) and the workflow assertion.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py -k verify",
+              "result": "Ran 3 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "Reproduced on the real wave w01: the push-event run failed after wave close with 'belongs to no lane' for the four closeout files, and verify flagged every file merged in from main until base_commit was moved by hand. The fix removes both."
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate on pull request #38 at the head named in the integration notes: Node tests and the full Python suite (skips 49 on the runner).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1395 tests: OK (skipped=49); Node tests fail 0"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas told the Repository Coordinator session on 2026-11-17 to close wave w01 autonomously and keep the wave infrastructure working; this fixes two defects in that tooling found while doing so. It does not claim that Lukas or ChatGPT reviewed the code, which was written by this same session; the gates were mechanical (CI, validators, tests)."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-AST-003",
+      "title": "Asset acquisition pipeline and rights-evidence handling (offline, transport-injected)",
+      "steps": [
+        {
+          "id": "S-AST-003-00",
+          "title": "Lane L1 of wave w01-acquisition-providers-review",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "A new module orchestrator/assets/acquisition.py provides an explicit acquire step: it runs the existing triage/rights decision first, fetches only PERMITTED candidates, records QUARANTINE candidates as quarantined records with their reason codes and never fetches them, and never fetches REJECT candidates; unknown rights are never permission",
+            "Fetching goes through an injected Transport protocol (no real network code is exercised anywhere): https-only URLs, a per-provider host allow-list, a maximum byte size, a content-type allow-list per media type, a timeout parameter; the file is written atomically (temporary file, sha256 verified, then moved into the library layout), refuses path traversal, never overwrites an existing asset, and detects duplicates by sha256",
+            "Every failure path (transport error, truncated or oversize download, wrong content type, hash mismatch, library write error) leaves no partial file behind and records a scrubbed error that contains no credential-like text; each path has its own test",
+            "Rights-evidence handling: the licence evidence captured at acquisition (source URL, retrieval date, a hash of the licence text snapshot, the verifier) is stored with the asset; a re-verification function detects licence drift (stored hash differs from the current text) and moves the asset to quarantine without deleting it; human attestations keep working through the existing Attestation model",
+            "A concrete offline LocalFolderProvider searches a directory of user-supplied files described by sidecar rights files (documented, validated schema, strict: unknown keys and missing rights are quarantined, never permitted); acquisition copies, and original files are never modified, moved or deleted (a test hashes the originals before and after)",
+            "At least one open-licence catalogue adapter (Openverse or Wikimedia Commons) is implemented as a pure request builder plus response parser over the injected transport and tested only against fixture payloads authored from the public API documentation; the documentation and the report state NOT TESTED against the live service",
+            "A single function find_and_acquire(request, registry, library, transport, context) runs search, triage and acquisition and returns a deterministic report listing acquired, quarantined, rejected and failed items with reasons; ordering is stable across runs",
+            "At least 60 new offline tests in orchestrator/tests/test_asset_acquisition.py; one test proves no network is touched (socket creation is patched to fail); synthetic tiny files only, no real media; the existing test_assets.py passes (it may be extended, never weakened)",
+            "ASSETS.md documents the acquisition flow, the sidecar schema, the failure behaviour and what is IMPLEMENTED versus NOT TESTED (live providers, real media); open questions are listed, not decided; the lane report lists anything needing a decision from Lukas"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "d105e6b7c1858abe0cdfc5f92e2e7547171ff05a"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w01-acquisition-providers-review",
+              "commit": "da3f4ddc319e6c53378e09754cf9283b24bce0bc"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+              "result": "Ran 149 tests: OK (skipped=1; the skip is the symlink test, symlinks unavailable)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
+              "result": "Ran 135 tests: OK (skipped=1; symlink test, symlinks unavailable)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1442 tests: OK (skipped=4) before the final gate tightening (133 acquisition tests then); only test_assets.py and test_asset_acquisition.py were re-run afterwards"
+            },
+            {
+              "type": "observation",
+              "summary": "Implemented the offline, transport-injected acquisition step for the Asset Agent (T-AST-003): orchestrator/assets/acquisition.py (Transport protocol, bounded fetch with https-only, per-provider host allow-list also checked after redirects, byte limit, content-type allow-list and magic-byte check, atomic staging then AssetLibrary.add copy with sha256 re-verification, scrubbed errors, no partial files on any failure path, candidate quarantine ledger, licence-text snapshot evidence with hash/url/date/verifier, reverify_license drift detection that holds the asset without deleting anything, deterministic find_and_acquire report), local_provider.py (LocalFolderProvider with a strict sidecar rights schema; originals only read), openverse.py (pure request builder and response parser over the transport; images and audio) and additive fields on AssetCandidate. Acquired assets always land QUARANTINED; only a named human attestation can approve them. 135 new offline unit tests, including one that patches the socket layer to fail and one that proves the modules import no network code. NOT VERIFIED: nothing was run against the live Openverse service or with real media; Openverse fixtures are authored from the public API documentation, not recorded. Nothing here is VERIFIED."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: the Repository Coordinator integrated this wave under Lukas's standing delegation (PROJECT_OPERATING_PROTOCOL.md section 18); Lukas directly approved removing lanes L2 and L3 and closing w01 as a one-lane wave on 2026-11-17. Lane L1's own report is the evidence; this does not claim that Lukas or ChatGPT reviewed the code, and nothing is VERIFIED."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-GOV-007",
+      "title": "Record the outcome of wave w01",
+      "steps": [
+        {
+          "id": "S-GOV-007-00",
+          "title": "Step 0: milestone and next-action records for wave w01 (claim, record and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "M-AST-02 IN_PROGRESS with evidence, not complete",
+            "Deferred work listed",
+            "Computed block refreshed"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Head on which the checks were run before the closeout commits.",
+              "commit": "11bf7a9d6ba3489e0cd3192855d1f1ce0dff5614"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run locally by Claude Code: the canonical validator with the transition rules against origin/main, and the score calculation.",
+              "command": "cd orchestrator && python -B -m governance validate --against origin/main",
+              "result": "OK: status and task registry are valid and consistent"
+            },
+            {
+              "type": "observation",
+              "summary": "Record-only change to PROJECT_STATUS.json and the four registry records. M-AST-02 is IN_PROGRESS, not implemented or verified; the lane's own report states which work remains."
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate on this pull request at the head named in the integration notes.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "validate check SUCCESS"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas told the Repository Coordinator session on 2026-11-17 to close wave w01 and record the deferred work, proceeding autonomously. This records the wave's milestone outcome; it does not claim that Lukas or ChatGPT reviewed the evidence, which comes from lane L1's own report and a re-run of its tests."
           }
         }
       ]

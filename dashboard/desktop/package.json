@@ -1,0 +1,50 @@
+{
+  "name": "creator-studio-dashboard",
+  "productName": "Creator Studio Dashboard",
+  "version": "1.1.0",
+  "description": "Read-only Windows desktop dashboard for Creator Studio development progress. Fetches the canonical records from the public GitHub repository.",
+  "main": "main.js",
+  "license": "UNLICENSED",
+  "private": true,
+  "author": "Creator Studio",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"tests/*.test.js\"",
+    "dist": "electron-builder --win portable --x64 --publish never",
+    "selftest": "electron . --selftest"
+  },
+  "build": {
+    "appId": "studio.creator.dashboard",
+    "productName": "Creator Studio Dashboard",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "ui/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "CreatorStudio-Dashboard-${version}-portable.exe"
+    },
+    "portable": {
+      "artifactName": "CreatorStudio-Dashboard-${version}-portable.exe"
+    },
+    "asar": true,
+    "npmRebuild": false
+  },
+  "devDependencies": {
+    "electron": "^45.3.3",
+    "electron-builder": "^26.18.0"
+  }
+}

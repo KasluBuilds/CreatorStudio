@@ -17,9 +17,10 @@ from . import schema as S
 from .analysis import Analysis, analyze
 from .editor_view import EditorView, build_editor_view, validate_editor_view_dict
 from .inputs import CreatorProfileView, Material, ResearchContext, material_digest
+from .inputs import compute_research_digest
 from .safety import validate_brief_dict
 from .schema import (AUTHENTICITY_STATEMENT, SCHEMA_VERSION, GuidanceItem, Issue, Mode, MomentKind,
-                     ResearchCategory, SourceSummary, StoryBrief)
+                     ResearchCategory, SourceSummary, StoryBrief, to_plain)
 from .serialize import from_plain
 from .structure import DirectorConfig, build_arcs, build_hooks, build_short_concepts
 
@@ -106,7 +107,8 @@ class CreativeDirector:
             cat = item.category
             if cat in (ResearchCategory.CONTRADICTED, ResearchCategory.DISPUTED, ResearchCategory.UNVERIFIED_FACT,
                        ResearchCategory.PARTIALLY_SUPPORTED):
-                issue("high" if cat is ResearchCategory.CONTRADICTED else "medium", "creator_claim_not_supported",
+                issue("high" if (cat is ResearchCategory.CONTRADICTED or item.restricted) else "medium",
+                      "creator_claim_not_supported",
                       f"the creator's span {mid} asserts claim {item.claim_id}, which research marks as "
                       f"{cat.value}; the words are left untouched",
                       (mid,), "creator decision: leave as opinion, add a sourced correction card, or re-record")
@@ -220,7 +222,10 @@ class CreativeDirector:
             filming_guidance=tuple(guidance), rejected_inputs=tuple(a.rejected), issues=tuple(iss),
             warnings=tuple(dict.fromkeys(warnings + dna_warn)), confidence=conf,
             authenticity=dict(AUTHENTICITY_STATEMENT), material_digest=material_digest(material),
-            research_meta=dict(research.meta) if research else {}, dna_notice=S.DNA_NOTICE)
+            research_meta=dict(research.meta) if research else {},
+            research_digest=compute_research_digest(research.meta.get("contract") if research else None,
+                                                  [to_plain(i) for i in r_items]),
+            dna_notice=S.DNA_NOTICE)
         problems = validate_brief_dict(brief.to_dict(), material)
         if problems:   # a planner bug, never silently emitted
             raise BriefInvalid(problems)

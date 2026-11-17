@@ -106,6 +106,10 @@
         "T-DNA-001",
         "T-CRD-001",
         "T-GOV-004",
+        "T-DSH-001",
+        "T-DSH-002",
+        "T-GOV-006",
+        "T-GOV-007",
         "T-RSR-001"
       ],
       "paths": [
@@ -113,6 +117,18 @@
         "DEVELOPMENT_TRACKER.json",
         "CHANGELOG.md",
         "SESSION_HANDOFF.md"
+      ]
+    },
+    "AGR-CRD-TRACKER-HISTORY-01": {
+      "description": "For T-CRD-001 only, ChatGPT acting as the default integrator under Lukas's standing delegation is authorized to update the tracker-history checker, its tests and the development-step protocol. The change checks every first-parent tracker snapshot in order; it does not alter or waive any legal transition. Paths are limited to the files named here.",
+      "task_ids": [
+        "T-CRD-001"
+      ],
+      "paths": [
+        "dashboard/tracker_check.py",
+        "orchestrator/tests/test_development_tracker.py",
+        "DEVELOPMENT_STEP_PROTOCOL.md",
+        ".github/workflows/validate.yml"
       ]
     }
   },
@@ -324,8 +340,8 @@
       "title": "Enforce Research contract version and safety-critical signals",
       "description": "In orchestrator/creative_director/, ResearchContext.from_packet() checks only the prefix research->creative_director/ and the safety fields the Research producer emits (safety_critical, unresolved_safety_warning, usage) are never read, so an unresolved safety-critical claim can be treated as ordinary research guidance. Fix: require the exact contract research->creative_director/0.3 (missing, malformed, non-string or unsupported versions give no partial Research context); preserve the original Research claim status, safety_critical, unresolved_safety_warning and producer usage as typed metadata kept separate from the Creative Director derived usage; fail closed on missing or malformed safety metadata; validate producer usage against a mirrored canonical producer rule; cap unverified safety-critical and warned claims below verified; a verified safety-critical claim may stay verified but can never be a hook; add a deterministic research digest (integrity consistency check, not authentication) covering contract, original status, safety metadata and usage; validation catches tampering and rejects hooks relying on unresolved, safety-critical or warned claims. Synthetic regression tests and orchestrator/creative_director/README.md. No Research producer, Editor schema, Asset package, unresolved package or cross-package test change, and no private import of Research internals; no real footage.",
       "owner": "claude:creative-director-stream",
-      "branch": "task/t-crd-001-claim",
-      "worktree": "../CreatorStudio-worktrees/t-crd-001-claim",
+      "branch": "task/t-crd-001-impl",
+      "worktree": "../CreatorStudio-worktrees/t-crd-001-impl",
       "status": "ACTIVE",
       "depends_on": [],
       "lease": {
@@ -334,7 +350,8 @@
       },
       "exclusive_resources": [],
       "integration_agreements": [
-        "AGR-GOV-REGISTRY-01"
+        "AGR-GOV-REGISTRY-01",
+        "AGR-CRD-TRACKER-HISTORY-01"
       ],
       "owned_paths": [
         "orchestrator/creative_director/",
@@ -353,7 +370,8 @@
         "A deterministic research digest covers the contract, original claim status, safety metadata, producer usage and derived category/usage; it is documented as an integrity consistency check, not authentication or proof of packet authorship",
         "Validation detects tampering with digest-covered fields and rejects hooks that rely on unresolved, safety-critical, warned, metadata-missing or non-verified claims",
         "Synthetic tests cover missing, malformed, unsupported and valid contract versions and the safety-critical, unresolved-warning, producer-usage, digest and hook cases; existing fixtures migrate to 0.3; the full suite passes with python -B -I",
-        "orchestrator/creative_director/README.md documents the fail-closed behavior, the digest limits and the producer-rule synchronization risk"
+        "orchestrator/creative_director/README.md documents the fail-closed behavior, the digest limits and the producer-rule synchronization risk",
+        "A verified fact requires complete supporting provenance: recognized non-unreviewed review_label and present recognized verification_level; missing or malformed provenance metadata never counts as support."
       ],
       "test_requirements": [
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creative_director.py",
@@ -363,7 +381,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14; refreshed 2026-11-17 by merging origin/main 9317119 (no force-push) with the lease renewed for 24 hours. Task definition, owned paths and scope unchanged. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage."
+      "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14; refreshed 2026-11-17 by merging origin/main 9317119 (no force-push) with the lease renewed for 24 hours. Task definition, owned paths and scope unchanged. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage. Implementation started 2026-11-17 after claim PR #18 merged (9dfaec2) and Lukas/ChatGPT authorized T-CRD-001 as ONE implementation batch in ONE PR; branch and worktree fields moved from the merged claim branch to task/t-crd-001-impl so the scope check resolves this task. Owned paths, lease and agreement unchanged. Integrator-owned CI correction is separately authorized by AGR-CRD-TRACKER-HISTORY-01, limited to dashboard/tracker_check.py, DEVELOPMENT_STEP_PROTOCOL.md and orchestrator/tests/test_development_tracker.py; it checks the existing legal transitions across the branch's first-parent history and does not waive or alter them. The validate workflow now passes origin/$HEAD_REF to the tracker checker because GitHub's PR checkout is a synthetic merge commit; this path is covered by the same narrow integration agreement. The agreement also covers .github/workflows/validate.yml, which passes the actual PR head ref to the checker; GitHub's synthetic merge checkout otherwise hides the task branch's intermediate tracker state."
     },
     {
       "id": "T-GOV-004",
@@ -428,6 +446,163 @@
       "integration_notes": "Opened, delivered and closed in one small pull request as part of the Phase 3 direction Lukas gave the Repository Coordinator on 2026-11-17 (waves are the normal path, remove administrative pull requests). Touches no product package and no Creative Director file. Completion is recorded as DIRECT from that instruction; it is not a code review."
     },
     {
+      "id": "T-DSH-001",
+      "title": "Creator Studio desktop development dashboard (Windows .exe) and canonical agent registry",
+      "description": "A read-only Windows desktop application that fetches the canonical records from the public GitHub repository and shows overall progress, the current wave and agents, blockers, one winding-road roadmap tab per registered agent, the global roadmap and the G-FIRST-REAL-VIDEO gate; plus AGENT_REGISTRY.json (who is responsible for which milestones; no progress data) with a governance validator. Reuses the canonical progress in PROJECT_STATUS.json and never recalculates the global percentage.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-dsh-001-desktop-dashboard",
+      "worktree": "../CreatorStudio-worktrees/t-dsh-001-desktop",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "A packaged Windows .exe fetches the canonical records from public GitHub on open and on Refresh, shows the last successful sync time and source commit, warns when offline or stale, keeps a usable last-known snapshot, needs no login or token and is read-only",
+        "The start page shows canonical implementation and verification progress (never recalculated), a clickable global metric opening the global roadmap, the current major milestone, the current wave and active agents, blockers, upcoming milestones and the filming gate",
+        "One tab per active agent in AGENT_REGISTRY.json with a winding road, milestone checklists, percentages derived from canonical records (or untracked), evidence and GitHub links, current assignment and next task; new registered agents get tabs without code changes",
+        "G-FIRST-REAL-VIDEO is pending until the canonical trigger fires, then clearly notifies, shows FIRST_REAL_VIDEO_CHECKLIST.md and explains the pause for real-world validation, without a competing reminder system",
+        "Tests cover GitHub parsing, missing/malformed/stale/offline data, dynamic agent tabs, progress against the canonical governance code and the gate before and after its trigger; the packaged exe is run end to end (live, offline, fixture)",
+        "Installation, refresh, update and troubleshooting are documented and the exe is published through a versioned GitHub Release"
+      ],
+      "test_requirements": [
+        "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_agent_registry.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dashboard_app.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 in this single pull request (claim, implementation and closeout), directed by Lukas to the Repository Coordinator session; gates were run on head 32e96d57d8c0bd12dfed4f036e128fafadcc3241 before the closeout commit. The executable is built from merged main and published as Release dashboard-v1.0.0 with SHA256SUMS.txt after the merge. Does not touch wave w01, Creative Director or any product package."
+    },
+    {
+      "id": "T-DSH-002",
+      "title": "Desktop dashboard dark mode (Light, Dark, System)",
+      "description": "Add Light, Dark and System appearance to the existing Windows desktop dashboard: System by default, saved across restarts, applied to the whole application with an intentionally designed dark palette and accessible contrast. Presentation only: progress calculations, GitHub synchronization, canonical data interpretation, agent registration, the filming gate and notification logic are not changed.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-dsh-002-theme-v2",
+      "worktree": "../CreatorStudio-worktrees/t-dsh-002-theme",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-DSH-001"
+      ],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "Light, Dark and System options exist; System is the default on first launch and follows Windows live; the choice persists across restarts",
+        "The theme applies to every screen, card, checklist, evidence section, banner, the road, scrollbars and the title bar; tooltips and notifications follow Windows and the app has no dialogs of its own",
+        "The dark palette is designed (not an inversion) and both themes meet WCAG contrast, with status colours distinguishable and never colour alone; measured by tests and by the rendered-window audit in the packaged self-test",
+        "No change to progress calculations, GitHub synchronization, canonical data interpretation, agent registration, filming gate or notification logic; the original 38 self-test checks and 61 Node tests still pass",
+        "A new portable exe is built and published as a new GitHub Release without overwriting v1.0.0; the downloaded artifact and SHA-256 are verified; documentation describes the theme"
+      ],
+      "test_requirements": [
+        "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 in one pull request (claim, implementation and closeout), directed by Lukas to the Repository Coordinator session; gates were run on head c5d92dca144eb5cf1e79c4952cc5179bd6b22c5b before the closeout commits. Release dashboard-v1.1.0 is built from merged main after the merge; v1.0.0 is not modified."
+    },
+    {
+      "id": "T-GOV-006",
+      "title": "Wave tooling fixes found while closing wave w01",
+      "owner": "claude:governance-session",
+      "description": "Two defects in the wave tooling, found when the first real wave was closed: (1) wave verify diffed against the manifest's original base_commit, so after main was merged into the wave branch (required before the single pull request) every file from main was reported as stray; it now diffs against the merge-base with origin/main. (2) The validate workflow verified a wave branch push without allowing the closeout commit, so the push-event check failed after wave close and blocked the pull request through the duplicate required check name; it now passes --allow-closeout on pushes as well.",
+      "branch": "task/t-gov-006-wave-fixes",
+      "worktree": "../CreatorStudio-worktrees/t-gov-006-wave-fixes",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "wave verify ignores files that came in from main and still reports a real stray file, covered by a git test",
+        "The validate workflow accepts the closeout commit on every push to a wave branch",
+        "Existing wave tests, governance checks and the full suite pass"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py",
+        "cd orchestrator && python -B -m governance validate",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 in one pull request, directed by Lukas to the Repository Coordinator session; checks were run on head 8a78730a576466221185b4b3fadde6a6942208e6 before the closeout commits."
+    },
+    {
+      "id": "T-AST-003",
+      "title": "Asset acquisition pipeline and rights-evidence handling (offline, transport-injected)",
+      "description": "Wave w01-acquisition-providers-review, lane L1: Asset acquisition pipeline and rights-evidence handling (offline, transport-injected).",
+      "owner": "claude:asset-recovery",
+      "branch": "lane/w01-acquisition-providers-review/L1",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "A new module orchestrator/assets/acquisition.py provides an explicit acquire step: it runs the existing triage/rights decision first, fetches only PERMITTED candidates, records QUARANTINE candidates as quarantined records with their reason codes and never fetches them, and never fetches REJECT candidates; unknown rights are never permission",
+        "Fetching goes through an injected Transport protocol (no real network code is exercised anywhere): https-only URLs, a per-provider host allow-list, a maximum byte size, a content-type allow-list per media type, a timeout parameter; the file is written atomically (temporary file, sha256 verified, then moved into the library layout), refuses path traversal, never overwrites an existing asset, and detects duplicates by sha256",
+        "Every failure path (transport error, truncated or oversize download, wrong content type, hash mismatch, library write error) leaves no partial file behind and records a scrubbed error that contains no credential-like text; each path has its own test",
+        "Rights-evidence handling: the licence evidence captured at acquisition (source URL, retrieval date, a hash of the licence text snapshot, the verifier) is stored with the asset; a re-verification function detects licence drift (stored hash differs from the current text) and moves the asset to quarantine without deleting it; human attestations keep working through the existing Attestation model",
+        "A concrete offline LocalFolderProvider searches a directory of user-supplied files described by sidecar rights files (documented, validated schema, strict: unknown keys and missing rights are quarantined, never permitted); acquisition copies, and original files are never modified, moved or deleted (a test hashes the originals before and after)",
+        "At least one open-licence catalogue adapter (Openverse or Wikimedia Commons) is implemented as a pure request builder plus response parser over the injected transport and tested only against fixture payloads authored from the public API documentation; the documentation and the report state NOT TESTED against the live service",
+        "A single function find_and_acquire(request, registry, library, transport, context) runs search, triage and acquisition and returns a deterministic report listing acquired, quarantined, rejected and failed items with reasons; ordering is stable across runs",
+        "At least 60 new offline tests in orchestrator/tests/test_asset_acquisition.py; one test proves no network is touched (socket creation is patched to fail); synthetic tiny files only, no real media; the existing test_assets.py passes (it may be extended, never weakened)",
+        "ASSETS.md documents the acquisition flow, the sidecar schema, the failure behaviour and what is IMPLEMENTED versus NOT TESTED (live providers, real media); open questions are listed, not decided; the lane report lists anything needing a decision from Lukas"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 as lane L1 of wave w01-acquisition-providers-review; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head da3f4ddc319e6c53378e09754cf9283b24bce0bc, lane head d105e6b7c1858abe0cdfc5f92e2e7547171ff05a). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-GOV-007",
+      "title": "Record the outcome of wave w01 in PROJECT_STATUS.json",
+      "owner": "claude:governance-session",
+      "description": "wave close writes only the four closeout records, so the milestone outcome of wave w01 is recorded here: M-AST-02 moves from NOT_STARTED to IN_PROGRESS (not complete) with unit-level evidence from lane L1, and the deferred Research and Creator DNA work is listed in next_actions. No milestone is verified on real input.",
+      "branch": "task/t-gov-007-w01-status",
+      "worktree": "../CreatorStudio-worktrees/t-gov-007-w01-status",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "M-AST-02 is IN_PROGRESS with unit-level evidence naming the lane commit and the not-yet-done work; it is not marked implemented or verified",
+        "The computed progress block is refreshed with governance score --write",
+        "The deferred Research and Creator DNA work is listed in next_actions",
+        "governance validate --against origin/main, handoff --check and tracker_check pass"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -m governance validate --against origin/main",
+        "cd orchestrator && python -B -m governance score --json",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 in one record-only pull request; checks were run on head 3222f237755fd84e4aa5846576e9b62c7e9fe994 before the closeout commits."
+    },
+    {
       "id": "T-RSR-001",
       "title": "Research security remediation (Assignment 6: findings F-01, F-02, F-04, F-05, F-06, F-07)",
       "description": "Remediate the six findings recovered from the Assignment 5 independent audit (verdict NOT READY) in orchestrator/research/: F-01 retargetable human review (signature omits trust-relevant fields), F-02 signing authority reachable by the LLM-facing agent (Research-side boundary only; the external signer is a separate orchestrator-side dependency), F-04 invented URLs satisfying two-Tier-B verification without retrieval proof, F-05 erasable or manufacturable contradictions, F-06 weak-source quantity overwhelming stronger evidence, F-07 trusted caller-supplied exported derived fields. F-03 is not in the recovered audit record and is not invented. Adversarial regression tests for every finding. No Asset, Creative Director, orchestrator or governance code change; no Research-to-Asset integration; no real footage.",
@@ -437,8 +612,8 @@
       "status": "ACTIVE",
       "depends_on": [],
       "lease": {
-        "acquired": "2026-11-17T15:41:57+00:00",
-        "expires": "2026-11-18T15:41:57+00:00"
+        "acquired": "2026-11-17T18:39:46+00:00",
+        "expires": "2026-11-18T18:39:46+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
