@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "authority": "Canonical list of the development agents (Claude Code streams and their ChatGPT project chats) and which milestones each one is responsible for. The desktop development dashboard builds one tab per agent whose status is 'active'. Progress is never stored here: milestones, weights, states and evidence stay in PROJECT_STATUS.json, tasks and leases in ACTIVE_TASKS.json, steps in DEVELOPMENT_TRACKER.json, and wave lanes in waves/<wave_id>/wave.json. This file only says who is responsible for what.",
+  "agents": [
+    {
+      "id": "main",
+      "name": "Main",
+      "role": "Overall product architecture and orchestration: governance, project state, ingestion, media analysis, Resolve integration, the editing engine and the integration milestones.",
+      "status": "active",
+      "registered": "2026-11-17",
+      "chat": "main",
+      "streams": ["claude:governance-session", "claude:governance", "claude:development-tracker-session", "claude:repository-coordinator"],
+      "package_keys": ["governance", "creator_state", "media_analysis", "speaker_attribution", "cross_package_tests"],
+      "milestones": [],
+      "remainder": true,
+      "docs": ["AI_Creator_Studio_Documentation/MASTER.md", "AI_Creator_Studio_Documentation/AGENTS.md", "AI_Creator_Studio_Documentation/ROADMAP.md"]
+    },
+    {
+      "id": "creative-director",
+      "name": "Creative Director",
+      "role": "Turns research, the creator's own words and Creator DNA into a story brief and editing guidance; never writes replacement dialogue.",
+      "status": "active",
+      "registered": "2026-11-17",
+      "chat": "creative-director",
+      "streams": ["claude:creative-director-stream"],
+      "package_keys": ["creative_director"],
+      "milestones": ["M-CRD-01", "M-CRD-02"],
+      "docs": ["AI_Creator_Studio_Documentation/AGENTS.md"]
+    },
+    {
+      "id": "creator-dna",
+      "name": "Creator DNA",
+      "role": "Learns the creator's style from real recordings as evidence-backed traits with confidence, and keeps the creator in control of what is confirmed.",
+      "status": "active",
+      "registered": "2026-11-17",
+      "chat": "creator-dna",
+      "streams": ["claude:creator-dna-stream"],
+      "package_keys": ["creator_dna"],
+      "milestones": ["M-DNA-01", "M-DNA-02", "M-DNA-03", "M-SPK-01"],
+      "docs": ["AI_Creator_Studio_Documentation/CREATOR_DNA.md"],
+      "notes": "M-SPK-01 (speaker attribution) is grouped here because it decides which speech may become Creator DNA evidence; the speaker_attribution package itself is still UNRESOLVED in ACTIVE_TASKS.json and is listed under Main."
+    },
+    {
+      "id": "research",
+      "name": "Research",
+      "role": "Finds topics, trends, sources and evidence with quality and safety rules, and hands the Creative Director a validated research packet.",
+      "status": "active",
+      "registered": "2026-11-17",
+      "chat": "research",
+      "streams": ["claude:research-stream"],
+      "package_keys": ["research"],
+      "milestones": ["M-RSR-01", "M-RSR-02"],
+      "docs": ["AI_Creator_Studio_Documentation/RESEARCH.md"]
+    },
+    {
+      "id": "assets",
+      "name": "Assets",
+      "role": "Finds, generates, rights-checks and organizes B-roll, music, images and other assets; unknown rights are never permission.",
+      "status": "active",
+      "registered": "2026-11-17",
+      "chat": "asset-agent",
+      "streams": ["claude:asset-stream", "claude:asset-recovery"],
+      "package_keys": ["assets"],
+      "milestones": ["M-AST-01", "M-AST-02"],
+      "docs": ["AI_Creator_Studio_Documentation/ASSETS.md"]
+    }
+  ]
+}

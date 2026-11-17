@@ -1,0 +1,430 @@
+{
+  "schema_version": 1,
+  "updated": "2026-11-17",
+  "lease_policy": {
+    "default_hours": 24,
+    "max_hours": 72
+  },
+  "package_owners": {
+    "creator_state": {
+      "paths": [
+        "orchestrator/creator_state/",
+        "orchestrator/tests/test_state.py",
+        "orchestrator/tests/test_ingest.py",
+        "orchestrator/tests/test_shots.py",
+        "orchestrator/tests/test_claude_md.py"
+      ],
+      "owner": "UNRESOLVED",
+      "owner_status": "UNRESOLVED - built by earlier sessions (state, ingestion, shot detection); Lukas has not named a current owner"
+    },
+    "media_analysis": {
+      "paths": [
+        "orchestrator/media_analysis/",
+        "orchestrator/tests/test_media_analysis.py"
+      ],
+      "owner": "UNRESOLVED",
+      "owner_status": "UNRESOLVED - shared between the Creator DNA and earlier media work; deliberately left open until subsystem boundaries are reviewed"
+    },
+    "speaker_attribution": {
+      "paths": [
+        "orchestrator/speaker_attribution/",
+        "orchestrator/tests/test_speaker_attribution.py"
+      ],
+      "owner": "UNRESOLVED",
+      "owner_status": "UNRESOLVED - written alongside Creator DNA on 2026-11-09 but no owner named; its import cycle with media_analysis (M-INT-02) needs one owner"
+    },
+    "cross_package_tests": {
+      "paths": [
+        "orchestrator/tests/test_integration_phase2_phase3.py",
+        "orchestrator/tests/_dna_lenient.py"
+      ],
+      "owner": "UNRESOLVED",
+      "owner_status": "UNRESOLVED - test files spanning media_analysis, speaker_attribution and creator_dna"
+    },
+    "creator_dna": {
+      "paths": [
+        "orchestrator/creator_dna/",
+        "orchestrator/tests/test_creator_dna.py"
+      ],
+      "owner": "claude:creator-dna-stream",
+      "owner_status": "REPORTED - Lukas's brief names Creator DNA as one of four subsystem assignments; the stream identity is assumed, confirm it"
+    },
+    "research": {
+      "paths": [
+        "orchestrator/research/",
+        "orchestrator/tests/test_research.py"
+      ],
+      "owner": "claude:research-stream",
+      "owner_status": "REPORTED - Lukas's brief names the Research Agent as one of four subsystem assignments; the stream identity is assumed, confirm it"
+    },
+    "assets": {
+      "paths": [
+        "orchestrator/assets/",
+        "orchestrator/tests/test_assets.py"
+      ],
+      "owner": "claude:asset-recovery",
+      "owner_status": "ASSIGNED - Lukas confirmed on 2026-11-17 that claude:asset-stream is abandoned and authorized the takeover of T-AST-001 by claude:asset-recovery (task T-AST-002)"
+    },
+    "creative_director": {
+      "paths": [
+        "orchestrator/creative_director/",
+        "orchestrator/tests/test_creative_director.py"
+      ],
+      "owner": "claude:creative-director-stream",
+      "owner_status": "REPORTED - Lukas's brief names the Creative Director as one of four subsystem assignments; the stream identity is assumed, confirm it"
+    },
+    "governance": {
+      "paths": [
+        "orchestrator/governance/",
+        "orchestrator/tests/test_governance.py"
+      ],
+      "owner": "claude:governance-session",
+      "owner_status": "ASSIGNED - Lukas assigned the governance migration to this session on 2026-11-09"
+    }
+  },
+  "shared_files": {
+    "CLAUDE.md": "Loaded by every Claude Code session; one change at a time.",
+    "PROJECT_OPERATING_PROTOCOL.md": "The rules every workstream follows.",
+    "PROJECT_STATUS.json": "Single status record updated by every finished task.",
+    "ACTIVE_TASKS.json": "Task registry written by every session when claiming or releasing work.",
+    "SESSION_HANDOFF.md": "Generated from the two JSON files; never edited by hand.",
+    "CHANGELOG.md": "Appended to by every merged task.",
+    "TOOLS.md": "Pinned tool versions for the whole project.",
+    ".gitignore": "Security boundary of the repository.",
+    ".gitattributes": "Line-ending and binary rules for the whole repository.",
+    ".mcp.json.example": "Tracked template for machine-specific MCP configuration.",
+    "AI_Creator_Studio_Documentation/MASTER.md": "Project-wide specification.",
+    "AI_Creator_Studio_Documentation/ROADMAP.md": "Phase plan referenced by every workstream.",
+    "AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md": "Decision log appended to by every workstream.",
+    "AI_Creator_Studio_Documentation/README.md": "Document map for the whole documentation pack."
+  },
+  "integration_agreements": {
+    "AGR-GOV-REGISTRY-01": {
+      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-002, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time.",
+      "task_ids": [
+        "T-AST-002",
+        "T-DNA-001",
+        "T-CRD-001",
+        "T-GOV-004"
+      ],
+      "paths": [
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "CHANGELOG.md",
+        "SESSION_HANDOFF.md"
+      ]
+    }
+  },
+  "tasks": [
+    {
+      "id": "T-GOV-001",
+      "title": "Governance foundation",
+      "description": "Add the operating protocol, status and task registries, generated session handoff, changelog, environment document and the governance package with tests; make surgical, evidence-based corrections to existing status text.",
+      "owner": "claude:governance-session",
+      "branch": "task/governance-foundation",
+      "worktree": "../CreatorStudio-worktrees/task-governance-foundation",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "PROJECT_STATUS.json and ACTIVE_TASKS.json validate with python -B -m governance validate",
+        "SESSION_HANDOFF.md is current (python -B -m governance handoff --check)",
+        "Verification percentage never exceeds implementation percentage and no milestone is marked VERIFIED without human-reviewed real-input evidence",
+        "No existing source file other than documentation and CLAUDE.md is modified",
+        "Full suite passes with python -B -I and no secrets or forbidden paths are staged",
+        "Documentation records the first-real-video user-action gate (G-FIRST-REAL-VIDEO) and the local real-input evidence without raising any verification level"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_governance.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-09. PR #1 merged into main as merge commit 93a9a829e073595151666f99b0d1a57416db28c3 (head 4eb229645dc054939dea1b1ee4a9e6089671df42) with a merge commit, no squash. Lease released and paths freed by this closing pull request, which cannot itself hold a claim because it only closes this task. Branch task/governance-foundation is merged and may be deleted by Lukas."
+    },
+    {
+      "id": "T-GOV-002",
+      "title": "Creator Studio Development Tracker and mandatory step-completion workflow",
+      "description": "Build a read-only visual development dashboard, snapshot builder, canonical step-level tracker and mandatory reviewed-step protocol. ChatGPT reviews steps and, under Lukas's explicit standing delegation, handles routine task PR opening/merging and lease release; Claude never self-approves, merges PRs or releases leases; Lukas retains final authority. Does not change milestone weights, scores or the governance package.",
+      "owner": "claude:development-tracker-session",
+      "branch": "task/development-tracker",
+      "worktree": "../CreatorStudio-worktrees/development-tracker",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-GOV-001"
+      ],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "dashboard/index.html is a responsive read-only page showing implementation and verification progress, milestones by phase, the current task and its steps (status, acceptance criteria, evidence), open decisions, blockers, next actions, GitHub branch/PR/merge information, an explicit completion gate with a terminal-clear status, and the snapshot commit SHA and generation time; it never writes project status",
+        "DEVELOPMENT_TRACKER.json holds canonical step-level tracking (id, title, status, acceptance criteria, evidence, completion state) linked to ACTIVE_TASKS task IDs; it does not duplicate or recalculate milestone progress or task leases",
+        "dashboard/build_snapshot.py uses only the Python standard library, records source commit SHA, branch, generation time and working-tree cleanliness, and includes no secrets, credentials, private local paths or footage; an old snapshot is never presented as live GitHub data",
+        "DEVELOPMENT_STEP_PROTOCOL.md defines the one-step-at-a-time rule: stop at READY_FOR_REVIEW, report changes/tests/evidence/unresolved issues/terminal safety, ChatGPT reviews and either asks for corrections or gives written technical approval, which may authorize the next step under Lukas's standing instruction; ChatGPT handles task PR opening/merging and lease release under Lukas's explicit delegation (Claude never self-approves, merges PRs or releases leases; Lukas retains final authority); no automatic task switching",
+        "PROJECT_OPERATING_PROTOCOL.md and CLAUDE.md require every future session to follow the step protocol",
+        "Tests verify tracker structure, step transitions, snapshot generation and completion-gate behavior",
+        "Milestone weights and computed progress in PROJECT_STATUS.json are unchanged by this task; no GitHub credentials appear in browser JavaScript; the repository stays private; no new dependencies"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_development_tracker.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Claim registered by the claim pull request; implementation steps are tracked in DEVELOPMENT_TRACKER.json once Step 1 is approved. Owned paths beyond Lukas's planned list: orchestrator/tests/test_development_tracker.py (a new file, so the required tests have a home outside the governance-owned test_governance.py). The orchestrator/governance/ package is owned by claude:governance-session and is NOT claimed. History: agreement AGR-GOV-LEASE-TEST (authorised by Lukas) allowed one narrow fix to orchestrator/tests/test_governance.py (test_leases_exit_codes now uses a fixture registry); the fix was completed and merged in PR #4 (merge commit 27685bac2b0bc58c961e4e3d26b57af38f1bc3b2), and the agreement expired when PR #4 became ready for review. It has been removed and that path is no longer owned. Any other governance change needs a new agreement. Does not use real footage or Resolve. Step 0 (claim only): no implementation file is edited. Final closeout: PR #5 merged into main by ChatGPT under Lukas's explicit delegation (merge commit 75b68d83aab5dbab57178f95b43012c7f5051209); this follow-up PR records completion and releases the task lease and owned paths."
+    },
+    {
+      "id": "T-GOV-003",
+      "title": "Per-task development step limit and stale authority test repair",
+      "description": "Change the development-step working limit from one per tracker to one per task: dashboard/tracker_check.py counts IN_PROGRESS/READY_FOR_REVIEW steps inside each task, so different tasks may each have one working step while steps stay sequential within each task. Update DEVELOPMENT_STEP_PROTOCOL.md and PROJECT_OPERATING_PROTOCOL.md accordingly and repair the two stale authority tests that still expected Lukas alone to merge pull requests, so they assert the current delegated-integrator rule. Claim and implementation share one pull request as a one-time bootstrap exception approved by ChatGPT as delegated integrator; this is not a general workflow. Claude never self-approves, merges PRs or releases leases; Lukas retains final authority.",
+      "owner": "claude:governance",
+      "branch": "task/per-task-step-limit",
+      "worktree": "../CreatorStudio-worktrees/per-task-step-limit",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-GOV-001",
+        "T-GOV-002"
+      ],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "tracker_check.py allows at most one IN_PROGRESS or READY_FOR_REVIEW step per task; different tasks may each have one; the error names the task; ordering stays sequential within each task; an unregistered task is still rejected",
+        "DEVELOPMENT_STEP_PROTOCOL.md and PROJECT_OPERATING_PROTOCOL.md state the limit is per task; one task branch/worktree per task, one writer to main, one PR integrated at a time, claims and leases and stopping at READY_FOR_REVIEW are unchanged; the bootstrap is documented as a one-time exception",
+        "test_protocol_authority_rules_do_not_contradict_the_standing_instruction and test_active_tasks_wording_matches_protocol_section_3a assert the current delegated-integrator wording without weakening the authority checks",
+        "New tests cover two tasks each with one working step, two working steps in one task rejected, per-task ordering, unregistered tasks rejected, the real tracker under the per-task rule and the protocol wording",
+        "The full suite has zero failures and zero errors; governance validate, handoff --check, scope and tracker_check --against origin/main pass",
+        "No change to dashboard UI/snapshot code, PROJECT_STATUS.json, launchers, .mcp.json or tools/"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_development_tracker.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "One-time bootstrap exception approved by ChatGPT as delegated integrator: the claim and the implementation are in the same pull request because the global tracker limit and two stale authority tests blocked a separate claim pull request. Applies to T-GOV-003 only; later tasks need their own claim pull request. Branch created from origin/main bd33aa11f54cd94ce75baf228b32640fd7a351a4 on 2026-11-13. Stops at READY_FOR_REVIEW; the integrator merges, records the merge commit and releases the lease. T-AST-001 also lists the shared registry, tracker, handoff and changelog files, so merge order matters there. PR #9 merged by ChatGPT as merge commit 67b70dc251a4708957f1952d6032b3a4e1735043 (reviewed head c9b1a6010e894fe181cbd77060d4291913249250). PR #10 merged by ChatGPT as merge commit cd6412bc4d207adc238b4f400c33870e2f3b1b9f (reviewed head c05fb31bd19c6fd97463407edfd397857285e4d2). PR #11 merged by ChatGPT as merge commit 232172e62f3f7c7d1ba04d5a438d03689b9483d2 (reviewed head e4dd01cd62c3e382e5fc79bffd1387402323b677). Final closeout: this follow-up PR (#12) completes S-GOV-003-01 and releases the lease and owned paths, which it cannot itself claim because it only closes this task. Branches task/per-task-step-limit and task/t-gov-003-review-closeout are merged and may be deleted by Lukas."
+    },
+    {
+      "id": "T-AST-001",
+      "title": "Make required-use rights checks fail closed",
+      "description": "In orchestrator/assets/rights.py, when UseContext.required_uses is non-empty and the record's allowed_uses is empty, evaluate_rights must quarantine instead of passing silently (found in the read-only Asset Agent rights audit of 2026-11-13). Explicitly allowed uses keep working and a missing required use stays quarantined. Synthetic regression tests for all three cases. No other rights-policy change; no providers, downloader, licence automation or external calls.",
+      "owner": "claude:asset-stream",
+      "branch": "task/asset-required-uses-fail-closed",
+      "worktree": "../CreatorStudio-worktrees/task-asset-required-uses-fail-closed",
+      "status": "RELEASED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/assets/rights.py",
+        "orchestrator/tests/test_assets.py",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "When UseContext.required_uses is non-empty but AssetRecord.allowed_uses is empty, evaluate_rights returns QUARANTINE",
+        "Explicitly allowed uses (required_uses a subset of a non-empty allowed_uses) continue to be permitted when every other check passes",
+        "A required use missing from a non-empty allowed_uses remains QUARANTINE",
+        "Synthetic regression tests cover all three cases in orchestrator/tests/test_assets.py",
+        "No unrelated rights-policy change; the full suite passes with python -B -I"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Claim branch created from origin/main bd33aa1 on 2026-11-13, refreshed by merging origin/main adc0f9976b9929f18f06bebe5530d2ce697a603f on 2026-11-14 (lease restarted at refresh); Step 00 is the claim and Step 01 (implementation and tests) is not started and needs ChatGPT's written authorization after the claim is merged. Owner identity claude:asset-stream was assigned by Lukas for this task. Shared registry, tracker, generated handoff and changelog files are owned for the duration of the task as the governance protocol requires. Synthetic data only; no real footage. RELEASED 2026-11-17 by takeover claim T-AST-002 after Lukas confirmed that the owner claude:asset-stream (session eec2f330-124a-4c30-8c0e-2c1c03ee7c3f) is abandoned; its lease had expired 2026-11-15T09:23:38+00:00. Left behind: branch task/asset-required-uses-fail-closed (origin head cc988755b8137d4e7baf54d71c89542a5dda3f6b, open PR #17, step S-AST-001-01 READY_FOR_REVIEW on that branch, not merged, conflicting with main in the shared registry files only), preserved worktree ../CreatorStudio-worktrees/task-asset-required-uses-fail-closed (clean, unmodified, not to be overwritten), and local backup branch backup/t-ast-001-pre-rebase. Continued by T-AST-002."
+    },
+    {
+      "id": "T-AST-002",
+      "title": "Recover and complete Asset required-use fail-closed implementation",
+      "description": "Takeover of abandoned T-AST-001 (Lukas confirmed 2026-11-17). Continue from the preserved implementation on branch task/asset-required-uses-fail-closed (head cc98875, PR #17): when UseContext.required_uses is non-empty and the record's allowed_uses is empty, evaluate_rights in orchestrator/assets/rights.py must quarantine instead of passing silently. Explicitly allowed uses keep working and a missing required use stays quarantined. Synthetic regression tests for all three cases. No other rights-policy change; no providers, downloader, licence automation or external calls. This claim step changes only the shared registry files.",
+      "owner": "claude:asset-recovery",
+      "branch": "task/asset-required-uses-fail-closed-recovery",
+      "worktree": "../CreatorStudio-worktrees/task-asset-required-uses-fail-closed-recovery",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-AST-001"
+      ],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "When UseContext.required_uses is non-empty but AssetRecord.allowed_uses is empty, evaluate_rights returns QUARANTINE",
+        "Explicitly allowed uses (required_uses a subset of a non-empty allowed_uses) continue to be permitted when every other check passes",
+        "A required use missing from a non-empty allowed_uses remains QUARANTINE",
+        "Synthetic regression tests cover all three cases in orchestrator/tests/test_assets.py",
+        "No unrelated rights-policy change; the full suite passes with python -B -I"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Takeover claim created from origin/main 91151ea on 2026-11-17 in a new worktree; the abandoned owner's branch and worktree are not modified. Step 00 is this claim; Step 01 (implementation and tests, continuing from the preserved cc98875 implementation by fetching that branch, not by merging it into the claim) is not started and needs ChatGPT's written authorization after the claim is merged. PR #17 handling (update in place or supersede) is the integrator's decision. Owner claude:asset-recovery assigned by Lukas for this task. Shared registry, tracker, generated handoff and changelog files are owned for the duration of the task as the governance protocol requires. Synthetic data only; no real footage. COMPLETED 2026-11-17: Step 0 takeover claim merged as PR #22 (merge commit db2fb3554ede9655b79aa4f7ad6233a0651805c5; closeout PR #23, merge commit c9c61abc8d1917948753ac39fce6e4ae9a697ea4); step-start PR #24 merged (merge commit 8c0b5c5939aaf298734a7fd8029ebe6b57285194); Step 1 implementation PR #25 merged (merge commit b462219e45f54b97d4264825cdf9276f77be5c63; reviewed head 9a48c9faef83f38a8089a380d595f2b0dbb85f88) after ChatGPT's technical approval under Lukas's standing delegation (not a claim that Lukas personally reviewed the code). Lease cleared and owned paths released by this closeout. PR #17 and the abandoned branch task/asset-required-uses-fail-closed (cc988755b8137d4e7baf54d71c89542a5dda3f6b) and its worktree were not merged, modified or closed by this task; the integrator decides their disposition. T-AST-001 remains RELEASED. Synthetic data only; nothing VERIFIED."
+    },
+    {
+      "id": "T-DNA-001",
+      "title": "Make evidence revocation and restoration safe and replay-consistent",
+      "description": "In orchestrator/creator_dna/store.py, separate creator rejection from attribution revocation. Today revoke_attribution() and reject_evidence() both write evidence_review/reject, _apply() treats every action other than reject as a restore, and restore_evidence() can make evidence from a withdrawn attribution eligible again (also after replay); a revocation of already creator-rejected evidence is not recorded at all. Fix: independent creator_rejected and attribution_revoked state with rejected kept as a read-only compatibility property; a distinct attribution_revoked event (decision ID and reason, schema v4); strict evidence_review actions (reject, restore only); restore clears only creator rejection and is refused for revoked or flagged possible-legacy-revoked evidence; revocation is recorded even for creator-rejected evidence and is idempotent per decision. Legacy v1-v3 logs replay with their original semantics; a note-prefix heuristic may only set read-only warning flags. Synthetic regression tests and a documentation update. No change to speaker_attribution/ or any cross-package test; no real footage.",
+      "owner": "claude:creator-dna-stream",
+      "branch": "task/t-dna-001-claim",
+      "worktree": "../CreatorStudio-worktrees/t-dna-001-claim",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "Creator rejection and attribution revocation are independent state; EvidenceItem.rejected stays a read-only property true for either, and existing readers of rejected and review_note are unchanged",
+        "Revocation is written as a distinct attribution_revoked event with decision ID and reason (schema v4); evidence_review accepts only reject and restore and any other action fails replay",
+        "restore_evidence clears only creator rejection, never undoes a current revocation, and is refused for revoked evidence and for evidence flagged as a possible legacy revocation",
+        "revoke_attribution records a revocation for creator-rejected evidence; repeated revoke_attribution/sync_revocations for the same decision emit no new events",
+        "Legacy v1-v3 logs replay with original semantics; ambiguous historical rejects are only flagged (read-only warnings), never migrated or reinterpreted",
+        "Exports keep rejected_by_creator creator-specific and expose attribution revocation, decision ID and reason separately",
+        "Synthetic regression tests cover revoke then restore, creator reject then revoke, unknown actions, reload/replay equivalence, repeated synchronization and legacy replay/reporting; test_speaker_attribution.py passes unmodified",
+        "CREATOR_DNA.md documents the event model, legacy handling and restore rules; the full suite passes with python -B -I"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creator_dna.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_speaker_attribution.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Claim branch created from origin/main 12c5964 (T-AST-001 claim PR #13 merged) on 2026-11-14. Step 00 is the claim only; Step 01 (implementation, tests, documentation) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved in principle by Lukas with eight safeguards (independent state, strict evidence_review, restore never undoes revocation, idempotent revocation, exact legacy v1-v3 replay, heuristic only sets warning flags, creator-specific exports, unchanged cross-package readers). Documentation file added to owned_paths by Lukas. orchestrator/speaker_attribution/ (caller sync_revocations), cross-package tests and UNRESOLVED packages are NOT claimed and must not change; test_speaker_attribution.py is run unchanged as a compatibility check only. T-AST-001 also lists the shared registry, tracker, handoff and changelog files, so merge order matters there. Synthetic data only; no real footage. Completed 2026-11-17. Claim PR #15 (merge commit e164f5ca28b5d5de063edfe8a29685699131b5f8), step-start PR #19 (merge commit 346aacd1d547dc76864bd605f1cf198fd4f83cd0) and implementation PR #20 (merge commit 59b14a6c0215fbeb22321fc790750a4926e3bd19, reviewed head 30ab9b39fe43c428110c699e577492d574a1d1ca) were reviewed and merged by ChatGPT as delegated integrator. Lease released and paths freed by this closing pull request, which cannot itself hold a claim because it only closes this task. The task lease had expired on 2026-11-15; no other session took over the paths. Branches task/t-dna-001-claim and task/t-dna-001-step-start are merged and may be deleted by Lukas."
+    },
+    {
+      "id": "T-CRD-001",
+      "title": "Enforce Research contract version and safety-critical signals",
+      "description": "In orchestrator/creative_director/, ResearchContext.from_packet() checks only the prefix research->creative_director/ and the safety fields the Research producer emits (safety_critical, unresolved_safety_warning, usage) are never read, so an unresolved safety-critical claim can be treated as ordinary research guidance. Fix: require the exact contract research->creative_director/0.3 (missing, malformed, non-string or unsupported versions give no partial Research context); preserve the original Research claim status, safety_critical, unresolved_safety_warning and producer usage as typed metadata kept separate from the Creative Director derived usage; fail closed on missing or malformed safety metadata; validate producer usage against a mirrored canonical producer rule; cap unverified safety-critical and warned claims below verified; a verified safety-critical claim may stay verified but can never be a hook; add a deterministic research digest (integrity consistency check, not authentication) covering contract, original status, safety metadata and usage; validation catches tampering and rejects hooks relying on unresolved, safety-critical or warned claims. Synthetic regression tests and orchestrator/creative_director/README.md. No Research producer, Editor schema, Asset package, unresolved package or cross-package test change, and no private import of Research internals; no real footage.",
+      "owner": "claude:creative-director-stream",
+      "branch": "task/t-crd-001-claim",
+      "worktree": "../CreatorStudio-worktrees/t-crd-001-claim",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-17T13:39:25+00:00",
+        "expires": "2026-11-18T13:39:25+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/creative_director/",
+        "orchestrator/tests/test_creative_director.py",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "Only the exact contract research->creative_director/0.3 is accepted; a missing, malformed, non-string or unsupported version yields an unusable Research context with no partial items and a recorded issue",
+        "ResearchItem preserves the original Research claim status, safety_critical, unresolved_safety_warning and producer usage as typed metadata, separate from the Creative Director derived usage; producer values are never silently replaced or discarded",
+        "Missing or malformed safety metadata on a fact fails closed (capped below verified, issue recorded)",
+        "An unverified safety-critical claim or any claim with an unresolved safety warning is capped below verified and never becomes ordinary factual guidance; a verified safety-critical claim may stay verified",
+        "Producer usage is validated against mirrored canonical producer rules covered by explicit expected-case tests in test_creative_director.py; the manual synchronization risk is documented; no import of Research internals and no cross-package test",
+        "A deterministic research digest covers the contract, original claim status, safety metadata, producer usage and derived category/usage; it is documented as an integrity consistency check, not authentication or proof of packet authorship",
+        "Validation detects tampering with digest-covered fields and rejects hooks that rely on unresolved, safety-critical, warned, metadata-missing or non-verified claims",
+        "Synthetic tests cover missing, malformed, unsupported and valid contract versions and the safety-critical, unresolved-warning, producer-usage, digest and hook cases; existing fixtures migrate to 0.3; the full suite passes with python -B -I",
+        "orchestrator/creative_director/README.md documents the fail-closed behavior, the digest limits and the producer-rule synchronization risk"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creative_director.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14; refreshed 2026-11-17 by merging origin/main 9317119 (no force-push) with the lease renewed for 24 hours. Task definition, owned paths and scope unchanged. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage."
+    },
+    {
+      "id": "T-GOV-004",
+      "title": "Parallel wave infrastructure: lanes, one integration branch, one pull request per wave",
+      "description": "Establish the infrastructure for large-scale parallel Claude Code development: wave manifests with disjoint lane ownership, per-lane worktrees and branches, self-service delivery into a wave integration branch (git push as the lock), a whole-wave verify gate, one close step that writes the registry/tracker/changelog/handoff records, a GitHub Actions validate workflow and a pre-push safety hook, plus protocol changes that remove per-task claim, step-start, lease-renewal and closeout pull requests for waves. No product subsystem is touched; Creative Director code and ownership are not touched.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-gov-004-waves",
+      "worktree": "../CreatorStudio-worktrees/t-gov-004-waves",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "A wave manifest validator rejects overlapping lanes, shared registry files, reserved paths, unauthorized use of another stream's or an UNRESOLVED package, overlap with active tasks, bad task ids/branches/test modules and dependency cycles",
+        "wave init, worktrees, submit, status, verify and close work against a real bare origin in tests, including a concurrent push that is retried and a lane that tries to widen its scope or edit the manifest",
+        "wave close generates COMPLETED registry and tracker records that pass the existing governance and tracker validators, and refuses without honest approval flags and a REPORTED or DIRECT source",
+        "A validate GitHub Actions workflow and a pre-push hook exist; the protections actually available on this plan are verified and documented, not assumed",
+        "WAVE_PROTOCOL.md, the operating protocol, the step protocol and CLAUDE.md describe waves; claim, step-start, lease-renewal and closeout pull requests are not needed for waves",
+        "Full suite, governance validate, handoff --check, scope and tracker_check pass; no product subsystem and no Creative Director file changes",
+        "Waves are the normal path in the protocols; the Repository Coordinator role (section 18) is defined with explicit gates and exclusions; the completion gate and wave close record an honest approver; documents match the repository's public status and the branch-protection facts observed with gh api"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 in this single pull request (claim, implementation and closeout together) under the one-time bootstrap exception, directed by Lukas to the Repository Coordinator session; the gates were run on head 9b248310e721bfc667c6905222fd95ccfa69f28e before the closeout commit. Delivers waves (governance wave), the validate workflow, the pre-push hook, WAVE_PROTOCOL.md and the Repository Coordinator role. AGR-GOV-REGISTRY-01 keeps listing T-GOV-004 only as history. Touches no product package; orchestrator/creative_director/ is untouched. Branch task/t-gov-004-waves is merged by the Coordinator and may be deleted by Lukas."
+    },
+    {
+      "id": "T-GOV-005",
+      "title": "Wave wording follow-up: CLAUDE.md lane rules and protection evidence",
+      "description": "Fix the CLAUDE.md rules that told every session to claim files in ACTIVE_TASKS.json (wrong for a wave lane) and a redundant sentence introduced by T-GOV-004, and record the branch-protection configuration read back after T-GOV-004 merged. Documentation and status record only.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-gov-005-wave-wording",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-GOV-004"
+      ],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "CLAUDE.md tells wave lanes that the manifest is their claim and that they never edit ACTIVE_TASKS.json, and standalone tasks still claim first",
+        "The protection configuration observed after the T-GOV-004 merge is recorded as evidence E-OBS-PROTECTION-0001 and referenced by M-INF-01",
+        "governance validate, handoff --check, tracker_check and the full suite pass"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Opened, delivered and closed in one small pull request as part of the Phase 3 direction Lukas gave the Repository Coordinator on 2026-11-17 (waves are the normal path, remove administrative pull requests). Touches no product package and no Creative Director file. Completion is recorded as DIRECT from that instruction; it is not a code review."
+    }
+  ]
+}

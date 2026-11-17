@@ -105,7 +105,8 @@
         "T-AST-002",
         "T-DNA-001",
         "T-CRD-001",
-        "T-GOV-004"
+        "T-GOV-004",
+        "T-DSH-001"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -425,6 +426,57 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Opened, delivered and closed in one small pull request as part of the Phase 3 direction Lukas gave the Repository Coordinator on 2026-11-17 (waves are the normal path, remove administrative pull requests). Touches no product package and no Creative Director file. Completion is recorded as DIRECT from that instruction; it is not a code review."
+    },
+    {
+      "id": "T-DSH-001",
+      "title": "Creator Studio desktop development dashboard (Windows .exe) and canonical agent registry",
+      "description": "A read-only Windows desktop application that fetches the canonical records from the public GitHub repository and shows overall progress, the current wave and agents, blockers, one winding-road roadmap tab per registered agent, the global roadmap and the G-FIRST-REAL-VIDEO gate; plus AGENT_REGISTRY.json (who is responsible for which milestones; no progress data) with a governance validator. Reuses the canonical progress in PROJECT_STATUS.json and never recalculates the global percentage.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-dsh-001-desktop-dashboard",
+      "worktree": "../CreatorStudio-worktrees/t-dsh-001-desktop",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-17T15:39:00+00:00",
+        "expires": "2026-11-18T15:39:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "AGENT_REGISTRY.json",
+        "dashboard/desktop/",
+        "orchestrator/governance/",
+        "orchestrator/tests/test_agent_registry.py",
+        "orchestrator/tests/test_dashboard_app.py",
+        ".github/",
+        ".gitignore",
+        "PROJECT_OPERATING_PROTOCOL.md",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "A packaged Windows .exe fetches the canonical records from public GitHub on open and on Refresh, shows the last successful sync time and source commit, warns when offline or stale, keeps a usable last-known snapshot, needs no login or token and is read-only",
+        "The start page shows canonical implementation and verification progress (never recalculated), a clickable global metric opening the global roadmap, the current major milestone, the current wave and active agents, blockers, upcoming milestones and the filming gate",
+        "One tab per active agent in AGENT_REGISTRY.json with a winding road, milestone checklists, percentages derived from canonical records (or untracked), evidence and GitHub links, current assignment and next task; new registered agents get tabs without code changes",
+        "G-FIRST-REAL-VIDEO is pending until the canonical trigger fires, then clearly notifies, shows FIRST_REAL_VIDEO_CHECKLIST.md and explains the pause for real-world validation, without a competing reminder system",
+        "Tests cover GitHub parsing, missing/malformed/stale/offline data, dynamic agent tabs, progress against the canonical governance code and the gate before and after its trigger; the packaged exe is run end to end (live, offline, fixture)",
+        "Installation, refresh, update and troubleshooting are documented and the exe is published through a versioned GitHub Release"
+      ],
+      "test_requirements": [
+        "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_agent_registry.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dashboard_app.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Directed by Lukas on 2026-11-17 (Repository Coordinator session): complete implementation, testing, self-review and integration. Claim and implementation share one pull request, as for T-GOV-004/005. Does not touch the active first wave (w01: assets, research, creator_dna) or Creative Director code or its branch; the only shared files edited are the four registry files (AGR-GOV-REGISTRY-01) and .github/validate.yml (one added step). The executable is built from merged main and published as GitHub Release dashboard-v1.0.0 with SHA256SUMS.txt after the merge."
     }
   ]
 }

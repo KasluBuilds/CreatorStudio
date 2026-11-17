@@ -651,6 +651,24 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-DSH-001",
+      "title": "Creator Studio desktop development dashboard",
+      "steps": [
+        {
+          "id": "S-DSH-001-00",
+          "title": "Step 0: registry, desktop app, tests, packaging and documentation (claim and implementation in one pull request)",
+          "status": "IN_PROGRESS",
+          "acceptance_criteria": [
+            "Agent registry and validator exist and pass against the real records",
+            "The Electron app, its data layer, views and self-test exist; JS tests pass; the JS model agrees with governance.status on the current records",
+            "The packaged exe passes its self-test live, offline and against a fixture",
+            "README documents install, refresh, update and troubleshooting"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }

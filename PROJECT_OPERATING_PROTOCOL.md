@@ -17,6 +17,7 @@ Labels used here: **VERIFIED** (observed), **PROCEDURE** (a rule people follow; 
 | **What is done, how well is it verified, what progress %?** | **`PROJECT_STATUS.json`** | the task that changed the facts |
 | **Who is working on what, who owns which package?** | **`ACTIVE_TASKS.json`** | any session claiming or releasing work |
 | What are the steps of a task and is a step officially finished? | `DEVELOPMENT_TRACKER.json` (rules: `DEVELOPMENT_STEP_PROTOCOL.md`) | the session working the step; completion only on ChatGPT's written technical approval under Lukas's standing instruction, or Lukas's word (section 15) |
+| Who are the development agents and which milestones is each responsible for? | `AGENT_REGISTRY.json` (no progress data; checked by `governance validate`; the desktop dashboard builds one tab per `active` agent from it) | the session registering or changing an agent, via pull request |
 | Where do I start? | `SESSION_HANDOFF.md` (generated; never edit by hand) | `python -B -m governance handoff --write` |
 | What shipped when? | `CHANGELOG.md` | every merged task |
 | Session rules for Claude Code | `CLAUDE.md` | rarely, via pull request |
