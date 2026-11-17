@@ -326,6 +326,20 @@ class TestClassify(unittest.TestCase):
     def test_claimed_watermark_rejected(self):
         self.assertEqual("reject", classify(cc_cand(claims_watermarked=True), self.use, TODAY).outcome)
 
+    def test_user_owned_claim_without_declaration_is_never_fetch_eligible(self):
+        for c in (cc_cand(claimed_basis="user_owned", claimed_license_name="", claimed_license_url="", license_text_url="",
+                          claimed_commercial_use=True, claimed_modification=True),
+                  cc_cand(claimed_basis="user_owned", owner_declaration="")):
+            r = classify(c, self.use, TODAY)
+            self.assertNotEqual("acquire", r.outcome)
+
+    def test_user_owned_claim_on_a_remote_file_is_held(self):
+        c = cc_cand(claimed_basis="user_owned", owner_declaration="mine", claimed_license_name="", claimed_license_url="",
+                    claimed_commercial_use=True, claimed_modification=True)
+        r = classify(c, self.use, TODAY)
+        self.assertEqual("quarantine", r.outcome)
+        self.assertIn("USER_OWNED_REMOTE", r.reasons)
+
     def test_triage_still_never_permits(self):
         from assets import triage
         for c in (cc_cand(), cc_cand(claimed_license_name="")):
@@ -842,16 +856,15 @@ class TestLocalFolder(LibCase):
         self.assertEqual([], prov.search(AssetRequest(description="giraffe")))
         self.assertEqual(1, len(prov.search(AssetRequest(), max_results=1)))
 
-    def test_cc_claim_in_sidecar_is_only_a_claim(self):
+    def test_cc_claim_in_sidecar_is_only_a_claim_and_is_not_copied(self):
         sc = owned_sidecar(rights_basis="creative_commons", license_name="CC-BY-4.0",
                            license_url=CC_URL, attribution_text="Photo by me, CC BY 4.0")
         del sc["owner_declaration"]
         self.put("m.jpg", sidecar=sc)
         rep = self.run_local()
-        aid = rep.acquired[0].asset_id
-        rec = self.lib.get(aid)
-        self.assertEqual(State.QUARANTINED, rec.state)
-        self.assertIn("CLAIM_ONLY_EVIDENCE", rep.acquired[0].reasons)
+        self.assertEqual((0, 1), (len(rep.acquired), len(rep.quarantined)))
+        self.assertIn("LOCAL_LICENSE_UNDOCUMENTED", rep.quarantined[0].reasons)
+        self.assertEqual([], self.lib.all())
 
     def test_user_owned_attestation_method_required_to_be_user_declaration(self):
         self.put("m.jpg", sidecar=owned_sidecar())

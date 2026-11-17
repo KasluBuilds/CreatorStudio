@@ -387,8 +387,18 @@ def classify(c: AssetCandidate, use: UseContext, today: str) -> Classification:
     extra = []
     if not c.local_path and not c.download_url:
         extra.append("NO_DOWNLOAD_SOURCE")
-    if c.download_url and not c.license_text_url and c.claimed_basis != "user_owned":
+    if c.download_url and not c.license_text_url:
         extra.append("NO_LICENSE_TEXT_URL")      # no licence document can be captured: hold, never fetch
+    if c.download_url and c.claimed_basis == "user_owned":
+        extra.append("USER_OWNED_REMOTE")        # an ownership claim is only meaningful for the user's own local file
+    # CLAIM_ONLY_EVIDENCE / NO_DOCUMENT_EVIDENCE are "pending" only because acquisition itself captures the licence
+    # document. A local file has no such document, so a licence claim there is insufficiently supported: hold it.
+    if c.local_path and c.claimed_basis != "user_owned":
+        d = triage(c, use, today)
+        for code in ("CLAIM_ONLY_EVIDENCE", "NO_DOCUMENT_EVIDENCE"):
+            if code in d.codes():
+                extra.append("LOCAL_LICENSE_UNDOCUMENTED")
+                break
     if blocking or extra:
         return Classification("quarantine", sorted(set(blocking + extra)))
     return Classification("acquire", [])
