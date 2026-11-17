@@ -782,14 +782,47 @@
       "steps": [
         {
           "id": "S-DSH-002-00",
-          "title": "Step 0: appearance switch, palettes, persistence, tests, packaging and documentation (claim and implementation in one pull request)",
-          "status": "IN_PROGRESS",
+          "title": "Step 0: appearance switch, palettes, persistence, tests, packaging and documentation (claim, implementation and closeout in one pull request)",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Light, Dark and System with persistence and live System following",
             "Both palettes meet contrast; the rendered-window audit passes in every mode",
             "Existing business logic and the original self-test checks are unchanged and pass"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Pull request head on which the gates were run (validate green on GitHub) before this closeout commit.",
+              "commit": "c5d92dca144eb5cf1e79c4952cc5179bd6b22c5b"
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate on pull request #35 at the commit above: Node tests (79: 61 original + 18 theme tests) and the full Python suite (skips 49 on the runner).",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "79 tests, fail 0; full Python suite Ran 1393 tests OK (skipped=49)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Dev-mode application self-test against local fixtures, run locally by Claude Code before the commit: the original checks plus Light/Dark/System switching, prefers-color-scheme, page background, saved file, unchanged canonical figure, and a rendered contrast audit of every visible text element on four screens in each mode.",
+              "command": "electron . --selftest --fixture=<checkout>",
+              "result": "76 of 76 checks passed"
+            },
+            {
+              "type": "observation",
+              "summary": "The first audit run reported 12 false positives (it could not see SVG node fills or CSS gradients behind text); the audit was corrected, no threshold was lowered. Screenshots of both themes were reviewed. The release exe is built from merged main and re-tested live, offline and across two launches for persistence before publication."
+            },
+            {
+              "type": "observation",
+              "summary": "Only dashboard/desktop/ and the four shared registry records changed. model.js, sync.js, github.js and controller.js are unchanged (a test asserts they never mention the theme). No governance machinery, product package, wave w01 file or other session's PR was touched."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas assigned this dark-mode work to the Repository Coordinator session on 2026-11-17 and told it to proceed autonomously, including building and publishing a new release. This records that direct assignment; it does not claim that Lukas or ChatGPT reviewed the code, which was written by this same session. The gates were mechanical (CI, validators, tests, rendered audit) plus the self-review recorded in the pull request."
+          }
         }
       ]
     }

@@ -484,25 +484,16 @@
       "owner": "claude:governance-session",
       "branch": "task/t-dsh-002-theme",
       "worktree": "../CreatorStudio-worktrees/t-dsh-002-theme",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DSH-001"
       ],
-      "lease": {
-        "acquired": "2026-11-17T17:58:30+00:00",
-        "expires": "2026-11-18T17:58:30+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
       ],
-      "owned_paths": [
-        "dashboard/desktop/",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "Light, Dark and System options exist; System is the default on first launch and follows Windows live; the choice persists across restarts",
         "The theme applies to every screen, card, checklist, evidence section, banner, the road, scrollbars and the title bar; tooltips and notifications follow Windows and the app has no dialogs of its own",
@@ -518,7 +509,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Directed by Lukas on 2026-11-17 (Repository Coordinator session). Claim, implementation and closeout share one pull request. Touches only dashboard/desktop/ and the four shared registry records; no governance machinery, no product package, nothing of wave w01 or the open PRs of other sessions. Release dashboard-v1.1.0 is built from merged main after the merge."
+      "integration_notes": "Completed 2026-11-17 in this single pull request (claim, implementation and closeout), directed by Lukas to the Repository Coordinator session; gates were run on head c5d92dca144eb5cf1e79c4952cc5179bd6b22c5b before the closeout commit. Release dashboard-v1.1.0 is built from merged main after the merge; v1.0.0 is not modified."
     }
   ]
 }
