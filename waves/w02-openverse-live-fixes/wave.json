@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "wave_id": "w02-openverse-live-fixes",
+  "title": "Openverse adapter fixes from the live verification run; record the evidence",
+  "integration_branch": "wave/w02-openverse-live-fixes",
+  "base_commit": "469b95dda98365c8b9f23824e9f11684c3d6b1a2",
+  "created": "2026-11-17",
+  "inactivity_hours": 48,
+  "lanes": [
+    {
+      "id": "L1",
+      "task_id": "T-AST-004",
+      "title": "Openverse live-run fixes: canonical licence URL, distinct retryable 429, evidence section in ASSETS.md",
+      "owner": "claude:asset-recovery",
+      "branch": "lane/w02-openverse-live-fixes/L1",
+      "owned_paths": [
+        "orchestrator/assets/openverse.py",
+        "orchestrator/assets/providers.py",
+        "orchestrator/tests/test_asset_acquisition.py",
+        "AI_Creator_Studio_Documentation/ASSETS.md"
+      ],
+      "test_modules": [
+        "test_assets.py",
+        "test_asset_acquisition.py"
+      ],
+      "acceptance_criteria": [
+        "license_text_url is derived canonically from license + version (for example cc0 1.0 -> https://creativecommons.org/publicdomain/zero/1.0/), never from the response's license_url; if it cannot be derived the item fails closed (quarantined/failed with a reason code, never permitted); tests cover cc0, a by-style licence, an unknown licence and a response URL with a trailing deed.en/ path that is ignored",
+        "HTTP 429 maps to its own distinct retryable error code (separate from HTTP_STATUS), recorded with a scrubbed message; the asset stays unfetched and nothing partial is left; tests cover it, including that other 4xx/5xx codes keep their existing behaviour",
+        "ASSETS.md gains a section recording the 2026-11-17 live Openverse run (runs 1-3, sizes, sha256 prefixes, 404 and 429 findings) with VERIFIED limited to exactly what was exercised (search and parse on a real payload, bounded HTTPS download with exact-host allow-list, content-type and magic-byte check on a real JPEG and PNG, sha256, licence snapshot, fail-closed on 404/429, temp cleanup) and NOT verified listed (redirects, drift over time, other providers, video/audio, legal clearance, SVG, run 1 response)",
+        "No network code is exercised by tests (existing no-socket test still passes); no downloaded media or live payloads committed; existing tests are not weakened; M-AST-02 is not recorded as verified or complete"
+      ],
+      "depends_on": [],
+      "authorizations": [],
+      "milestones": [
+        "M-AST-02"
+      ]
+    }
+  ]
+}
