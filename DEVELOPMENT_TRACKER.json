@@ -556,7 +556,7 @@
         {
           "id": "S-CRD-001-01",
           "title": "Step 1: exact Research contract, safety metadata, research digest, tests and README",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Exact research->creative_director/0.3 contract; invalid versions produce no partial Research context",
             "Original Research claim status, safety_critical, unresolved_safety_warning and producer usage preserved as typed metadata; missing or malformed safety metadata fails closed",
@@ -565,7 +565,30 @@
             "Synthetic regression tests in test_creative_director.py; creative_director/README.md written; the full suite passes",
             "Only orchestrator/creative_director/ and test_creative_director.py change besides the shared registry files"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Full suite on the final code after merging origin/main 18e970e: 1366 tests, 1 skipped (unchanged), no failures. test_creative_director.py is 189 tests (was 132 before T-CRD-001). Synthetic data only.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1366 tests in 341.783s - OK (skipped=1)"
+            },
+            {
+              "type": "observation",
+              "summary": "Review rework (duplicate claim metadata): from_packet() now judges each duplicate entry on its own metadata, selects the kept entry by a total order (permissiveness, restricted first, kind, status, usage, text, attribution) instead of input position, merges safety flags pessimistically and records any disagreement on producer kind/status/usage/flags in ResearchItem.metadata_conflicts, which restricts the claim. Tests permute every ordering (including entries split across both claim lists) and assert identical results, never-more-permissive, and a recorded conflict. Mutation checks: ignoring the conflict, restoring the order-dependent selection, taking flags from the first entry and not recording kind conflicts each fail tests."
+            },
+            {
+              "type": "observation",
+              "summary": "Also from the review: the research digest additionally covers claim text, attribution, source ids and duplicate conflicts, and is carried and validated by the editor view (brief and view fail on a changed digest even without the brief). Old 0.2 documents are rejected by validation and load()."
+            },
+            {
+              "type": "observation",
+              "summary": "Tracker transition evidence. Checkpoint commit 2da5ad8897969bddc5905d2c3c429d056f0b6e6f (merge of origin/main 18e970e into the branch) holds S-CRD-001-01 IN_PROGRESS; the READY_FOR_REVIEW commit is validated against it with python -B dashboard/tracker_check.py --against 2da5ad8897969bddc5905d2c3c429d056f0b6e6f (IN_PROGRESS -> READY_FOR_REVIEW, legal). Compared directly with origin/main, where the step is still PLANNED, tracker_check --against origin/main reports 'transition PLANNED -> READY_FOR_REVIEW is not allowed'. That is expected: the authorization was one implementation batch in one PR with no separate step-start PR, so no commit on main ever recorded IN_PROGRESS. The IN_PROGRESS state exists only in this branch's history (commits 249de19 and the checkpoint above). The integrator must accept or waive that single check result."
+            },
+            {
+              "type": "document",
+              "summary": "orchestrator/creative_director/README.md documents the fail-closed behavior, preserved fields, restrictions, duplicate resolution, the mirrored producer rule and its manual synchronization risk, the digest and its limits, hook rules and the schema version bump."
+            }
+          ]
         }
       ]
     },
