@@ -554,6 +554,11 @@ class SnapshotTests(Base):
         self.assertIsNone(tl.find_transcript(self.dir, "../evil", None))
         self.assertIsNone(tl.find_transcript(self.dir, "", None))
 
+    def test_package_does_not_shadow_snapshot_submodule(self):
+        import dev_supervisor
+        self.assertNotIn("snapshot", dev_supervisor.__all__)
+        self.assertFalse(callable(getattr(dev_supervisor, "snapshot", None)))
+
     def test_cwd_slug(self):
         self.assertEqual(tl.cwd_slug("C:\\a b\\c"), "C--a-b-c")
 

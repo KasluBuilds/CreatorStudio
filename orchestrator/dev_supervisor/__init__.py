@@ -4,9 +4,9 @@ Nothing in this package is an account-usage reading unless a UsageProvider suppl
 """
 from .evidence import Evidence, Label, observed, reported, inferred, unavailable
 from .telemetry import (DEFAULT_CONTEXT_WINDOWS, DEFAULT_THRESHOLDS, PressureConfig, StatuslineProvider,
-                        UsageProvider, UnavailableProvider, context_pressure, read_last_usage, read_sessions,
-                        snapshot)
+                        UsageProvider, UnavailableProvider, context_pressure, read_last_usage, read_sessions)
+# telemetry.snapshot is deliberately NOT re-exported: the name would shadow the submodule dev_supervisor.snapshot.
 
 __all__ = ["Evidence", "Label", "observed", "reported", "inferred", "unavailable", "DEFAULT_CONTEXT_WINDOWS",
            "DEFAULT_THRESHOLDS", "PressureConfig", "StatuslineProvider", "UsageProvider", "UnavailableProvider",
-           "context_pressure", "read_last_usage", "read_sessions", "snapshot"]
+           "context_pressure", "read_last_usage", "read_sessions"]

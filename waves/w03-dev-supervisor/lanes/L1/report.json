@@ -1,10 +1,16 @@
 {
   "lane": "L1",
   "status": "DONE",
-  "summary": "Implemented orchestrator/dev_supervisor (evidence.py, telemetry.py): Evidence model with OBSERVED/REPORTED/INFERRED/UNAVAILABLE labels and staleness; session-file reader with injectable pid probe; tail-read context pressure (last assistant usage record, configurable window table and warn/compact/replace thresholds, unknown model gives UNAVAILABLE); pluggable account-usage provider interface plus statusline JSON ingestor (no source gives UNAVAILABLE with reason); snapshot() returning a JSON-serialisable dict. IMPLEMENTED and TESTED offline (90 synthetic tests pass). OBSERVED once on the real machine (numbers only, see commands): 2 live sessions read, 1 pressure computed, 1 UNAVAILABLE because the model id is not in the default window table. NOT TESTED: statusline ingestor against a real Claude Code statusline payload (shape of rate_limits is an assumption, PROPOSED); account usage is UNAVAILABLE, no known source. Default context windows and thresholds are configuration defaults, not verified facts about any account.",
+  "summary": "Implemented orchestrator/dev_supervisor (evidence.py, telemetry.py): Evidence model with OBSERVED/REPORTED/INFERRED/UNAVAILABLE labels and staleness; session-file reader with injectable pid probe; tail-read context pressure (last assistant usage record, configurable window table and warn/compact/replace thresholds, unknown model gives UNAVAILABLE); pluggable account-usage provider interface plus statusline JSON ingestor (no source gives UNAVAILABLE with reason); snapshot() returning a JSON-serialisable dict. IMPLEMENTED and TESTED offline (90 synthetic tests pass). OBSERVED once on the real machine (numbers only, see commands): 2 live sessions read, 1 pressure computed, 1 UNAVAILABLE because the model id is not in the default window table. NOT TESTED: statusline ingestor against a real Claude Code statusline payload (shape of rate_limits is an assumption, PROPOSED); account usage is UNAVAILABLE, no known source. Default context windows and thresholds are configuration defaults, not verified facts about any account. Follow-up: telemetry.snapshot is no longer re-exported from dev_supervisor/__init__.py (it shadowed the submodule dev_supervisor.snapshot); use dev_supervisor.telemetry.snapshot.",
   "commands": [
-    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_telemetry.py", "result": "Ran 90 tests: OK"},
-    {"command": "python -B -c snapshot(~/.claude/sessions, ~/.claude/projects), printing counts/tokens/model/ratio/level only", "result": "OBSERVED: 2 sessions, both busy/alive/stale=True (status not updated within 300 s); session A: 360387 tokens, model claude-opus-5-5 not in default window table, pressure UNAVAILABLE; session B: 184076 tokens, model claude-sonnet-5-5, ratio 0.9204 against configured 200000 window, level replace; account_usage UNAVAILABLE (no provider)"}
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_telemetry.py",
+      "result": "Ran 90 tests: OK"
+    },
+    {
+      "command": "python -B -c snapshot(~/.claude/sessions, ~/.claude/projects), printing counts/tokens/model/ratio/level only",
+      "result": "OBSERVED: 2 sessions, both busy/alive/stale=True (status not updated within 300 s); session A: 360387 tokens, model claude-opus-5-5 not in default window table, pressure UNAVAILABLE; session B: 184076 tokens, model claude-sonnet-5-5, ratio 0.9204 against configured 200000 window, level replace; account_usage UNAVAILABLE (no provider)"
+    }
   ],
   "unresolved": [
     "Real window sizes per model (e.g. whether claude-sonnet-5-5 or claude-opus-5-5 have larger windows) are not known to this lane; the table is configurable and the pressure for sonnet-5-5 (0.9204) depends on the assumed 200000 default. Needs a decision/source.",
