@@ -519,6 +519,43 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-CRD-001",
+      "title": "Enforce Research contract version and safety-critical signals",
+      "steps": [
+        {
+          "id": "S-CRD-001-00",
+          "title": "Step 0: claim branch",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-CRD-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "No overlap with another task and no edit to a package owned by someone else; no other task's record is edited",
+            "Governance validate, handoff check, scope check and tracker check pass",
+            "The claim pull request is opened and merged by ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main a6a89a2 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            }
+          ]
+        },
+        {
+          "id": "S-CRD-001-01",
+          "title": "Step 1: exact Research contract, safety metadata, research digest, tests and README",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Exact research->creative_director/0.3 contract; invalid versions produce no partial Research context",
+            "Original Research claim status, safety_critical, unresolved_safety_warning and producer usage preserved as typed metadata; missing or malformed safety metadata fails closed",
+            "Unverified safety-critical and warned claims capped below verified; verified safety-critical claims never hooks; producer usage validated against mirrored rules",
+            "Deterministic research digest (integrity consistency only); tampering and unsafe hooks rejected by validation",
+            "Synthetic regression tests in test_creative_director.py; creative_director/README.md written; the full suite passes",
+            "Only orchestrator/creative_director/ and test_creative_director.py change besides the shared registry files"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }

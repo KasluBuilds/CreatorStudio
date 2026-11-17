@@ -84,7 +84,11 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 
 ## Active tasks
 
-No active tasks.
+| Task | Owner | Branch | Status | Lease expires | Owns |
+|---|---|---|---|---|---|
+| T-CRD-001 Enforce Research contract version and safety-critical signals | claude:creative-director-stream | `task/t-crd-001-claim` | ACTIVE | 2026-11-18T13:39:25+00:00 | orchestrator/creative_director/, orchestrator/tests/test_creative_director.py, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
+
+Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
 ## Package ownership
 

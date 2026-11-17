@@ -4,6 +4,12 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-CRD-001` claim (branch `task/t-crd-001-claim`, pending review)
+
+- Claim only: registers `T-CRD-001` (owner `claude:creative-director-stream`, 24-hour lease, references `AGR-GOV-REGISTRY-01`) and its steps `S-CRD-001-00` (claim, `READY_FOR_REVIEW`) and `S-CRD-001-01` (implementation, `PLANNED`, not started). Owned paths: `orchestrator/creative_director/` (includes the new `README.md`), `orchestrator/tests/test_creative_director.py` and the four shared registry files. No source, test, documentation, status or milestone change.
+- Refreshed 2026-11-17: `origin/main` merged into the branch (no force-push) to resolve conflicts after PR #18's base went stale; the lease was renewed for 24 hours. Task definition, owned paths and scope unchanged; still claim only.
+- Planned fix, not yet made: `ResearchContext.from_packet()` accepts any `research->creative_director/` prefix and ignores `safety_critical`, `unresolved_safety_warning` and producer `usage`; Step 1 requires exactly `research->creative_director/0.3`, preserves the original claim status and safety metadata, fails closed on missing or malformed safety metadata, caps unresolved safety claims below verified, forbids safety-critical claims as hooks and adds a research digest (integrity consistency check, not authentication). `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## 2026-11-17 — task `T-AST-002` closeout (complete; lease and owned paths released)
 
 - `T-AST-002` is complete. Step-start PR #24 (merge commit `8c0b5c5939aaf298734a7fd8029ebe6b57285194`) and implementation PR #25 (merge commit `b462219e45f54b97d4264825cdf9276f77be5c63`; reviewed head `9a48c9faef83f38a8089a380d595f2b0dbb85f88`) were technically approved by ChatGPT under Lukas's standing delegation and merged, after takeover claim PR #22 and Step 0 closeout PR #23. This closeout moves `S-AST-002-01` to `COMPLETED` with a `REPORTED` completion record (this does not claim Lukas personally reviewed the code), sets `T-AST-002` `COMPLETED` and clears its lease and owned paths. `SESSION_HANDOFF.md` regenerated with the official command.
