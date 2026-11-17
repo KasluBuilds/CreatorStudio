@@ -89,7 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("wave_id")
     w.add_argument("--source", required=True, help="must begin DIRECT or REPORTED; says where the approval came from")
     w.add_argument("--date", required=True, help="YYYY-MM-DD")
-    w.add_argument("--chatgpt-approved", action="store_true")
+    w.add_argument("--approver", required=True, choices=list(waves_mod.APPROVERS),
+                   help="who technically approved the wave (recorded in every lane's completion record)")
     w.add_argument("--standing-instruction", action="store_true", help="Lukas's standing instruction covers this approval")
     return p
 
@@ -127,7 +128,7 @@ def _wave(args, root: Path) -> int:
                                         allow_closeout=args.allow_closeout), f"OK: wave {args.wave_id} is valid")
     if c == "close":
         return waves_mod.close(root, args.wave_id, source=args.source, date=args.date,
-                               chatgpt_approved=args.chatgpt_approved, lukas_standing=args.standing_instruction)
+                               approver=args.approver, lukas_standing=args.standing_instruction)
     return 2
 
 

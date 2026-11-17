@@ -2,29 +2,35 @@
 
 How many Claude Code agents work on CreatorStudio **at the same time** with the least administration. Added by task
 `T-GOV-004` (2026-11-17). It sits under `PROJECT_OPERATING_PROTOCOL.md` (section 17 points here) and replaces, for waves,
-the per-task claim, step-start, lease-renewal and closeout pull requests of sections 6 and 15. Tasks that are not part of
-a wave still use those sections unchanged.
+the per-task claim, step-start, lease-renewal and closeout pull requests of sections 6 and 15. **Waves are the normal path
+for substantial development work.** Only small, single-agent tasks that are not worth a wave still use those sections.
 
 Labels: **VERIFIED** (observed), **CHECKED** (a tool enforces it), **PROCEDURE** (people follow it; nothing enforces it),
 **UNKNOWN** (not tested).
 
 ## 1. What GitHub gives us (VERIFIED 2026-11-17)
 
-The repository is private and belongs to a personal account (`KasluBuilds`) without a paid plan.
+The repository `KasluBuilds/CreatorStudio` is on a personal account. It was private until 2026-11-17, when Lukas made it
+**public**. That changed what GitHub allows:
 
 | Feature | Available? | Evidence |
 |---|---|---|
-| Branch protection, rulesets, required reviews or checks, merge queue | **No** | `gh api .../branches/main/protection` and `.../rulesets` answer HTTP 403 "Upgrade to GitHub Pro or make this repository public" |
-| Auto-merge | Off, and not useful without required checks | `allow_auto_merge: false` |
-| GitHub Actions | **Enabled** (`allowed_actions: all`); no workflow existed before this task | `gh api .../actions/permissions` |
-| Pull requests, merge commits, status shown on a PR | Yes | in daily use |
+| Branch protection and rulesets | **Yes, since the repository became public** (HTTP 403 while private) | `gh api .../branches/main/protection` answered `404 Branch not protected` (the feature exists, nothing was set) and `.../rulesets` answered `[]` on 2026-11-17 |
+| Auto-merge | Off; not needed (the Coordinator merges when gates pass) | `allow_auto_merge: false` |
+| GitHub Actions | **Enabled**; free for a public repository | `gh api .../actions/permissions`; `validate` ran green on pull request #28 |
+| Secret scanning and push protection | **Enabled** | `gh api repos/KasluBuilds/CreatorStudio` → `security_and_analysis` |
+| Merge methods | merge commit, squash and rebase are all allowed | `allow_merge_commit/squash_merge/rebase_merge: true`; "merge commits only" is a PROCEDURE |
 
-Consequences, stated honestly: nothing on GitHub can stop a push to `main` or a merge with a red check. The single
-writer to `main` stays a PROCEDURE. What this system adds is (a) a CI workflow that reports a status on every pull request
-(`.github/workflows/validate.yml`), (b) a local `pre-push` hook that refuses pushes to `main` and force-updates or
-deletions of `wave/` and `lane/` branches (`.githooks/pre-push`, enabled with `git config core.hooksPath .githooks`; a
-hook can be skipped, so it is a safety net), and (c) a validator that makes ownership conflicts visible before work starts.
-Lukas can upgrade the plan (Decision D1, section 11) to make (a) blocking.
+**Protection configured on `main`** by the Repository Coordinator immediately after `T-GOV-004` merged (read it back with
+`gh api repos/KasluBuilds/CreatorStudio/branches/main/protection`): a pull request is required with 0 approvals (the owner cannot
+approve their own pull request); the `validate` check must pass and the branch must be up to date with `main`;
+administrators are included; force-pushes and deletion of `main` are refused. `.githooks/pre-push` is an additional local safety net
+(`git config core.hooksPath .githooks`; a hook can be skipped). What GitHub still cannot enforce: merge-commit-only, lane ownership
+(the validators do), and who may merge (an administrator token can; the rule is that only the Repository Coordinator does, section 3).
+
+**The repository is public.** Everything pushed to any branch, including `wave/` and `lane/` branches and every commit in
+history, is world-readable and cannot be recalled. Lanes use synthetic data only, never paste credentials, and never commit media,
+local paths or personal data. Secret scanning with push protection is on, and `wave submit` and CI also scan added lines.
 
 ## 2. The model in one page
 
@@ -44,20 +50,21 @@ main ─────────────────────────
 - A lane delivers with `governance wave submit`. The tool merges the wave branch into the lane, checks scope and tests, and
   pushes to `wave/<wave_id>` with a plain fast-forward push. **The push is the lock**: if another lane pushed first, git
   rejects it and the tool merges again and retries (VERIFIED by a test with a concurrent push).
-- The integrator verifies the whole wave, runs `wave close`, and opens **one pull request** `wave/<id>` into `main`.
-  ChatGPT reviews once and merges with a merge commit. Nothing else is pushed to `main` for the wave.
+- The Repository Coordinator verifies the whole wave, runs `wave close`, and opens **one pull request** `wave/<id>` into
+  `main`. When every gate passes (section 12) it merges with a merge commit. Nothing else is pushed to `main` for the wave.
 
 ## 3. Roles
 
 | Who | Does |
 |---|---|
-| **Lukas** | Decides what waves exist and the assignments (or delegates planning to ChatGPT). Keeps final authority; may reserve any merge. |
-| **ChatGPT (integrator)** | Writes the manifest, runs `wave init`, reviews the wave pull request once, runs `wave close` with the approval, merges. Under Lukas's standing delegation (section 3a of `DEVELOPMENT_STEP_PROTOCOL.md`). |
-| **Lane agents (Claude Code)** | Do their lane, write `report.json`, run `wave submit`, stop. They never merge, never run `wave close`, never edit the manifest or a shared registry. |
+| **Lukas** | Decides what waves exist and the assignments (or delegates planning). Keeps final authority; may reserve or revoke any action. Not asked to approve routine steps. |
+| **Repository Coordinator** (one Claude Code session; `PROJECT_OPERATING_PROTOCOL.md` section 18) | Writes and validates the manifest, runs `wave init` and `wave worktrees`, watches `wave status`, runs `wave verify` and `wave close --approver repository_coordinator`, opens and merges the wave pull request when every gate passes, then updates the primary checkout. The only session that merges. |
+| **ChatGPT** | Independent reviewer and planner under Lukas's standing delegation; may integrate instead when Lukas asks (`--approver chatgpt`). |
+| **Lane agents (Claude Code)** | Do their lane, write `report.json`, run `wave submit`, stop. They never merge, never run `wave close`, never edit the manifest or a shared registry, never push to `main`. |
 
-Claude never approves its own work: `COMPLETED` records are written only by `wave close`, which the integrator runs after
-approving, and which refuses to run unless the approval flags and a `REPORTED`/`DIRECT` source are given (CHECKED that
-they are given; PROCEDURE that they are true).
+No lane approves its own work: `COMPLETED` records are written only by `wave close`, which refuses unless an `--approver`, the
+standing-instruction flag and a `REPORTED`/`DIRECT` source are given (CHECKED that they are given; PROCEDURE that they are
+true). A Coordinator approval is recorded as `approved_by: repository_coordinator` and never claims a ChatGPT or Lukas review.
 
 ## 4. Lifecycle
 
@@ -79,12 +86,14 @@ they are given; PROCEDURE that they are true).
 6. **Watch.** `python -B -m governance wave status` shows each lane: not started, working, STALE, SUBMITTED, and its report status.
 7. **Gate (integrator).** On the wave branch: `python -B -m governance wave verify <id> --require-complete`. CI runs the
    same on every push to `wave/**` and on the pull request.
-8. **Close (integrator).** On a clean wave branch: `python -B -m governance wave close <id> --chatgpt-approved
+8. **Close (Coordinator).** On a clean wave branch: `python -B -m governance wave close <id> --approver repository_coordinator
    --standing-instruction --date YYYY-MM-DD --source "REPORTED: ..."`. It writes one COMPLETED task and one COMPLETED
    step per lane, a changelog entry, and the regenerated handoff, validates them with the real validators, and commits
    (it never pushes). The source states where the approval came from and must not claim Lukas read the code.
-9. **Merge.** Push the wave branch, open one pull request into `main`, wait for the `validate` check, merge with a merge
-   commit (`gh pr merge <n> --merge`). Delete the merged lane and wave branches afterwards (Lukas, or the integrator).
+9. **Merge (Coordinator).** Push the wave branch, open one pull request into `main`, wait for `validate` on that exact head,
+   run the gates in section 12, then `gh pr merge <n> --merge --match-head-commit <head>`. Fast-forward the primary checkout and remove the
+   finished lane worktrees (`git worktree remove`, never `--force` while they hold uncommitted work). Remote branches may be
+   deleted later; nothing depends on them once merged.
 
 ## 5. Ownership and conflicts
 
@@ -137,9 +146,10 @@ worktree: fetch it and continue from it.
 | ChatGPT review at every step | one review, of the whole wave |
 | Merge order and shared-registry conflicts | none: lanes never write shared records |
 
-Stays: one writer to `main`, merge commits only, tests green before merge, evidence for every claim, Lukas's final
-authority, and the rule that nothing is VERIFIED without real-input evidence. A **small, single** task that is not worth a
-wave may still use sections 6 and 15 of the operating protocol.
+Stays, because it protects the code: one writer to `main`, exclusive ownership and scope validation, automated tests,
+secret scanning, merge commits only, evidence for every claim, Lukas's final authority, and the rule that nothing is VERIFIED
+without real-input evidence. A **small, single** task that is not worth a wave may still use sections 6 and 15 of the
+operating protocol.
 
 ## 9. Test and verification status
 
@@ -147,7 +157,7 @@ wave may still use sections 6 and 15 of the operating protocol.
   `governance` and `tracker_check` validators, and git flows against a throwaway bare origin (init, worktrees, submit,
   concurrent push retry, scope violation, manifest tampering, status/stale, verify, close, pre-push hook).
 - `.github/workflows/validate.yml` (VERIFIED 2026-11-17 on pull request #28): the first run failed on four existing ingest tests that compare an 8.3 short temp path (`RUNNER~1`) with the long form; the workflow now sets `TEMP`/`TMP` to the runner's long temp directory and the second run passed (1306 tests, 54 seconds, about 1.5 minutes for the whole job on `windows-latest` with Python 3.14). CI skips 49 tests that run locally (the local run skips 1), so CI does not exercise whatever those need (probably real media tools). GitHub warns that `actions/checkout@v4` and `actions/setup-python@v5` use the deprecated Node 20 and are forced onto Node 24.
-- UNKNOWN: the wave gate step in CI (it only runs on `wave/**` branches, so it is first exercised by the first real wave), whether the suite passes on a Linux runner, and the monthly Actions minutes it consumes on the free plan (Windows runners are billed at a higher multiplier).
+- UNKNOWN: the wave gate step in CI (it only runs on `wave/**` branches, so it is first exercised by the first real wave) and whether the suite passes on a Linux runner. Actions minutes are no longer a concern now that the repository is public.
 - NOT TESTED: more than two lanes at once, two waves at once, and a lane agent following the brief without human help.
   The first real wave is the real test; start with two or three lanes.
 
@@ -161,19 +171,36 @@ python -B -m governance wave worktrees w01-x                      # integrator: 
 python -B -m governance wave submit                               # lane: deliver (run in the lane worktree)
 python -B -m governance wave status                               # anyone: who is where
 python -B -m governance wave verify w01-x --require-complete      # integrator: gate before close
-python -B -m governance wave close  w01-x --chatgpt-approved --standing-instruction --date 2026-11-20 --source "REPORTED: ..."
+python -B -m governance wave close  w01-x --approver repository_coordinator --standing-instruction --date 2026-11-20 --source "REPORTED: ..."
 ```
 
 ## 11. Decisions for Lukas
 
-- **D1. Plan upgrade.** GitHub Pro (about 4 USD/month at the time of writing; check the current price) would give branch
-  protection with required status checks. Until then the single writer to `main` and the green-check rule are procedure.
-  Making the repository public would also unlock protection but is **not recommended** (it holds private design).
-- **D2. Is one wave review enough?** This protocol lets ChatGPT's single review of a wave pull request approve every lane
-  in it (as REPORTED, under the standing delegation). If Lukas wants any lane reviewed separately, say so in the manifest brief
-  and split it into its own wave.
-- **D3. Bootstrap.** `T-GOV-004` itself had to be claimed and delivered the old way, in one pull request (the same
-  one-time exception `T-GOV-003` used). It needs the integrator's approval of that exception.
-- **D4. Shared-registry agreement.** `AGR-GOV-REGISTRY-01` was extended to `T-GOV-004` for this pull request only.
-- **D5. First wave.** Which assignments become lanes, and who plays integrator, is Lukas's call.
-- **D6. Local enablement.** Lukas (or each session once) runs `git config core.hooksPath .githooks`.
+None of these blocks work; each has a default the Coordinator follows until Lukas says otherwise.
+
+- **D1. Merge methods.** GitHub still allows squash and rebase merges; "merge commit only" is procedure because evidence cites commit
+  SHAs. Default: the Coordinator uses merge commits only. Lukas may turn the other two off in the repository settings.
+- **D2. Is one wave review enough?** Default: the Coordinator's single verification of a wave approves every lane in it, recorded
+  as `approved_by: repository_coordinator`, REPORTED under the standing delegation. If Lukas wants a lane reviewed separately, say so in
+  the manifest and split it into its own wave.
+- **D3. Reviewer independence.** With the Coordinator as integrator, a wave is reviewed by the same tooling that created it. The
+  gates (disjoint ownership, scope, tests, CI, secret scan) are mechanical; there is no second human or ChatGPT read unless Lukas
+  asks for one. Default: Coordinator merges when gates pass; Lukas or ChatGPT may review any wave pull request before it merges by
+  commenting or reserving it.
+- **D4. Admin enforcement.** Protection includes administrators, so even Lukas's own token cannot push to `main` directly; he can
+  lift it in the settings when he must.
+- **D5. Local enablement.** Each clone runs `git config core.hooksPath .githooks` once (it covers every worktree).
+- **D6. Unresolved package owners.** `creator_state`, `media_analysis`, `speaker_attribution` and the cross-package tests stay
+  UNRESOLVED; no wave lane may touch them without Lukas's authorization in the manifest.
+
+## 12. Coordinator gate checklist (every merge)
+
+1. `git fetch origin`; `gh pr view <n> --json state,isDraft,mergeable,mergeStateStatus,headRefOid,statusCheckRollup`.
+2. State OPEN, not a draft, `MERGEABLE`, `validate` conclusion SUCCESS for `headRefOid`.
+3. For a wave: on the wave branch `wave verify <id> --require-complete` clean before `close`, `wave verify <id> --allow-closeout` clean after,
+   every lane `DONE`, every `unresolved` entry recorded or sent to Lukas.
+4. The changed files are only the lanes' paths, `waves/<id>/`, and the four closeout records (the verify step proves it).
+5. Not on the exclusion list of `PROJECT_OPERATING_PROTOCOL.md` section 18 (governance machinery, own implementation, UNRESOLVED
+   packages, VERIFIED upgrades, real footage, another session's task in progress).
+6. `gh pr merge <n> --merge --match-head-commit <headRefOid>`; confirm `state: MERGED` and the merge commit; fast-forward the primary checkout.
+7. Record anything surprising in the next pull request's description or the wave's changelog entry; never silently skip a gate.

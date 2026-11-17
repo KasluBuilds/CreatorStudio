@@ -189,13 +189,13 @@ class CloseoutRecordTests(unittest.TestCase):
         return reg, trk
 
     def build(self, source="REPORTED: ChatGPT approved under Lukas's standing delegation; not independently verified.",
-              chatgpt=True, lukas=True):
+              approver="chatgpt", lukas=True):
         reg, trk = self.docs()
         m = manifest()
         reports = {"L1": report("L1"), "L2": report("L2")}
         heads = {"L1": SHA, "L2": SHA2}
         return m, waves.closeout_records(m, reg, trk, reports, heads, date="2026-11-17", source=source,
-                                         wave_head="c" * 40, chatgpt_approved=chatgpt, lukas_standing=lukas)
+                                         wave_head="c" * 40, approver=approver, lukas_standing=lukas)
 
     def test_generated_records_pass_the_real_validators(self):
         sys.path.insert(0, str(ROOT / "dashboard"))
@@ -220,8 +220,37 @@ class CloseoutRecordTests(unittest.TestCase):
         before = (json.dumps(reg, sort_keys=True), json.dumps(trk, sort_keys=True))
         waves.closeout_records(manifest(), reg, trk, {"L1": report("L1"), "L2": report("L2")},
                                {"L1": SHA, "L2": SHA2}, date="2026-11-17", source="REPORTED: x", wave_head=SHA,
-                               chatgpt_approved=True, lukas_standing=True)
+                               approver="chatgpt", lukas_standing=True)
         self.assertEqual(before, (json.dumps(reg, sort_keys=True), json.dumps(trk, sort_keys=True)))
+
+    def test_approver_is_recorded_honestly(self):
+        sys.path.insert(0, str(ROOT / "dashboard"))
+        try:
+            import tracker_check
+        finally:
+            sys.path.pop(0)
+        for who, chatgpt_flag in (("chatgpt", True), ("repository_coordinator", False), ("lukas", False)):
+            _, (reg, trk, _) = self.build(approver=who)
+            comp = trk["tasks"][-1]["steps"][0]["completion"]
+            self.assertEqual((comp["approved_by"], comp["reviewed_by_chatgpt"]), (who, chatgpt_flag))
+            self.assertEqual(tracker_check.validate(trk, reg), [], who)
+
+    def test_the_gate_rejects_inconsistent_approval_records(self):
+        sys.path.insert(0, str(ROOT / "dashboard"))
+        try:
+            import tracker_check
+        finally:
+            sys.path.pop(0)
+        _, (reg, trk, _) = self.build(approver="repository_coordinator")
+        comp = trk["tasks"][-1]["steps"][0]["completion"]
+        comp["reviewed_by_chatgpt"] = True                      # a coordinator approval must not claim ChatGPT
+        self.assertTrue(any("must not claim reviewed_by_chatgpt" in p for p in tracker_check.validate(trk, reg)))
+        comp["reviewed_by_chatgpt"] = False; comp["approved_by"] = "chatgpt"
+        self.assertTrue(any("approved_by chatgpt needs" in p for p in tracker_check.validate(trk, reg)))
+        comp["approved_by"] = "somebody"
+        self.assertTrue(any("approved_by must be one of" in p for p in tracker_check.validate(trk, reg)))
+        del comp["approved_by"]                                 # legacy shape still works only with ChatGPT review
+        self.assertTrue(any("needs reviewed_by_chatgpt true" in p for p in tracker_check.validate(trk, reg)))
 
     def test_bad_approval_source_is_caught_by_the_tracker_validator(self):
         sys.path.insert(0, str(ROOT / "dashboard"))
@@ -469,7 +498,8 @@ class GitFlowTests(unittest.TestCase):
         rc, out = self.run_cli(self.coord, "wave", "verify", "w01-demo", "--require-complete")
         self.assertEqual(rc, 1)                       # lane 2 has not delivered
         self.assertIn("lane L2", out)
-        rc, out = self.run_cli(self.coord, "wave", "close", "w01-demo", "--source", "REPORTED: x", "--date", "2026-11-17")
+        rc, out = self.run_cli(self.coord, "wave", "close", "w01-demo", "--approver", "chatgpt", "--source", "REPORTED: x",
+                                "--date", "2026-11-17")
         self.assertEqual(rc, 1)                       # no approval flags: refuses
 
     def test_verify_complete_wave_then_close(self):
@@ -482,13 +512,13 @@ class GitFlowTests(unittest.TestCase):
         out = []
         src = "REPORTED: ChatGPT approved under Lukas's standing delegation; not independently verified."
         # refused without both honest flags, with a bad source, and off the wave branch
-        self.assertEqual(waves.close(self.coord, "w01-demo", source=src, date="2026-11-17", chatgpt_approved=False,
+        self.assertEqual(waves.close(self.coord, "w01-demo", source=src, date="2026-11-17", approver="nobody",
                                      lukas_standing=True, log=out.append), 1)
         self.assertEqual(waves.close(self.coord, "w01-demo", source="trust me", date="2026-11-17",
-                                     chatgpt_approved=True, lukas_standing=True, log=out.append), 1)
-        self.assertEqual(waves.close(self.l1, "w01-demo", source=src, date="2026-11-17", chatgpt_approved=True,
+                                     approver="chatgpt", lukas_standing=True, log=out.append), 1)
+        self.assertEqual(waves.close(self.l1, "w01-demo", source=src, date="2026-11-17", approver="repository_coordinator",
                                      lukas_standing=True, log=out.append), 1)
-        self.assertEqual(waves.close(self.coord, "w01-demo", source=src, date="2026-11-17", chatgpt_approved=True,
+        self.assertEqual(waves.close(self.coord, "w01-demo", source=src, date="2026-11-17", approver="repository_coordinator",
                                      lukas_standing=True, log=out.append), 0, out)
         reg = json.loads((self.coord / "ACTIVE_TASKS.json").read_text(encoding="utf-8"))
         done = {t["id"]: t for t in reg["tasks"]}

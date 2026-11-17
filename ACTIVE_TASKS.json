@@ -395,7 +395,10 @@
         "ACTIVE_TASKS.json",
         "DEVELOPMENT_TRACKER.json",
         "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
+        "CHANGELOG.md",
+        "PROJECT_STATUS.json",
+        "dashboard/tracker_check.py",
+        "AI_Creator_Studio_Documentation/ENVIRONMENT.md"
       ],
       "acceptance_criteria": [
         "A wave manifest validator rejects overlapping lanes, shared registry files, reserved paths, unauthorized use of another stream's or an UNRESOLVED package, overlap with active tasks, bad task ids/branches/test modules and dependency cycles",
@@ -403,7 +406,8 @@
         "wave close generates COMPLETED registry and tracker records that pass the existing governance and tracker validators, and refuses without honest approval flags and a REPORTED or DIRECT source",
         "A validate GitHub Actions workflow and a pre-push hook exist; the protections actually available on this plan are verified and documented, not assumed",
         "WAVE_PROTOCOL.md, the operating protocol, the step protocol and CLAUDE.md describe waves; claim, step-start, lease-renewal and closeout pull requests are not needed for waves",
-        "Full suite, governance validate, handoff --check, scope and tracker_check pass; no product subsystem and no Creative Director file changes"
+        "Full suite, governance validate, handoff --check, scope and tracker_check pass; no product subsystem and no Creative Director file changes",
+        "Waves are the normal path in the protocols; the Repository Coordinator role (section 18) is defined with explicit gates and exclusions; the completion gate and wave close record an honest approver; documents match the repository's public status and the branch-protection facts observed with gh api"
       ],
       "test_requirements": [
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py",

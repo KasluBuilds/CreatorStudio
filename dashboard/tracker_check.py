@@ -27,6 +27,7 @@ TRANSITIONS = {
     "COMPLETED": set(),
 }
 WORKING = ("IN_PROGRESS", "READY_FOR_REVIEW")  # at most one such step per task (different tasks may each have one)
+APPROVERS = ("chatgpt", "repository_coordinator", "lukas")  # who technically approved a COMPLETED step
 EVIDENCE_TYPES = ("commit", "pull_request", "test_run", "observation", "document")
 # Keys that would duplicate another authoritative file. Rejected at any depth.
 FORBIDDEN_KEYS = {"weight", "weights", "percent", "percentage", "implementation_percent", "verification_percent",
@@ -67,8 +68,15 @@ def completion_problems(step: Dict[str, Any]) -> List[str]:
     c = step.get("completion")
     if not isinstance(c, dict):
         return out + [f"{sid}: a COMPLETED step needs a 'completion' record"]
-    if c.get("reviewed_by_chatgpt") is not True:
-        out.append(f"{sid}: completion needs reviewed_by_chatgpt true")
+    approver = c.get("approved_by")
+    if approver is not None and approver not in APPROVERS:
+        out.append(f"{sid}: completion approved_by must be one of {list(APPROVERS)}")
+    elif approver == "chatgpt" and c.get("reviewed_by_chatgpt") is not True:
+        out.append(f"{sid}: completion approved_by chatgpt needs reviewed_by_chatgpt true")
+    elif approver is None and c.get("reviewed_by_chatgpt") is not True:
+        out.append(f"{sid}: completion needs reviewed_by_chatgpt true (or approved_by repository_coordinator or lukas)")
+    elif approver in ("repository_coordinator", "lukas") and c.get("reviewed_by_chatgpt") is True:
+        out.append(f"{sid}: completion must not claim reviewed_by_chatgpt when approved_by is {approver}")
     if c.get("lukas_confirmed") is not True:
         out.append(f"{sid}: completion needs lukas_confirmed true (Lukas's confirmation: Lukas's direct word, or Lukas's standing instruction to ChatGPT recorded with a REPORTED source; see DEVELOPMENT_STEP_PROTOCOL.md section 3a)")
     if not (isinstance(c.get("date"), str) and DATE.match(c["date"])):
