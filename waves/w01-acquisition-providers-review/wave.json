@@ -3,7 +3,7 @@
   "wave_id": "w01-acquisition-providers-review",
   "title": "Offline-first asset acquisition (lane L1); research providers and creator review deferred",
   "integration_branch": "wave/w01-acquisition-providers-review",
-  "base_commit": "18e970e4f06bf7af12804dedc4ef0599cdedcf84",
+  "base_commit": "cdff7e2121fe655fb6e2f5d3c3b59b786d0f9219",
   "created": "2026-11-17",
   "inactivity_hours": 48,
   "lanes": [
