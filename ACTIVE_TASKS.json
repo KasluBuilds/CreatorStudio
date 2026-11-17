@@ -108,7 +108,8 @@
         "T-GOV-004",
         "T-DSH-001",
         "T-DSH-002",
-        "T-GOV-006"
+        "T-GOV-006",
+        "T-GOV-007"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -570,6 +571,35 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Completed 2026-11-17 as lane L1 of wave w01-acquisition-providers-review; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head da3f4ddc319e6c53378e09754cf9283b24bce0bc, lane head d105e6b7c1858abe0cdfc5f92e2e7547171ff05a). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-GOV-007",
+      "title": "Record the outcome of wave w01 in PROJECT_STATUS.json",
+      "owner": "claude:governance-session",
+      "description": "wave close writes only the four closeout records, so the milestone outcome of wave w01 is recorded here: M-AST-02 moves from NOT_STARTED to IN_PROGRESS (not complete) with unit-level evidence from lane L1, and the deferred Research and Creator DNA work is listed in next_actions. No milestone is verified on real input.",
+      "branch": "task/t-gov-007-w01-status",
+      "worktree": "../CreatorStudio-worktrees/t-gov-007-w01-status",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "M-AST-02 is IN_PROGRESS with unit-level evidence naming the lane commit and the not-yet-done work; it is not marked implemented or verified",
+        "The computed progress block is refreshed with governance score --write",
+        "The deferred Research and Creator DNA work is listed in next_actions",
+        "governance validate --against origin/main, handoff --check and tracker_check pass"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -m governance validate --against origin/main",
+        "cd orchestrator && python -B -m governance score --json",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 in one record-only pull request; checks were run on head 3222f237755fd84e4aa5846576e9b62c7e9fe994 before the closeout commits."
     }
   ]
 }

@@ -933,6 +933,52 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-GOV-007",
+      "title": "Record the outcome of wave w01",
+      "steps": [
+        {
+          "id": "S-GOV-007-00",
+          "title": "Step 0: milestone and next-action records for wave w01 (claim, record and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "M-AST-02 IN_PROGRESS with evidence, not complete",
+            "Deferred work listed",
+            "Computed block refreshed"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Head on which the checks were run before the closeout commits.",
+              "commit": "11bf7a9d6ba3489e0cd3192855d1f1ce0dff5614"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run locally by Claude Code: the canonical validator with the transition rules against origin/main, and the score calculation.",
+              "command": "cd orchestrator && python -B -m governance validate --against origin/main",
+              "result": "OK: status and task registry are valid and consistent"
+            },
+            {
+              "type": "observation",
+              "summary": "Record-only change to PROJECT_STATUS.json and the four registry records. M-AST-02 is IN_PROGRESS, not implemented or verified; the lane's own report states which work remains."
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate on this pull request at the head named in the integration notes.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "validate check SUCCESS"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas told the Repository Coordinator session on 2026-11-17 to close wave w01 and record the deferred work, proceeding autonomously. This records the wave's milestone outcome; it does not claim that Lukas or ChatGPT reviewed the evidence, which comes from lane L1's own report and a re-run of its tests."
+          }
+        }
+      ]
     }
   ]
 }
