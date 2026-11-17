@@ -825,6 +825,22 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-GOV-006",
+      "title": "Wave tooling fixes",
+      "steps": [
+        {
+          "id": "S-GOV-006-00",
+          "title": "Step 0: verify merge-base fix and workflow closeout allowance (claim, fix and closeout in one pull request)",
+          "status": "IN_PROGRESS",
+          "acceptance_criteria": [
+            "verify ignores main's files and catches real strays",
+            "workflow accepts the closeout commit on wave pushes"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }

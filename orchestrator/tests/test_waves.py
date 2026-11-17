@@ -534,6 +534,29 @@ class GitFlowTests(unittest.TestCase):
         # origin was never pushed to by close
         self.assertNotEqual(self.wave_tip(), _git(self.coord, "rev-parse", "HEAD"))
 
+    def test_verify_ignores_files_that_came_in_from_main_but_still_catches_strays(self):
+        self.work(self.l1, 1)
+        self.assertEqual(self.submit(self.l1)[0], 0)
+        # main moves on with an unrelated file; the integrator merges main into the wave branch before the single pull request
+        _write(self.seed / "unrelated" / "new.txt", "from main\n")
+        _git(self.seed, "add", "--", "unrelated/new.txt")
+        _git(self.seed, "commit", "-q", "-m", "main moves on")
+        _git(self.seed, "push", "-q", "origin", "main")
+        _git(self.coord, "pull", "-q", "--ff-only", "origin", "wave/w01-demo")
+        _git(self.coord, "fetch", "-q", "origin")
+        _git(self.coord, "merge", "-q", "--no-edit", "origin/main")
+        self.assertEqual(waves.verify(self.coord, "w01-demo"), [], "main's own files are not the wave's")
+        _write(self.coord / "orchestrator/stray/x.py", "x\n")
+        _git(self.coord, "add", "--", "orchestrator/stray/x.py")
+        _git(self.coord, "commit", "-q", "-m", "stray")
+        ps = waves.verify(self.coord, "w01-demo")
+        self.assertEqual([p for p in ps if "belongs to no lane" in p], ["orchestrator/stray/x.py changed on the wave branch but belongs to no lane"])
+
+    def test_the_workflow_allows_the_closeout_records_on_wave_branch_pushes(self):
+        text = (ROOT / ".github" / "workflows" / "validate.yml").read_text(encoding="utf-8")
+        self.assertEqual(text.count("wave verify"), 2)
+        self.assertEqual(text.count("--allow-closeout"), 2, "both the push and the pull_request gate accept the closeout commit")
+
     def test_verify_rejects_unfinished_lanes_and_strays(self):
         self.work(self.l1, 1, status="IN_PROGRESS")
         self.assertEqual(self.submit(self.l1)[0], 0)           # partial work may be submitted
