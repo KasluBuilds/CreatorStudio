@@ -48,7 +48,7 @@ jobs:
 
       - name: Development tracker
         shell: bash
-        run: python -B dashboard/tracker_check.py --against origin/main
+        run: python -B dashboard/tracker_check.py --against origin/main --head "origin/${HEAD_REF}"
 
       - name: Wave gate (wave branches only)
         if: startsWith(github.head_ref || github.ref_name, 'wave/')
