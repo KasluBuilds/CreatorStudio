@@ -653,6 +653,63 @@
       ]
     },
     {
+      "task_id": "T-DSH-001",
+      "title": "Creator Studio desktop development dashboard",
+      "steps": [
+        {
+          "id": "S-DSH-001-00",
+          "title": "Step 0: registry, desktop app, tests, packaging and documentation (claim, implementation and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Agent registry and validator exist and pass against the real records",
+            "The Electron app, its data layer, views and self-test exist; JS tests pass; the JS model agrees with governance.status on the current records",
+            "The packaged exe passes its self-test live, offline and against a fixture",
+            "README documents install, refresh, update and troubleshooting"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Pull request head on which the gates were run (validate green on GitHub) before this closeout commit.",
+              "commit": "32e96d57d8c0bd12dfed4f036e128fafadcc3241"
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions workflow validate on pull request #33 at the commit above: Node tests for the desktop app.",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "61 tests: pass 61, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Same workflow run: full Python suite, which includes the 17 agent-registry tests and the 7 cross-language tests proving the app's credits, phase figures, agent assignment and gate state equal governance.status on the current records (skips 49 on the runner, 1 locally).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1333 tests: OK (skipped=49)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run locally by Claude Code on the working tree before the commit (not independently run by ChatGPT).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1333 tests: OK (skipped=1)"
+            },
+            {
+              "type": "observation",
+              "summary": "Packaged electron-builder portable exe (110 MB), built before a later F5 key-handler change and driven by its own --selftest, reviewed with screenshots: local fixture 38 of 38 checks, live GitHub (read main 18e970e) 41 of 41, offline from the saved snapshot 40 of 40. The release exe is rebuilt from merged main and re-tested before it is published; the release is recorded in a follow-up."
+            },
+            {
+              "type": "observation",
+              "summary": "Only the four shared registry files, .github/workflows/validate.yml (one added Node step), .gitignore, PROJECT_OPERATING_PROTOCOL.md (one table row), orchestrator/governance/ and the new dashboard/desktop, AGENT_REGISTRY.json and test files changed. No product package, no Creative Director file and nothing of the active wave w01 changed. Implemented and tested; not VERIFIED on a user's real workflow."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas assigned this work to the Repository Coordinator session on 2026-11-17 and told it to take responsibility for the complete implementation, testing, self-review and integration. This records that direct assignment; it does not claim that Lukas or ChatGPT reviewed the code, which was written by this same session. The gates were mechanical (CI, validators, tests) plus the self-review recorded in the pull request."
+          }
+        }
+      ]
+    },
+    {
       "task_id": "T-DNA-002",
       "title": "Learning-ready Creator DNA core (M-DNA-02a): attribution verification, consent, analyzers, review loop",
       "steps": [

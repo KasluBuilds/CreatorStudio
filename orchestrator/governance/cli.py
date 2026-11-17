@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from . import agents as agents_mod
 from . import handoff as handoff_mod
 from . import status as status_mod
 from . import tasks as tasks_mod
@@ -18,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 STATUS_FILE = "PROJECT_STATUS.json"
 TASKS_FILE = "ACTIVE_TASKS.json"
 HANDOFF_FILE = "SESSION_HANDOFF.md"
+AGENTS_FILE = "AGENT_REGISTRY.json"
 
 
 def _load(path: Path):
@@ -143,6 +145,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             sdoc, tdoc = _load(sfile), _load(tfile)
             problems = [f"{STATUS_FILE}: {x}" for x in status_mod.validate(sdoc)]
             problems += [f"{TASKS_FILE}: {x}" for x in tasks_mod.validate(tdoc)]
+            if (root / AGENTS_FILE).exists():
+                problems += [f"{AGENTS_FILE}: {x}" for x in
+                             agents_mod.validate(_load(root / AGENTS_FILE), sdoc, tdoc, root)]
             if not problems:
                 problems += [f"{STATUS_FILE}: {x}" for x in status_mod.check_computed(sdoc)]
             if not problems and args.against:
