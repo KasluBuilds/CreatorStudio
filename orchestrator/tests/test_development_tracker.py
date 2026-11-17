@@ -433,6 +433,28 @@ class TestCliAgainstBase(unittest.TestCase):
         code, out = self.run_cli("--against", main_ref, "--head", task_head)
         self.assertEqual(code, 0, out)
 
+    def test_main_side_multi_commit_transitions_are_not_collapsed_at_merge(self):
+        def snapshot(gov_status, ast_status):
+            return multi(task("T-GOV-002", step(0, "COMPLETED"), step(1, gov_status), step(2)),
+                         task("T-AST-001", astep(0, ast_status)))
+
+        (self.root / "ACTIVE_TASKS.json").write_text(json.dumps(MULTI_REGISTRY), encoding="utf-8")
+        self.commit(snapshot("PLANNED", "PLANNED"))
+        self.git("checkout", "-b", "task")
+        self.commit(snapshot("IN_PROGRESS", "PLANNED"))
+        self.git("checkout", "main")
+        self.commit(snapshot("PLANNED", "IN_PROGRESS"), "main step start")
+        self.commit(snapshot("PLANNED", "READY_FOR_REVIEW"), "main step review")
+        main_ref = self.git("rev-parse", "HEAD")
+        self.git("checkout", "task")
+        self.git("merge", "--no-ff", "-m", "merge main", "main")
+        self.commit(snapshot("READY_FOR_REVIEW", "READY_FOR_REVIEW"), "finish task step")
+        task_head = self.git("rev-parse", "HEAD")
+        self.git("checkout", "main")
+        self.git("merge", "--no-ff", "-m", "synthetic PR merge", "task")
+        code, out = self.run_cli("--against", main_ref, "--head", task_head)
+        self.assertEqual(code, 0, out)
+
     def test_illegal_transition_fails_through_the_cli(self):
         self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED")))
         # PLANNED -> COMPLETED, with a fully valid-looking completion record: only the history check can catch it
