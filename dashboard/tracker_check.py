@@ -5,10 +5,12 @@ Standard library only. Read-only: it never writes any project file. The tracker 
 duplicate milestone states or percentages (PROJECT_STATUS.json) or task ownership and leases (ACTIVE_TASKS.json).
 Usage from the repository root:
     python -B dashboard/tracker_check.py [--root DIR] [--against REF]
-Without --against it validates the current file only. With --against REF (for example origin/main) it also reads
-DEVELOPMENT_TRACKER.json as committed at REF (`git show`, read-only) and rejects illegal historical changes: a
-disallowed status transition, an edit to a COMPLETED step, or a removed step. If REF has no tracker file yet, there
-is nothing to compare and that is reported. Exit codes: 0 ok, 1 problems found, 2 files, REF or git unusable.
+Without --against it validates the current file only. With --against REF (for example origin/main), REF must be
+an ancestor of HEAD. The checker finds the branch fork point shared with REF, then reads every committed
+DEVELOPMENT_TRACKER.json snapshot on the first-parent path from that point to HEAD (`git show`, read-only), in
+order, and compares the working-tree file with HEAD. It rejects every illegal intermediate transition, an edit to a
+COMPLETED step, or a removed step; later commits cannot hide an earlier violation. Exit codes: 0 ok, 1 problems
+found, 2 files, REF or git unusable.
 """
 import json
 import re
