@@ -1066,6 +1066,39 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-RSV-002",
+      "title": "Safe, validated DaVinci Resolve execution layer (M-RSV-02)",
+      "steps": [
+        {
+          "id": "S-RSV-002-00",
+          "title": "Step 0: claim branch",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-RSV-002 is registered as ACTIVE with a 24-hour lease, owned paths, exclusive resource 'resolve', acceptance criteria and test requirements",
+            "Package owner entry resolve_executor added; AGR-GOV-REGISTRY-01 extended to T-RSV-002; no other task's record is edited",
+            "Governance validate, handoff check, scope check and tracker check pass"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 469b95d in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md change."
+            }
+          ]
+        },
+        {
+          "id": "S-RSV-002-01",
+          "title": "Step 1: Resolve execution layer, frame accuracy, render verification, capability inventory",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Package, tests and documentation per the task acceptance criteria",
+            "Live evidence recorded wherever the environment permits; missing evidence stated exactly",
+            "Full suite and all governance validators pass"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }
