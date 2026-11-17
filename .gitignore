@@ -144,3 +144,7 @@ Desktop.ini
 .DS_Store
 .vscode/
 .idea/
+
+# Desktop dashboard (dashboard/desktop): dependencies and build output are never committed.
+dashboard/desktop/node_modules/
+dashboard/desktop/dist/

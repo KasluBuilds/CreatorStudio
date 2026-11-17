@@ -32,6 +32,7 @@ WAVE_ID = re.compile(r"^w\d{2,3}-[a-z0-9][a-z0-9-]*$")
 LANE_ID = re.compile(r"^L\d{1,2}$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+MILESTONE_ID = re.compile(r"^M-[A-Z]{3}-\d{2}$")
 TEST_MODULE = re.compile(r"^test_[a-z0-9_]+\.py$")
 GRANTORS = ("lukas", "integrator")
 APPROVERS = ("chatgpt", "repository_coordinator", "lukas")
@@ -157,6 +158,9 @@ def validate_manifest(m: Any, registry: Optional[Dict[str, Any]] = None, allow_a
             p.append(f"{label}: test_modules must be a non-empty list of names like test_assets.py")
         if not _strs(lane.get("depends_on", [])):
             p.append(f"{label}: depends_on must be a list of lane ids")
+        ms = lane.get("milestones", [])
+        if not (isinstance(ms, list) and all(isinstance(x, str) and MILESTONE_ID.match(x) for x in ms)):
+            p.append(f"{label}: milestones (optional) must be a list of milestone ids like M-AST-02")
         auths = lane.get("authorizations", [])
         if not isinstance(auths, list):
             p.append(f"{label}: authorizations must be a list")
@@ -317,6 +321,8 @@ paths, write it in `report.json` under `unresolved` and stop that part; do not e
 
 ## Working rules
 1. Work autonomously in this worktree. Do not ask for approval between steps, and do not open pull requests.
+   Commit often and push your lane branch regularly (`git push origin HEAD`): a push is your heartbeat, and it is how
+   the development dashboard and `wave status` can see that you are working.
 2. Commit explicit paths only (never `git add .`). Never force-push. Never push to `main`.
 3. Write `{lane_dir(wid, lid)}report.json` (see `waves/TEMPLATE/lane_report.json`): status, summary, the exact commands you
    ran with their results, anything unresolved, and a one-line changelog entry. Use status `DONE` only when every
