@@ -366,7 +366,8 @@
         "A deterministic research digest covers the contract, original claim status, safety metadata, producer usage and derived category/usage; it is documented as an integrity consistency check, not authentication or proof of packet authorship",
         "Validation detects tampering with digest-covered fields and rejects hooks that rely on unresolved, safety-critical, warned, metadata-missing or non-verified claims",
         "Synthetic tests cover missing, malformed, unsupported and valid contract versions and the safety-critical, unresolved-warning, producer-usage, digest and hook cases; existing fixtures migrate to 0.3; the full suite passes with python -B -I",
-        "orchestrator/creative_director/README.md documents the fail-closed behavior, the digest limits and the producer-rule synchronization risk"
+        "orchestrator/creative_director/README.md documents the fail-closed behavior, the digest limits and the producer-rule synchronization risk",
+        "A verified fact requires complete supporting provenance: recognized non-unreviewed review_label and present recognized verification_level; missing or malformed provenance metadata never counts as support."
       ],
       "test_requirements": [
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creative_director.py",
