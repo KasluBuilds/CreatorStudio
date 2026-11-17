@@ -497,8 +497,8 @@ def source_supports(p: Any) -> tuple[bool, str]:
     Returns (qualifies, reason-if-not). All of these must hold:
       - stance == "supports"            ("contradicts" and "context" never support)
       - counted_as_evidence is True     (False, missing or non-boolean never supports)
-      - review_label != "unreviewed"    (explicitly "can never establish anything")
-      - verification_level, if present, is one of assessed/human/process
+      - review_label is present and recognized (and not "unreviewed")
+      - verification_level is present and one of assessed/human/process
       - no conflicting duplicate records for the same source id (stance or counted_as_evidence)"""
     if not isinstance(p, dict):
         return False, "not a source record"
@@ -512,9 +512,12 @@ def source_supports(p: Any) -> tuple[bool, str]:
     if p.get("counted_as_evidence") is not True:
         return False, ("not counted as evidence" if p.get("counted_as_evidence") is False
                        else "counted_as_evidence missing or not a boolean")
-    if p.get("review_label") == "unreviewed":
+    review_label = p.get("review_label")
+    if review_label not in REVIEW_LABELS:
+        return False, "review_label missing or unrecognised"
+    if review_label == "unreviewed":
         return False, "unreviewed"
-    if "verification_level" in p and p["verification_level"] not in VERIFICATION_LEVELS:
+    if p.get("verification_level") not in VERIFICATION_LEVELS:
         return False, "verification_level missing or unrecognised"
     return True, ""
 
