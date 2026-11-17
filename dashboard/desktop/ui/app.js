@@ -89,7 +89,7 @@
 
   function tabs() {
     const m = state.model && state.model.ok ? state.model : null;
-    const items = [['overview', 'Overview', '#/overview']];
+    const items = [['overview', 'Overview', '#/overview'], ['orbit', 'Orbit', '#/orbit']];
     if (m) {
       for (const a of m.agents) items.push([`agent:${a.id}`, a.name, `#/agent/${a.id}`, a.active]);
       items.push(['roadmap', 'Global roadmap', '#/roadmap']);
@@ -102,6 +102,7 @@
 
   function body() {
     const m = state.model;
+    if (route.view === 'orbit') return h('main', { id: 'view', 'data-view': 'orbit' }, D.views.renderOrbit(state.orbit));
     if (!m) return h('main', { class: 'empty' }, h('h1', null, 'Waiting for data'), h('p', null, state.refreshing ? 'Fetching the canonical records from GitHub…' : 'No data has been loaded yet. Check your internet connection and press Refresh.'));
     if (!m.ok) return h('main', { class: 'empty' }, h('h1', null, 'The data cannot be shown'), h('p', null, m.problems.join(' ')));
     let view;
@@ -126,7 +127,7 @@
     els.root.appendChild(banners());
     els.root.appendChild(tabs());
     els.root.appendChild(body());
-    document.title = state.attention.length ? 'ACTION REQUIRED — Creator Studio Dashboard' : 'Creator Studio Dashboard';
+    document.title = state.attention.length ? 'ACTION REQUIRED — Orbit · Creator Studio Dashboard' : 'Orbit · Creator Studio Dashboard';
     // draw the travelled part of every road now that the geometry exists
     els.root.querySelectorAll('svg.road-svg').forEach((s) => { if (s.__afterAttach) s.__afterAttach(); });
     const sel = els.root.querySelector('.node.selected');
@@ -138,6 +139,8 @@
 
   function setState(s) { state = s; render(); }
 
+  // Ages on the Orbit view are recomputed from the snapshot's own timestamps, so re-read it every 30 s while it is open.
+  setInterval(async () => { if (route.view === 'orbit' && window.dashboard) setState(await window.dashboard.getState()); }, 30000);
   window.addEventListener('hashchange', render);
   window.addEventListener('DOMContentLoaded', async () => {
     els.root = document.getElementById('root');
