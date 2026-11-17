@@ -560,6 +560,7 @@
           "acceptance_criteria": [
             "Exact research->creative_director/0.3 contract; invalid versions produce no partial Research context",
             "Original Research claim status, safety_critical, unresolved_safety_warning and producer usage preserved as typed metadata; missing or malformed safety metadata fails closed",
+            "Verified facts require complete supporting provenance: recognized non-unreviewed review_label and present recognized verification_level; incomplete source metadata cannot establish support.",
             "Unverified safety-critical and warned claims capped below verified; verified safety-critical claims never hooks; producer usage validated against mirrored rules",
             "Deterministic research digest (integrity consistency only); tampering and unsafe hooks rejected by validation",
             "Synthetic regression tests in test_creative_director.py; creative_director/README.md written; the full suite passes",
@@ -587,6 +588,10 @@
             {
               "type": "document",
               "summary": "orchestrator/creative_director/README.md documents the fail-closed behavior, preserved fields, restrictions, duplicate resolution, the mirrored producer rule and its manual synchronization risk, the digest and its limits, hook rules and the schema version bump."
+            },
+            {
+              "type": "observation",
+              "summary": "Independent safety review found that a source with missing review_label or verification_level could still count as supporting evidence. source_supports() now requires both fields to be present and recognized; missing, null or unknown values fail closed. Added regression cases, and README documents the provenance requirements."
             }
           ]
         }
