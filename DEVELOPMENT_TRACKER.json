@@ -1022,7 +1022,7 @@
         {
           "id": "S-RSV-002-00",
           "title": "Step 0: claim branch",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-RSV-002 is registered as ACTIVE with a 24-hour lease, owned paths, exclusive resource 'resolve', acceptance criteria and test requirements",
             "Package owner entry resolve_executor added; AGR-GOV-REGISTRY-01 extended to T-RSV-002; no other task's record is edited",
@@ -1032,13 +1032,25 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main 469b95d in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md change."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #40 merged into main with a merge commit after the validate check passed on head 5668619.",
+              "commit": "f274e84b10566322b0c30f94715be42c973223aa"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas assigned T-RSV-002 to this session in the session on 2026-11-17 and authorized it to open and merge its own pull requests after technical self-review once all required checks pass. This records that direct authorization; it does not claim that Lukas or ChatGPT reviewed the claim, which this session wrote. The gates were mechanical (CI validate on the exact head, governance validators)."
+          }
         },
         {
           "id": "S-RSV-002-01",
           "title": "Step 1: Resolve execution layer, frame accuracy, render verification, capability inventory",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "Package, tests and documentation per the task acceptance criteria",
             "Live evidence recorded wherever the environment permits; missing evidence stated exactly",
