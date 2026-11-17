@@ -563,7 +563,7 @@
             "Unverified safety-critical and warned claims capped below verified; verified safety-critical claims never hooks; producer usage validated against mirrored rules",
             "Deterministic research digest (integrity consistency only); tampering and unsafe hooks rejected by validation",
             "Synthetic regression tests in test_creative_director.py; creative_director/README.md written; the full suite passes",
-            "Only orchestrator/creative_director/ and test_creative_director.py change besides the shared registry files"
+            "Creative Director implementation changes only orchestrator/creative_director/ and orchestrator/tests/test_creative_director.py besides shared registry files; integrator-owned tracker history correction is separately authorized by AGR-CRD-TRACKER-HISTORY-01 and limited to dashboard/tracker_check.py, DEVELOPMENT_STEP_PROTOCOL.md and orchestrator/tests/test_development_tracker.py."
           ],
           "evidence": [
             {
@@ -582,7 +582,7 @@
             },
             {
               "type": "observation",
-              "summary": "Tracker transition evidence. Checkpoint commit 2da5ad8897969bddc5905d2c3c429d056f0b6e6f (merge of origin/main 18e970e into the branch) holds S-CRD-001-01 IN_PROGRESS; the READY_FOR_REVIEW commit is validated against it with python -B dashboard/tracker_check.py --against 2da5ad8897969bddc5905d2c3c429d056f0b6e6f (IN_PROGRESS -> READY_FOR_REVIEW, legal). Compared directly with origin/main, where the step is still PLANNED, tracker_check --against origin/main reports 'transition PLANNED -> READY_FOR_REVIEW is not allowed'. That is expected: the authorization was one implementation batch in one PR with no separate step-start PR, so no commit on main ever recorded IN_PROGRESS. The IN_PROGRESS state exists only in this branch's history (commits 249de19 and the checkpoint above). The integrator must accept or waive that single check result."
+              "summary": "Tracker transition evidence: checkpoint commit 2da5ad8897969bddc5905d2c3c429d056f0b6e6f holds S-CRD-001-01 IN_PROGRESS and the final branch holds READY_FOR_REVIEW. The integrator's history-aware checker validates every committed tracker snapshot from the branch fork point through HEAD, including the merge of newer origin/main, then the working tree. It preserves the legal PLANNED -> IN_PROGRESS -> READY_FOR_REVIEW sequence and rejects skipped intermediate states; no waiver or transition-graph change is used. Regression tests cover the legal chain, a hidden illegal intermediate transition, and a main-merge scenario."
             },
             {
               "type": "document",
