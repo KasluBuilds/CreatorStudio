@@ -4,6 +4,11 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-RSR-001` claim (branch `task/t-rsr-001-claim`, pending integration)
+
+- Claim only: registers `T-RSR-001` (owner `claude:research-stream`, 24-hour lease, `AGR-GOV-REGISTRY-01` extended to it) and steps `S-RSR-001-00` (claim, `READY_FOR_REVIEW`) and `S-RSR-001-01` (implementation, `PLANNED`, not started). Owned paths: `orchestrator/research/`, `orchestrator/tests/test_research.py` and the four shared registry files. No source, test, documentation, status or milestone change.
+- Scope: findings F-01, F-02, F-04, F-05, F-06, F-07 recovered from the Assignment 5 audit (NOT READY). The audit report is not in the repository and no F-03 finding is established by the available evidence. `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## 2026-11-17 — task `T-GOV-005` wave wording follow-up (complete)
 
 - `CLAUDE.md`: a wave lane's manifest entry is its claim and it never edits `ACTIVE_TASKS.json`; standalone tasks still claim first; a redundant sentence added by T-GOV-004 is removed; no step stops inside a wave.

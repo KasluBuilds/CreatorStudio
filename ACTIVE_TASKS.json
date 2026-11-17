@@ -100,12 +100,13 @@
   },
   "integration_agreements": {
     "AGR-GOV-REGISTRY-01": {
-      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-002, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time.",
+      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-002, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time. Extended to T-RSR-001 (Research security remediation, Assignment 6) by its claim pull request on the same terms, with Lukas's and ChatGPT's authorization relayed in session 2026-11-17.",
       "task_ids": [
         "T-AST-002",
         "T-DNA-001",
         "T-CRD-001",
-        "T-GOV-004"
+        "T-GOV-004",
+        "T-RSR-001"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -425,6 +426,51 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Opened, delivered and closed in one small pull request as part of the Phase 3 direction Lukas gave the Repository Coordinator on 2026-11-17 (waves are the normal path, remove administrative pull requests). Touches no product package and no Creative Director file. Completion is recorded as DIRECT from that instruction; it is not a code review."
+    },
+    {
+      "id": "T-RSR-001",
+      "title": "Research security remediation (Assignment 6: findings F-01, F-02, F-04, F-05, F-06, F-07)",
+      "description": "Remediate the six findings recovered from the Assignment 5 independent audit (verdict NOT READY) in orchestrator/research/: F-01 retargetable human review (signature omits trust-relevant fields), F-02 signing authority reachable by the LLM-facing agent (Research-side boundary only; the external signer is a separate orchestrator-side dependency), F-04 invented URLs satisfying two-Tier-B verification without retrieval proof, F-05 erasable or manufacturable contradictions, F-06 weak-source quantity overwhelming stronger evidence, F-07 trusted caller-supplied exported derived fields. F-03 is not in the recovered audit record and is not invented. Adversarial regression tests for every finding. No Asset, Creative Director, orchestrator or governance code change; no Research-to-Asset integration; no real footage.",
+      "owner": "claude:research-stream",
+      "branch": "task/t-rsr-001-claim",
+      "worktree": "../CreatorStudio-worktrees/t-rsr-001-claim",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-17T15:41:57+00:00",
+        "expires": "2026-11-18T15:41:57+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/research/",
+        "orchestrator/tests/test_research.py",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "F-01: the human-review attestation binds every decision-relevant field (subject, context, evidence, purpose, trust metadata); mutating any one field independently invalidates it",
+        "F-02: Research never holds, loads, logs or serializes private signing material; it fails closed when the external signing/verification boundary is absent; the external signer integration is reported as a separate dependency, not claimed complete",
+        "F-04: an LLM-supplied URL is only a lead; verification needs a traceable retrieval record and inspected content bound to the source; fabricated URLs, metadata or absent content never satisfy thresholds",
+        "F-05: contradictions survive relabelling, status changes and context mutation; resolution is explicit, evidence-backed and auditable; fabricated evidence cannot manufacture a resolution",
+        "F-06: weak, duplicated or derivative sources cannot outweigh stronger reviewed evidence by quantity",
+        "F-07: exported derived fields are recomputed from canonical data or rejected on mismatch; each is tamper-tested independently",
+        "Adversarial regression tests for every finding and their interactions; existing public contracts kept unless a documented version bump is required",
+        "Only orchestrator/research/ and orchestrator/tests/test_research.py change besides the shared registry files; full suite passes with python -B -I"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_research.py",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Claim only (step 00); implementation (step 01) is not started until this claim is merged on main. Authorized by Lukas and ChatGPT (relayed in session 2026-11-17) to act as Research owner; the package owner record claude:research-stream is still REPORTED, not independently confirmed. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; each task edits only its own records. The Assignment 5 audit report is not in the repository: scope is the recovered finding summary relayed by Lukas, and the available evidence does not establish an F-03 finding. Historical counts (220 Research tests, 831 full suite) are reported, not verified. Synthetic data only."
     }
   ]
 }
