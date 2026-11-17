@@ -448,6 +448,42 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-AST-002",
+      "title": "Recover and complete Asset required-use fail-closed implementation",
+      "steps": [
+        {
+          "id": "S-AST-002-00",
+          "title": "Step 0: takeover claim",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-AST-002 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements; T-AST-001 is RELEASED with its lease cleared",
+            "No overlap with another task and no edit to a package owned by someone else; the abandoned owner's branch and worktree are untouched",
+            "Governance validate, handoff check, scope check and tracker check pass",
+            "The claim pull request is opened and merged by ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Takeover claim branch created from origin/main 91151ea8f73b0ce9cc8f39767196ab0e1fc2d828 in a new worktree after Lukas confirmed claude:asset-stream is abandoned; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            }
+          ]
+        },
+        {
+          "id": "S-AST-002-01",
+          "title": "Step 1: required-use fail-closed fix and regression tests (continue from cc98875)",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Non-empty required_uses with empty allowed_uses returns QUARANTINE (new reason code, no other severity change)",
+            "Explicitly allowed uses still reach PERMITTED when all other checks pass",
+            "A required use missing from a non-empty allowed_uses stays QUARANTINE",
+            "Synthetic regression tests for all three cases are added to orchestrator/tests/test_assets.py",
+            "Only orchestrator/assets/rights.py and orchestrator/tests/test_assets.py change besides the shared registry files; the full suite passes"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }

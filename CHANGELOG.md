@@ -4,6 +4,11 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-AST-002` takeover claim (branch `task/asset-required-uses-fail-closed-recovery`, pending review)
+
+- Claim only: Lukas confirmed on 2026-11-17 that `claude:asset-stream` is abandoned (lease expired 2026-11-15). `T-AST-001` is marked `RELEASED` with its lease cleared; the original branch `task/asset-required-uses-fail-closed` (head `cc98875`, PR #17) and its worktree are preserved untouched. `T-AST-002` (owner `claude:asset-recovery`, 24-hour lease, depends on `T-AST-001`) and steps `S-AST-002-00` (claim, `READY_FOR_REVIEW`) and `S-AST-002-01` (implementation, `PLANNED`, not started) are registered; `package_owners.assets` and `AGR-GOV-REGISTRY-01` now name the new owner/task. All `T-AST-001` tracker steps are preserved as history. No source, test, status or milestone change.
+- `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## 2026-11-17 — task `T-DNA-001` closeout (complete; lease and owned paths released)
 
 - T-DNA-001 is complete. PR #20 was reviewed by ChatGPT and merged into `main` (merge commit `59b14a6c0215fbeb22321fc790750a4926e3bd19`; reviewed head `30ab9b39fe43c428110c699e577492d574a1d1ca`) after claim PR #15 and step-start PR #19. This closeout pull request moves S-DNA-001-01 to `COMPLETED` with a `REPORTED` completion record (ChatGPT technically approved the step and merged under Lukas's standing delegation; this does not claim Lukas reviewed the code), sets T-DNA-001 `COMPLETED` and releases its lease and owned paths. `SESSION_HANDOFF.md` regenerated with the official command.
