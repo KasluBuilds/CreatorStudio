@@ -16,8 +16,8 @@ import enum
 from dataclasses import dataclass, field
 from typing import Any
 
-SCHEMA_VERSION = "creative_director.story_brief/0.2"
-EDITOR_VIEW_CONTRACT = "creative_director.editor_view/0.2"
+SCHEMA_VERSION = "creative_director.story_brief/0.3"          # 0.3 (T-CRD-001): research safety metadata + research_digest
+EDITOR_VIEW_CONTRACT = "creative_director.editor_view/0.3"    # 0.3: research_context items carry the safety metadata
 
 OBSERVED, INFERRED, SUGGESTED = "observed", "inferred", "suggested"
 
@@ -277,6 +277,18 @@ class ResearchItem:
     conflicts: tuple[str, ...] = ()     # duplicate/conflicting entries seen for this claim id
     presented_as: str = "research_context_not_a_creator_statement"
     basis: str = "research_brief"
+    # ---- T-CRD-001: what the Research producer said, kept apart from what this package derives from it.
+    # `usage` above is OURS (derived); `producer_usage` is the producer's own string, never replaced or discarded.
+    producer_kind: str = "fact"                     # fact | opinion | interpretation | hypothesis | unknown
+    producer_status: str | None = None              # the claim status exactly as the packet gave it (cleaned)
+    safety_critical: bool | None = None             # None = missing or malformed (fails closed), see safety_metadata
+    unresolved_safety_warning: bool | None = None
+    safety_metadata: str = "not_applicable"         # ok | missing | malformed | not_applicable
+    producer_usage: str | None = None
+    usage_check: str = "missing"                    # matches | mismatch | missing | unverifiable
+    restricted: bool = False                        # True: capped below verified; never ordinary factual guidance
+    restriction_reasons: tuple[str, ...] = ()
+    metadata_conflicts: tuple[str, ...] = ()        # duplicate entries that disagreed on producer metadata
 
 
 @dataclass(frozen=True)
@@ -345,6 +357,7 @@ class StoryBrief:
     authenticity: dict[str, Any]
     material_digest: dict[str, Any]     # sha256 of the transcript the brief was planned from
     research_meta: dict[str, Any]
+    research_digest: dict[str, Any]    # integrity consistency check over the research claims (NOT authentication)
     dna_notice: str
 
     def to_dict(self) -> dict[str, Any]:

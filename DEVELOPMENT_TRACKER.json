@@ -527,7 +527,7 @@
         {
           "id": "S-CRD-001-00",
           "title": "Step 0: claim branch",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-CRD-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
             "No overlap with another task and no edit to a package owned by someone else; no other task's record is edited",
@@ -538,22 +538,89 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main a6a89a2 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #18 merged into main (merge commit shown); reviewed head is 2e2e48e28b0c6e2d4eee0c2350bf83e60b451921. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:41:11Z) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/18",
+              "commit": "9dfaec269e62461b0a5d27edcf03bece9d466511"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: the integrator (ChatGPT, under Lukas's standing delegation) told Claude in this session that claim PR #18 was merged and that T-CRD-001 is officially authorized, with Step 1 to be completed as one implementation batch in one PR; this is delegated technical approval, not a claim that Lukas personally reviewed the code. Claude verified only that PR #18 is MERGED on GitHub (merge commit 9dfaec269e62461b0a5d27edcf03bece9d466511, head 2e2e48e) and that the merge commit is an ancestor of origin/main. Does not claim ChatGPT re-ran any command."
+          }
         },
         {
           "id": "S-CRD-001-01",
           "title": "Step 1: exact Research contract, safety metadata, research digest, tests and README",
-          "status": "PLANNED",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Exact research->creative_director/0.3 contract; invalid versions produce no partial Research context",
             "Original Research claim status, safety_critical, unresolved_safety_warning and producer usage preserved as typed metadata; missing or malformed safety metadata fails closed",
+            "Verified facts require complete supporting provenance: recognized non-unreviewed review_label and present recognized verification_level; incomplete source metadata cannot establish support.",
             "Unverified safety-critical and warned claims capped below verified; verified safety-critical claims never hooks; producer usage validated against mirrored rules",
             "Deterministic research digest (integrity consistency only); tampering and unsafe hooks rejected by validation",
             "Synthetic regression tests in test_creative_director.py; creative_director/README.md written; the full suite passes",
-            "Only orchestrator/creative_director/ and test_creative_director.py change besides the shared registry files"
+            "Creative Director implementation changes only orchestrator/creative_director/ and orchestrator/tests/test_creative_director.py besides shared registry files; integrator-owned tracker history correction is separately authorized by AGR-CRD-TRACKER-HISTORY-01 and limited to dashboard/tracker_check.py, DEVELOPMENT_STEP_PROTOCOL.md, orchestrator/tests/test_development_tracker.py and .github/workflows/validate.yml."
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Full suite on the final code after merging origin/main 18e970e: 1366 tests, 1 skipped (unchanged), no failures. test_creative_director.py is 189 tests (was 132 before T-CRD-001). Synthetic data only.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1366 tests in 341.783s - OK (skipped=1)"
+            },
+            {
+              "type": "observation",
+              "summary": "Review rework (duplicate claim metadata): from_packet() now judges each duplicate entry on its own metadata, selects the kept entry by a total order (permissiveness, restricted first, kind, status, usage, text, attribution) instead of input position, merges safety flags pessimistically and records any disagreement on producer kind/status/usage/flags in ResearchItem.metadata_conflicts, which restricts the claim. Tests permute every ordering (including entries split across both claim lists) and assert identical results, never-more-permissive, and a recorded conflict. Mutation checks: ignoring the conflict, restoring the order-dependent selection, taking flags from the first entry and not recording kind conflicts each fail tests."
+            },
+            {
+              "type": "observation",
+              "summary": "Also from the review: the research digest additionally covers claim text, attribution, source ids and duplicate conflicts, and is carried and validated by the editor view (brief and view fail on a changed digest even without the brief). Old 0.2 documents are rejected by validation and load()."
+            },
+            {
+              "type": "observation",
+              "summary": "Tracker transition evidence: checkpoint commit 2da5ad8897969bddc5905d2c3c429d056f0b6e6f holds S-CRD-001-01 IN_PROGRESS and the final branch holds READY_FOR_REVIEW. The integrator's history-aware checker validates every committed tracker snapshot from the branch fork point through HEAD, including the merge of newer origin/main, then the working tree. It preserves the legal PLANNED -> IN_PROGRESS -> READY_FOR_REVIEW sequence and rejects skipped intermediate states; no waiver or transition-graph change is used. Regression tests cover the legal chain, a hidden illegal intermediate transition, and a main-merge scenario."
+            },
+            {
+              "type": "document",
+              "summary": "orchestrator/creative_director/README.md documents the fail-closed behavior, preserved fields, restrictions, duplicate resolution, the mirrored producer rule and its manual synchronization risk, the digest and its limits, hook rules and the schema version bump."
+            },
+            {
+              "type": "observation",
+              "summary": "Independent safety review found that a source with missing review_label or verification_level could still count as supporting evidence. source_supports() now requires both fields to be present and recognized; missing, null or unknown values fail closed. Added regression cases, and README documents the provenance requirements."
+            },
+            {
+              "type": "observation",
+              "summary": "Reviewer rework opened: require complete supporting-source review metadata; source_supports now fails closed for missing or unrecognized review_label and verification_level. Re-run the full validation gate before returning to READY_FOR_REVIEW."
+            },
+            {
+              "type": "observation",
+              "summary": "Reviewer rework complete: verified facts require complete recognized supporting-source review metadata, and malformed duplicate source stances are handled safely as unrecognized input. Regression coverage added for missing/null/unknown provenance fields and malformed duplicate stances. History-aware tracker validation covers actual PR head refs, synthetic merge checkouts and main-side changes inherited through merge commits."
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #27 reviewed by ChatGPT at head b8ad11a629ea56353a7c716372a29bc68e4581e7; one-PR implementation retained, branch up to date with main, no unresolved review threads.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/27",
+              "commit": "b8ad11a629ea56353a7c716372a29bc68e4581e7"
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate run #52 on reviewed head b8ad11a629ea56353a7c716372a29bc68e4581e7: registry/status validation and handoff passed; tracker-history check passed; desktop dashboard tests passed (61/61); full Python suite ran 1393 tests in 47.684s, OK (49 skipped); added-lines secret scan passed.",
+              "command": "GitHub Actions workflow validate, run #52",
+              "result": "Success: 1393 Python tests OK (skipped=49); 61 desktop tests pass; governance, handoff, tracker and secret scan pass.",
+              "commit": "b8ad11a629ea56353a7c716372a29bc68e4581e7"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT's written technical approval under Lukas's standing delegation, based on independent review of commit b8ad11a629ea56353a7c716372a29bc68e4581e7 and GitHub Actions validate run #52. Lukas did not directly review this code; no direct Lukas review is claimed."
+          }
         }
       ]
     },

@@ -114,6 +114,18 @@
         "CHANGELOG.md",
         "SESSION_HANDOFF.md"
       ]
+    },
+    "AGR-CRD-TRACKER-HISTORY-01": {
+      "description": "For T-CRD-001 only, ChatGPT acting as the default integrator under Lukas's standing delegation is authorized to update the tracker-history checker, its tests and the development-step protocol. The change checks every first-parent tracker snapshot in order; it does not alter or waive any legal transition. Paths are limited to the files named here.",
+      "task_ids": [
+        "T-CRD-001"
+      ],
+      "paths": [
+        "dashboard/tracker_check.py",
+        "orchestrator/tests/test_development_tracker.py",
+        "DEVELOPMENT_STEP_PROTOCOL.md",
+        ".github/workflows/validate.yml"
+      ]
     }
   },
   "tasks": [
@@ -324,8 +336,8 @@
       "title": "Enforce Research contract version and safety-critical signals",
       "description": "In orchestrator/creative_director/, ResearchContext.from_packet() checks only the prefix research->creative_director/ and the safety fields the Research producer emits (safety_critical, unresolved_safety_warning, usage) are never read, so an unresolved safety-critical claim can be treated as ordinary research guidance. Fix: require the exact contract research->creative_director/0.3 (missing, malformed, non-string or unsupported versions give no partial Research context); preserve the original Research claim status, safety_critical, unresolved_safety_warning and producer usage as typed metadata kept separate from the Creative Director derived usage; fail closed on missing or malformed safety metadata; validate producer usage against a mirrored canonical producer rule; cap unverified safety-critical and warned claims below verified; a verified safety-critical claim may stay verified but can never be a hook; add a deterministic research digest (integrity consistency check, not authentication) covering contract, original status, safety metadata and usage; validation catches tampering and rejects hooks relying on unresolved, safety-critical or warned claims. Synthetic regression tests and orchestrator/creative_director/README.md. No Research producer, Editor schema, Asset package, unresolved package or cross-package test change, and no private import of Research internals; no real footage.",
       "owner": "claude:creative-director-stream",
-      "branch": "task/t-crd-001-claim",
-      "worktree": "../CreatorStudio-worktrees/t-crd-001-claim",
+      "branch": "task/t-crd-001-impl",
+      "worktree": "../CreatorStudio-worktrees/t-crd-001-impl",
       "status": "ACTIVE",
       "depends_on": [],
       "lease": {
@@ -334,7 +346,8 @@
       },
       "exclusive_resources": [],
       "integration_agreements": [
-        "AGR-GOV-REGISTRY-01"
+        "AGR-GOV-REGISTRY-01",
+        "AGR-CRD-TRACKER-HISTORY-01"
       ],
       "owned_paths": [
         "orchestrator/creative_director/",
@@ -353,7 +366,8 @@
         "A deterministic research digest covers the contract, original claim status, safety metadata, producer usage and derived category/usage; it is documented as an integrity consistency check, not authentication or proof of packet authorship",
         "Validation detects tampering with digest-covered fields and rejects hooks that rely on unresolved, safety-critical, warned, metadata-missing or non-verified claims",
         "Synthetic tests cover missing, malformed, unsupported and valid contract versions and the safety-critical, unresolved-warning, producer-usage, digest and hook cases; existing fixtures migrate to 0.3; the full suite passes with python -B -I",
-        "orchestrator/creative_director/README.md documents the fail-closed behavior, the digest limits and the producer-rule synchronization risk"
+        "orchestrator/creative_director/README.md documents the fail-closed behavior, the digest limits and the producer-rule synchronization risk",
+        "A verified fact requires complete supporting provenance: recognized non-unreviewed review_label and present recognized verification_level; missing or malformed provenance metadata never counts as support."
       ],
       "test_requirements": [
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creative_director.py",
@@ -363,7 +377,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14; refreshed 2026-11-17 by merging origin/main 9317119 (no force-push) with the lease renewed for 24 hours. Task definition, owned paths and scope unchanged. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage."
+      "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14; refreshed 2026-11-17 by merging origin/main 9317119 (no force-push) with the lease renewed for 24 hours. Task definition, owned paths and scope unchanged. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage. Implementation started 2026-11-17 after claim PR #18 merged (9dfaec2) and Lukas/ChatGPT authorized T-CRD-001 as ONE implementation batch in ONE PR; branch and worktree fields moved from the merged claim branch to task/t-crd-001-impl so the scope check resolves this task. Owned paths, lease and agreement unchanged. Integrator-owned CI correction is separately authorized by AGR-CRD-TRACKER-HISTORY-01, limited to dashboard/tracker_check.py, DEVELOPMENT_STEP_PROTOCOL.md and orchestrator/tests/test_development_tracker.py; it checks the existing legal transitions across the branch's first-parent history and does not waive or alter them. The validate workflow now passes origin/$HEAD_REF to the tracker checker because GitHub's PR checkout is a synthetic merge commit; this path is covered by the same narrow integration agreement. The agreement also covers .github/workflows/validate.yml, which passes the actual PR head ref to the checker; GitHub's synthetic merge checkout otherwise hides the task branch's intermediate tracker state."
     },
     {
       "id": "T-GOV-004",

@@ -373,8 +373,9 @@ class TestCliAgainstBase(unittest.TestCase):
 
     def git(self, *args):
         import subprocess
-        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
-                        "-c", "commit.gpgsign=false", *args], check=True, capture_output=True)
+        result = subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                                 "-c", "commit.gpgsign=false", *args], check=True, capture_output=True, text=True)
+        return result.stdout.strip()
 
     def write(self, d):
         (self.root / "DEVELOPMENT_TRACKER.json").write_text(json.dumps(d), encoding="utf-8")
@@ -393,11 +394,69 @@ class TestCliAgainstBase(unittest.TestCase):
         return code, out.getvalue() + err.getvalue()
 
     def test_valid_transition_passes(self):
+        self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED"), step(2)))
+        base = self.git("rev-parse", "HEAD")
         self.commit(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"), step(2)))
-        self.write(doc(step(0, "COMPLETED"), step(1, "READY_FOR_REVIEW"), step(2)))
-        code, out = self.run_cli("--against", "HEAD")
+        self.commit(doc(step(0, "COMPLETED"), step(1, "READY_FOR_REVIEW"), step(2)))
+        code, out = self.run_cli("--against", base)
         self.assertEqual(code, 0, out)
-        self.assertIn("transitions checked against HEAD", out)
+        self.assertIn("first-parent history", out)
+
+    def test_illegal_intermediate_transition_cannot_be_hidden_by_later_state(self):
+        self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED"), step(2)))
+        base = self.git("rev-parse", "HEAD")
+        self.commit(doc(step(0, "COMPLETED"), step(1, "READY_FOR_REVIEW"), step(2)))
+        # READY_FOR_REVIEW -> IN_PROGRESS is legal, but it cannot erase the earlier skipped state.
+        self.write(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"), step(2)))
+        code, out = self.run_cli("--against", base)
+        self.assertEqual(code, 1)
+        self.assertIn("PLANNED -> READY_FOR_REVIEW is not allowed", out)
+
+    def test_valid_history_after_merging_newer_main(self):
+        self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED"), step(2)))
+        self.git("checkout", "-b", "task")
+        self.commit(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"), step(2)))
+        self.git("checkout", "main")
+        (self.root / "main-only.txt").write_text("main advanced", encoding="utf-8")
+        self.git("add", "main-only.txt")
+        self.git("commit", "-q", "-m", "advance main")
+        main_ref = self.git("rev-parse", "HEAD")
+        self.git("checkout", "task")
+        self.git("merge", "--no-ff", "-m", "merge main", "main")
+        self.commit(doc(step(0, "COMPLETED"), step(1, "READY_FOR_REVIEW"), step(2)))
+        task_head = self.git("rev-parse", "HEAD")
+        self.git("checkout", "main")
+        self.git("merge", "--no-ff", "-m", "synthetic PR merge", "task")
+        # GitHub Actions checks out the synthetic merge commit by default. That view alone
+        # hides the task branch's first-parent checkpoint, so CI must pass the actual PR head.
+        self.assertEqual(self.run_cli("--against", main_ref)[0], 1)
+        code, out = self.run_cli("--against", main_ref, "--head", task_head)
+        self.assertEqual(code, 0, out)
+
+    def test_main_side_multi_commit_transitions_are_not_collapsed_at_merge(self):
+        def snapshot(gov_status, ast_status):
+            return multi(task("T-GOV-002", step(0, "COMPLETED"), step(1, gov_status), step(2)),
+                         task("T-AST-001", astep(0, ast_status)))
+
+        (self.root / "ACTIVE_TASKS.json").write_text(json.dumps(MULTI_REGISTRY), encoding="utf-8")
+        self.commit(snapshot("PLANNED", "PLANNED"))
+        self.git("checkout", "-b", "task")
+        self.commit(snapshot("IN_PROGRESS", "PLANNED"))
+        self.git("checkout", "main")
+        self.commit(snapshot("PLANNED", "IN_PROGRESS"), "main step start")
+        self.commit(snapshot("PLANNED", "READY_FOR_REVIEW"), "main step review")
+        main_ref = self.git("rev-parse", "HEAD")
+        self.git("checkout", "task")
+        # Both sides changed the same JSON file. Resolve the merge explicitly with the
+        # task-side step plus main's completed step, as a real integrator would.
+        self.git("merge", "--no-ff", "--no-commit", "--strategy=ours", "main")
+        self.commit(snapshot("IN_PROGRESS", "READY_FOR_REVIEW"), "merge main tracker resolution")
+        self.commit(snapshot("READY_FOR_REVIEW", "READY_FOR_REVIEW"), "finish task step")
+        task_head = self.git("rev-parse", "HEAD")
+        self.git("checkout", "main")
+        self.git("merge", "--no-ff", "-m", "synthetic PR merge", "task")
+        code, out = self.run_cli("--against", main_ref, "--head", task_head)
+        self.assertEqual(code, 0, out)
 
     def test_illegal_transition_fails_through_the_cli(self):
         self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED")))
@@ -432,7 +491,7 @@ class TestCliAgainstBase(unittest.TestCase):
         self.write(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS")))
         code, out = self.run_cli("--against", "HEAD")
         self.assertEqual(code, 0, out)
-        self.assertIn("nothing to compare", out)
+        self.assertIn("no tracker at HEAD", out)
 
     def test_bad_refs_and_missing_values_exit_2(self):
         self.commit(doc(step(0)))
