@@ -79,6 +79,9 @@ class Transport(Protocol):
         ...
 
 
+RETRYABLE_CODES = frozenset({"RATE_LIMITED"})   # failures a caller may retry later; every other code is final
+
+
 class FetchError(Exception):
     """A contained, already-scrubbed acquisition failure with a stable machine code."""
 
@@ -233,6 +236,8 @@ def fetch_to(transport: Transport, url: str, *, hosts: Iterable[str], max_bytes:
         raise FetchError("TRANSPORT_ERROR", f"{type(e).__name__}: {e}") from None
     if not isinstance(resp, TransportResponse):
         raise FetchError("TRANSPORT_ERROR", "transport returned an invalid response object")
+    if resp.status == 429:   # observed live (Wikimedia, 2026-11-17): the host asks us to slow down; nothing was fetched
+        raise FetchError("RATE_LIMITED", "status 429 (retryable later; not retried automatically)")
     if resp.status != 200:
         raise FetchError("HTTP_STATUS", f"status {resp.status}")
     if resp.final_url:

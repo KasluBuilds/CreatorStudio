@@ -1016,6 +1016,58 @@
       ]
     },
     {
+      "task_id": "T-AST-004",
+      "title": "Openverse live-run fixes: canonical licence URL, distinct retryable 429, evidence section in ASSETS.md",
+      "steps": [
+        {
+          "id": "S-AST-004-00",
+          "title": "Lane L1 of wave w02-openverse-live-fixes",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "license_text_url is derived canonically from license + version (for example cc0 1.0 -> https://creativecommons.org/publicdomain/zero/1.0/), never from the response's license_url; if it cannot be derived the item fails closed (quarantined/failed with a reason code, never permitted); tests cover cc0, a by-style licence, an unknown licence and a response URL with a trailing deed.en/ path that is ignored",
+            "HTTP 429 maps to its own distinct retryable error code (separate from HTTP_STATUS), recorded with a scrubbed message; the asset stays unfetched and nothing partial is left; tests cover it, including that other 4xx/5xx codes keep their existing behaviour",
+            "ASSETS.md gains a section recording the 2026-11-17 live Openverse run (runs 1-3, sizes, sha256 prefixes, 404 and 429 findings) with VERIFIED limited to exactly what was exercised (search and parse on a real payload, bounded HTTPS download with exact-host allow-list, content-type and magic-byte check on a real JPEG and PNG, sha256, licence snapshot, fail-closed on 404/429, temp cleanup) and NOT verified listed (redirects, drift over time, other providers, video/audio, legal clearance, SVG, run 1 response)",
+            "No network code is exercised by tests (existing no-socket test still passes); no downloaded media or live payloads committed; existing tests are not weakened; M-AST-02 is not recorded as verified or complete"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "ab37de4ab0e0bb6543ef4d7b0a542a82828d1bb4"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w02-openverse-live-fixes",
+              "commit": "ab37de4ab0e0bb6543ef4d7b0a542a82828d1bb4"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
+              "result": "Ran 139 tests: OK (skipped=1; symlink test)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+              "result": "Ran 149 tests: OK (skipped=1; symlink test)"
+            },
+            {
+              "type": "observation",
+              "summary": "Openverse live-run fixes. (1) openverse.canonical_license_url derives the licence-text URL only from the documented license/license_version fields (cc0, pdm, CC-BY-style); the response license_url (which carried a 404 deed.en/ path live) is ignored; an underivable licence has no text URL and is held, never fetched. (2) acquisition.fetch_to maps HTTP 429 to RATE_LIMITED (in RETRYABLE_CODES); all other non-200 statuses keep HTTP_STATUS. (3) ASSETS.md section 8.8 records the 2026-11-17 live runs 1-3 as REPORTED with VERIFIED limited to what was exercised and NOT-verified listed. Nothing here promotes M-AST-02 to verified or complete; no live payload or media committed; tests use no network."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: Lukas's standing instruction to the Repository Coordinator for routine waves; lane report and diff re-read and tests re-run by the Coordinator (288 asset tests OK); live-run evidence is the asset agent's report, not re-observed"
+          }
+        }
+      ]
+    },
+    {
       "task_id": "T-RSV-002",
       "title": "Safe, validated DaVinci Resolve execution layer (M-RSV-02)",
       "steps": [
