@@ -100,7 +100,7 @@ Leases are not judged here (this file never reads the clock): run `cd orchestrat
 | `speaker_attribution` | UNRESOLVED | UNRESOLVED - written alongside Creator DNA on 2026-11-09 but no owner named; its import cycle with media_analysis (M-INT-02) needs one owner |
 | `cross_package_tests` | UNRESOLVED | UNRESOLVED - test files spanning media_analysis, speaker_attribution and creator_dna |
 | `creator_dna` | claude:creator-dna-stream | REPORTED - Lukas's brief names Creator DNA as one of four subsystem assignments; the stream identity is assumed, confirm it |
-| `research` | claude:research-stream | REPORTED - Lukas's brief names the Research Agent as one of four subsystem assignments; the stream identity is assumed, confirm it |
+| `research` | claude:research-stream | ASSIGNED - Lukas explicitly authorized claude:research-stream to act as Research owner for Assignment 6 on 2026-11-17 (relayed in session; recorded by claim PR #32 and its start update) |
 | `assets` | claude:asset-recovery | ASSIGNED - Lukas confirmed on 2026-11-17 that claude:asset-stream is abandoned and authorized the takeover of T-AST-001 by claude:asset-recovery (task T-AST-002) |
 | `creative_director` | claude:creative-director-stream | REPORTED - Lukas's brief names the Creative Director as one of four subsystem assignments; the stream identity is assumed, confirm it |
 | `governance` | claude:governance-session | ASSIGNED - Lukas assigned the governance migration to this session on 2026-11-09 |

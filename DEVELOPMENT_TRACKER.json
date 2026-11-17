@@ -987,7 +987,7 @@
         {
           "id": "S-RSR-001-00",
           "title": "Step 0: claim branch",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-RSR-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
             "AGR-GOV-REGISTRY-01 extended to T-RSR-001; no other task's record is edited",
@@ -998,13 +998,25 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main 18e970e in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md change."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #32 merged into main (merge commit shown); reviewed head 6c667680333aab8837b87c2131433a48b08ce124. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T22:12:47Z) and the merge commit is an ancestor of this branch after a fast-forward.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/32",
+              "commit": "469b95dda98365c8b9f23824e9f11684c3d6b1a2"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator, merged claim PR #32 (merge commit 469b95dda98365c8b9f23824e9f11684c3d6b1a2) under Lukas's standing delegation and told Claude in this session. This is ChatGPT's delegated approval, not a claim that Lukas personally reviewed the claim. Claude verified only that PR #32 is MERGED on GitHub and that the merge commit is an ancestor of the working branch."
+          }
         },
         {
           "id": "S-RSR-001-01",
           "title": "Step 1: remediate F-01, F-02, F-04, F-05, F-06, F-07 with adversarial tests",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "Each finding reproduced against current code, fixed within orchestrator/research/ and covered by adversarial regression tests",
             "F-02 external signer dependency reported honestly",

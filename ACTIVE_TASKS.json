@@ -55,7 +55,7 @@
         "orchestrator/tests/test_research.py"
       ],
       "owner": "claude:research-stream",
-      "owner_status": "REPORTED - Lukas's brief names the Research Agent as one of four subsystem assignments; the stream identity is assumed, confirm it"
+      "owner_status": "ASSIGNED - Lukas explicitly authorized claude:research-stream to act as Research owner for Assignment 6 on 2026-11-17 (relayed in session; recorded by claim PR #32 and its start update)"
     },
     "assets": {
       "paths": [
@@ -645,7 +645,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Claim only (step 00); implementation (step 01) is not started until this claim is merged on main. Authorized by Lukas and ChatGPT (relayed in session 2026-11-17) to act as Research owner; the package owner record claude:research-stream is still REPORTED, not independently confirmed. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; each task edits only its own records. The Assignment 5 audit report is not in the repository: scope is the recovered finding summary relayed by Lukas, and the available evidence does not establish an F-03 finding. Historical counts (220 Research tests, 831 full suite) are reported, not verified. Synthetic data only."
+      "integration_notes": "Claim only (step 00); implementation (step 01) is not started until this claim is merged on main. Authorized by Lukas and ChatGPT (relayed in session 2026-11-17) to act as Research owner; the package owner record claude:research-stream is still REPORTED, not independently confirmed. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; each task edits only its own records. The Assignment 5 audit report is not in the repository: scope is the recovered finding summary relayed by Lukas, and the available evidence does not establish an F-03 finding. Historical counts (220 Research tests, 831 full suite) are reported, not verified. Synthetic data only. Claim PR #32 merged into main 2026-11-17T22:12:47Z (merge commit 469b95dda98365c8b9f23824e9f11684c3d6b1a2); Step 01 started in the same worktree after fast-forwarding to that commit."
     }
   ]
 }
