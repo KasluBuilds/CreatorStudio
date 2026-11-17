@@ -424,7 +424,13 @@ class TestCliAgainstBase(unittest.TestCase):
         self.git("checkout", "task")
         self.git("merge", "--no-ff", "-m", "merge main", "main")
         self.commit(doc(step(0, "COMPLETED"), step(1, "READY_FOR_REVIEW"), step(2)))
-        code, out = self.run_cli("--against", main_ref)
+        task_head = self.git("rev-parse", "HEAD")
+        self.git("checkout", "main")
+        self.git("merge", "--no-ff", "-m", "synthetic PR merge", "task")
+        # GitHub Actions checks out the synthetic merge commit by default. That view alone
+        # hides the task branch's first-parent checkpoint, so CI must pass the actual PR head.
+        self.assertEqual(self.run_cli("--against", main_ref)[0], 1)
+        code, out = self.run_cli("--against", main_ref, "--head", task_head)
         self.assertEqual(code, 0, out)
 
     def test_illegal_transition_fails_through_the_cli(self):
