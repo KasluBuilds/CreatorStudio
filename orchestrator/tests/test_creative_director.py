@@ -1480,6 +1480,7 @@ class TestResearchProvenance(unittest.TestCase):
             "verification level missing null": [src("s1", "supports", level=None)],
             "stance unrecognised": [src("s1", "maybe")],
             "bad verification level": [src("s1", "supports", level="guess")],
+            "malformed duplicate stance": [src("s1", ["supports"]), src("s1")],
         }
         for name, sources in cases.items():
             f = claim("c1", "verified", sources=sources)
