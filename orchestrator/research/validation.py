@@ -5,13 +5,20 @@ import datetime as dt
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
+from . import ledger as _ledger
 from .attestation import DEFAULT_TRUST, TrustPolicy
 from .formats import check_format_study
 from .models import (SCHEMA_VERSION, BriefType, ClaimKind, ClaimStatus, PerspectiveWeight, ResearchBrief,
                      ReviewStatus, SourceType, Stance, TopicKind)
 from .safety import NOTE_MAX, unsafe_text_problems
-from .sources import (AUTO_CAVEAT, MIN_JUSTIFICATION_CHARS, Issue, assess_claim, citation_counts, independence_groups,
-                      is_safety_critical, validate_sources)
+from .scoring import relevance_problems
+from .sources import (AUTO_CAVEAT, MIN_JUSTIFICATION_CHARS, Issue, assess_claim, attested, citation_counts,
+                      independence_groups, is_safety_critical, validate_sources)
+
+def _sha(text: str) -> str:
+    from .attestation import sha256_text
+    return sha256_text(text)
+
 
 CREATOR_NAMES = {"creator", "the creator", "user", "the user", "host", "me", "i", "owner"}
 MAX_CONCEPT_CHARS = 280
@@ -66,7 +73,8 @@ def validate_brief(b: ResearchBrief, today: dt.date, reference_texts: Iterable[s
                    trust: Optional[TrustPolicy] = None) -> ValidationReport:
     """Validate against a TrustPolicy. The default policy has no key, so nothing is attested and any
     brief that relied on human/process attestations will (correctly) fail to validate."""
-    trust = (trust or DEFAULT_TRUST).bound_to(b.brief_id)    # attestations are valid only for THIS brief
+    # attestations are valid only for THIS brief AND its topic kind (a reviewer signs both)
+    trust = (trust or DEFAULT_TRUST).bound_to(b.brief_id, b.topic_kind)
     out: list[Issue] = []
     ids = [s.id for s in b.sources]
     if len(ids) != len(set(ids)):                            # reject BEFORE any evidence assessment
@@ -115,6 +123,64 @@ def validate_brief(b: ResearchBrief, today: dt.date, reference_texts: Iterable[s
             out.append(Issue("ATTESTATION_INVALID", "error", f"independence_attestations[{k}]",
                              "independence attestation does not verify: " + "; ".join(v.reasons)))
     derived_by_claim: dict = {}
+
+    # text origin: only a human-attested source may present its text as human-written (audit F-07)
+    for s in b.sources:
+        if s.text_origin not in ("provider", "human"):
+            out.append(Issue("TEXT_ORIGIN_INVALID", "error", f"sources[{s.id}].text_origin",
+                             "text_origin must be 'provider' or 'human'"))
+        elif s.text_origin == "human":
+            v = attested(s, trust, today)
+            if not (v.ok and v.kind == "human"):
+                out.append(Issue("TEXT_ORIGIN_UNATTESTED", "error", f"sources[{s.id}].text_origin",
+                                 "text_origin 'human' needs a valid human attestation that covers it; otherwise the "
+                                 "text is untrusted retrieved or generated content"))
+
+    # evidence ledger: contradictions survive relabelling, deletion and context changes (audit F-05)
+    for why in _ledger.chain_problems(b.evidence_ledger):
+        out.append(Issue("LEDGER_TAMPERED", "error", "evidence_ledger", why))
+    entries = {e.entry_id: e for e in b.evidence_ledger}
+    for k, r in enumerate(b.resolutions):
+        e = entries.get(r.entry_id)
+        if e is None:
+            out.append(Issue("RESOLUTION_INVALID", "error", f"resolutions[{k}]", "it names no ledger entry"))
+            continue
+        cl = next((c for c in b.claims if c.id == e.claim_id), None)
+        v = trust.verify_resolution(r, e, _sha(cl.text) if cl is not None else "", today)
+        if not v.ok:
+            out.append(Issue("RESOLUTION_INVALID", "error", f"resolutions[{k}]",
+                             "the resolution does not verify (it needs a valid human attestation over this entry, the "
+                             "current claim text and the rationale): " + "; ".join(v.reasons)))
+    for c in b.claims:
+        for st in _ledger.contradiction_states(b.evidence_ledger, b.resolutions, c, c.id, trust, today):
+            if st.state == "erased":
+                out.append(Issue("CONTRADICTION_ERASED", "error", f"claims[{c.id}]",
+                                 f"a recorded contradiction from {st.entry.source_id} is no longer present "
+                                 f"({st.reason}); it needs an authenticated human resolution"))
+    for cid in _ledger.orphan_claim_ids(b.evidence_ledger, b.claims):
+        gone = [st for e in b.evidence_ledger if e.claim_id == cid
+                for st in _ledger.contradiction_states([e], b.resolutions, None, cid, trust, today)]
+        if any(st.state == "erased" for st in gone):
+            out.append(Issue("CONTRADICTION_ERASED", "error", f"claims[{cid}]",
+                             "the claim that carried a recorded contradiction was removed without an authenticated "
+                             "human resolution"))
+    recorded = {e.entry_id for e in b.evidence_ledger}
+    if any(_ledger.make_entry("", c, x).entry_id not in recorded for c in b.claims for x in c.citations):
+        out.append(Issue("LEDGER_INCOMPLETE", "warning", "evidence_ledger",
+                         "a citation is not recorded in the evidence ledger (it was added after the last build); "
+                         "rebuild so a later removal of it is noticed"))
+    if b.ledger_seal is not None:
+        v = trust.verify_ledger_seal(b.ledger_seal, b.brief_id, _ledger.head(b.evidence_ledger), len(b.evidence_ledger), today)
+        if not v.ok:
+            out.append(Issue("LEDGER_SEAL_INVALID", "error", "ledger_seal",
+                             "the ledger seal does not match the ledger as it is now: " + "; ".join(v.reasons)))
+    elif trust.require_ledger_seal:
+        out.append(Issue("LEDGER_UNSEALED", "error", "ledger_seal",
+                         "this policy requires the orchestrator to seal the evidence ledger; an unsealed ledger can be "
+                         "rewritten by whoever holds the brief"))
+    for why in relevance_problems(b.relevance, b.claims, b.sources, trust, today):
+        out.append(Issue("RELEVANCE_INCONSISTENT", "error", "relevance", "stored relevance cannot be what scoring "
+                         "produced: " + why))
 
     # claims
     for i, c in enumerate(b.claims):
@@ -170,7 +236,8 @@ def validate_brief(b: ResearchBrief, today: dt.date, reference_texts: Iterable[s
                 out.append(Issue("STATUS_INVALID", "error", p, "a fact needs a verification status"))
             else:
                 derived = assess_claim(c, b.sources, today=today, topic_kind=b.topic_kind, trust=trust,
-                                       independence=b.independence_attestations)
+                                       independence=b.independence_attestations, ledger=b.evidence_ledger,
+                                       resolutions=b.resolutions)
                 derived_by_claim[c.id] = derived
                 d, s_ = derived.status, c.status
                 if d is ClaimStatus.DISPUTED and s_ is not ClaimStatus.DISPUTED:

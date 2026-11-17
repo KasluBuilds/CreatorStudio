@@ -16,8 +16,8 @@ import typing
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-SCHEMA_VERSION = "research-brief/0.4"
-SUPPORTED_MIGRATIONS = ("research-brief/0.1", "research-brief/0.2", "research-brief/0.3")
+SCHEMA_VERSION = "research-brief/0.5"
+SUPPORTED_MIGRATIONS = ("research-brief/0.1", "research-brief/0.2", "research-brief/0.3", "research-brief/0.4")
 
 
 # --------------------------------------------------------------------------- enums
@@ -419,6 +419,35 @@ class RelevanceScore:
 
 
 @dataclass
+class LedgerEntry:
+    """One link of the brief's append-only EVIDENCE LEDGER (audit F-05). Every citation a builder records is
+    chained in here with the stance that was ASSESSED, so a contradiction cannot disappear by deleting the
+    citation, clearing its assessed stance, relabelling it as context or editing the claim it was made against:
+    the entry stays, and a missing or changed counterpart is reported until a human resolves it explicitly.
+    `digest` chains this entry to the previous one. This is tamper-EVIDENCE: whoever can rewrite the whole chain
+    can still forge it, which is why the orchestrator can seal the head (see ResearchBrief.ledger_seal)."""
+    entry_id: str
+    claim_id: str
+    claim_text_sha256: str
+    claim_kind: str             # the claim's kind when it was recorded (a fact cannot be relabelled to shed its history)
+    source_id: str
+    stance: str                 # the stance value that was assessed (supports | contradicts | context)
+    locator: str
+    excerpt_sha256: str         # "" when the citation had no excerpt proof
+    prev: str                   # digest of the previous entry ("" for the first)
+    digest: str
+
+
+@dataclass
+class ContradictionResolution:
+    """A human's explicit, reasoned resolution of one ledger contradiction. Counts only with a valid HUMAN
+    attestation (scope 'resolution') over the entry digest, the claim text and this rationale."""
+    entry_id: str
+    rationale: str
+    attestation: Attestation
+
+
+@dataclass
 class IndependenceGroup:
     """Sources that share an origin and therefore count as ONE piece of corroboration."""
     group_id: str
@@ -453,6 +482,9 @@ class ResearchBrief:
     migrated_from: str = ""
     assessed_under: str = ""          # fingerprint of the TrustPolicy this brief was built/validated under
     independence_attestations: list[IndependenceAttestation] = field(default_factory=list)
+    evidence_ledger: list[LedgerEntry] = field(default_factory=list)          # append-only; see LedgerEntry
+    resolutions: list[ContradictionResolution] = field(default_factory=list)  # human resolutions of contradictions
+    ledger_seal: Optional[Attestation] = None   # orchestrator-signed head of the ledger (scope 'ledger')
 
     def source(self, source_id: str) -> Optional[Source]:
         return next((s for s in self.sources if s.id == source_id), None)
@@ -473,7 +505,9 @@ class ResearchBrief:
                 data = migrate_0_1(data)
             if ver in ("research-brief/0.1", "research-brief/0.2"):
                 data = migrate_0_2(data)
-            data = migrate_0_3(data)
+            if ver in ("research-brief/0.1", "research-brief/0.2", "research-brief/0.3"):
+                data = migrate_0_3(data)
+            data = migrate_0_4(data)
         elif ver != SCHEMA_VERSION:
             raise ValueError(f"unsupported schema_version {ver!r} (supported: {SCHEMA_VERSION}, "
                              f"migratable: {', '.join(SUPPORTED_MIGRATIONS)})")
@@ -499,6 +533,24 @@ def to_plain(obj: Any) -> Any:
     return obj
 
 
+def migrate_0_4(data: dict) -> dict:
+    """research-brief/0.4 -> 0.5. Trust is NOT carried over. 0.5 attestations are bound to the brief id AND the
+    topic kind and sources carry a signed text origin, so no 0.4 attestation will verify; the brief has no
+    evidence ledger, so contradictions recorded in it cannot be protected until it is rebuilt through the builder
+    (which also records no history for evidence already in it). It will not export until rebuilt under the
+    active policy."""
+    import copy
+    d = copy.deepcopy(data)
+    d["schema_version"] = SCHEMA_VERSION
+    d["migrated_from"] = d.get("migrated_from") or "research-brief/0.4"
+    d["assessed_under"] = ""
+    for s in d.get("sources", []):
+        if isinstance(s, dict) and s.get("attestation"):
+            s.setdefault("classification_warnings", []).append(
+                "migrated from 0.4: attestations were not bound to the topic kind or the text origin and will not verify")
+    return d
+
+
 def migrate_0_3(data: dict) -> dict:
     """research-brief/0.3 -> 0.4. Trust is NOT carried over. 0.3 attestations were not bound to a brief,
     key id, attestation id or expiry, and covered only part of each subject, so they will not verify under
@@ -507,7 +559,7 @@ def migrate_0_3(data: dict) -> dict:
     fingerprint and will not export until it has been rebuilt under the active policy."""
     import copy
     d = copy.deepcopy(data)
-    d["schema_version"] = SCHEMA_VERSION
+    d["schema_version"] = "research-brief/0.4"
     d["migrated_from"] = d.get("migrated_from") or "research-brief/0.3"
     for s in d.get("sources", []):
         if isinstance(s, dict) and s.get("attestation"):
@@ -523,7 +575,7 @@ def migrate_0_2(data: dict) -> dict:
     supports (validation will report STATUS_OVERSTATED / REVIEW_UNATTESTED until re-attested)."""
     import copy
     d = copy.deepcopy(data)
-    d["schema_version"] = SCHEMA_VERSION
+    d["schema_version"] = "research-brief/0.4"
     d["migrated_from"] = d.get("migrated_from") or "research-brief/0.2"
     for s in d.get("sources", []):
         if isinstance(s, dict) and s.get("confirmed_by"):
@@ -538,7 +590,7 @@ def migrate_0_1(data: dict) -> dict:
     validation until re-assessed. That is intentional (see report, section E)."""
     import copy
     d = copy.deepcopy(data)
-    d["schema_version"] = SCHEMA_VERSION
+    d["schema_version"] = "research-brief/0.4"
     d["migrated_from"] = "research-brief/0.1"
     for s in d.get("sources", []):
         if isinstance(s, dict):
