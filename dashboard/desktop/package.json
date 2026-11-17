@@ -1,7 +1,7 @@
 {
   "name": "creator-studio-dashboard",
   "productName": "Creator Studio Dashboard",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Read-only Windows desktop dashboard for Creator Studio development progress. Fetches the canonical records from the public GitHub repository.",
   "main": "main.js",
   "license": "UNLICENSED",

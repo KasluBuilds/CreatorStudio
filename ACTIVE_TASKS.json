@@ -107,6 +107,9 @@
         "T-CRD-001",
         "T-GOV-004",
         "T-DSH-001",
+        "T-DSH-002",
+        "T-GOV-006",
+        "T-GOV-007",
         "T-DNA-002"
       ],
       "paths": [
@@ -489,6 +492,128 @@
       "integration_notes": "Completed 2026-11-17 in this single pull request (claim, implementation and closeout), directed by Lukas to the Repository Coordinator session; gates were run on head 32e96d57d8c0bd12dfed4f036e128fafadcc3241 before the closeout commit. The executable is built from merged main and published as Release dashboard-v1.0.0 with SHA256SUMS.txt after the merge. Does not touch wave w01, Creative Director or any product package."
     },
     {
+      "id": "T-DSH-002",
+      "title": "Desktop dashboard dark mode (Light, Dark, System)",
+      "description": "Add Light, Dark and System appearance to the existing Windows desktop dashboard: System by default, saved across restarts, applied to the whole application with an intentionally designed dark palette and accessible contrast. Presentation only: progress calculations, GitHub synchronization, canonical data interpretation, agent registration, the filming gate and notification logic are not changed.",
+      "owner": "claude:governance-session",
+      "branch": "task/t-dsh-002-theme-v2",
+      "worktree": "../CreatorStudio-worktrees/t-dsh-002-theme",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-DSH-001"
+      ],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "Light, Dark and System options exist; System is the default on first launch and follows Windows live; the choice persists across restarts",
+        "The theme applies to every screen, card, checklist, evidence section, banner, the road, scrollbars and the title bar; tooltips and notifications follow Windows and the app has no dialogs of its own",
+        "The dark palette is designed (not an inversion) and both themes meet WCAG contrast, with status colours distinguishable and never colour alone; measured by tests and by the rendered-window audit in the packaged self-test",
+        "No change to progress calculations, GitHub synchronization, canonical data interpretation, agent registration, filming gate or notification logic; the original 38 self-test checks and 61 Node tests still pass",
+        "A new portable exe is built and published as a new GitHub Release without overwriting v1.0.0; the downloaded artifact and SHA-256 are verified; documentation describes the theme"
+      ],
+      "test_requirements": [
+        "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 in one pull request (claim, implementation and closeout), directed by Lukas to the Repository Coordinator session; gates were run on head c5d92dca144eb5cf1e79c4952cc5179bd6b22c5b before the closeout commits. Release dashboard-v1.1.0 is built from merged main after the merge; v1.0.0 is not modified."
+    },
+    {
+      "id": "T-GOV-006",
+      "title": "Wave tooling fixes found while closing wave w01",
+      "owner": "claude:governance-session",
+      "description": "Two defects in the wave tooling, found when the first real wave was closed: (1) wave verify diffed against the manifest's original base_commit, so after main was merged into the wave branch (required before the single pull request) every file from main was reported as stray; it now diffs against the merge-base with origin/main. (2) The validate workflow verified a wave branch push without allowing the closeout commit, so the push-event check failed after wave close and blocked the pull request through the duplicate required check name; it now passes --allow-closeout on pushes as well.",
+      "branch": "task/t-gov-006-wave-fixes",
+      "worktree": "../CreatorStudio-worktrees/t-gov-006-wave-fixes",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "wave verify ignores files that came in from main and still reports a real stray file, covered by a git test",
+        "The validate workflow accepts the closeout commit on every push to a wave branch",
+        "Existing wave tests, governance checks and the full suite pass"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py",
+        "cd orchestrator && python -B -m governance validate",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 in one pull request, directed by Lukas to the Repository Coordinator session; checks were run on head 8a78730a576466221185b4b3fadde6a6942208e6 before the closeout commits."
+    },
+    {
+      "id": "T-AST-003",
+      "title": "Asset acquisition pipeline and rights-evidence handling (offline, transport-injected)",
+      "description": "Wave w01-acquisition-providers-review, lane L1: Asset acquisition pipeline and rights-evidence handling (offline, transport-injected).",
+      "owner": "claude:asset-recovery",
+      "branch": "lane/w01-acquisition-providers-review/L1",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "A new module orchestrator/assets/acquisition.py provides an explicit acquire step: it runs the existing triage/rights decision first, fetches only PERMITTED candidates, records QUARANTINE candidates as quarantined records with their reason codes and never fetches them, and never fetches REJECT candidates; unknown rights are never permission",
+        "Fetching goes through an injected Transport protocol (no real network code is exercised anywhere): https-only URLs, a per-provider host allow-list, a maximum byte size, a content-type allow-list per media type, a timeout parameter; the file is written atomically (temporary file, sha256 verified, then moved into the library layout), refuses path traversal, never overwrites an existing asset, and detects duplicates by sha256",
+        "Every failure path (transport error, truncated or oversize download, wrong content type, hash mismatch, library write error) leaves no partial file behind and records a scrubbed error that contains no credential-like text; each path has its own test",
+        "Rights-evidence handling: the licence evidence captured at acquisition (source URL, retrieval date, a hash of the licence text snapshot, the verifier) is stored with the asset; a re-verification function detects licence drift (stored hash differs from the current text) and moves the asset to quarantine without deleting it; human attestations keep working through the existing Attestation model",
+        "A concrete offline LocalFolderProvider searches a directory of user-supplied files described by sidecar rights files (documented, validated schema, strict: unknown keys and missing rights are quarantined, never permitted); acquisition copies, and original files are never modified, moved or deleted (a test hashes the originals before and after)",
+        "At least one open-licence catalogue adapter (Openverse or Wikimedia Commons) is implemented as a pure request builder plus response parser over the injected transport and tested only against fixture payloads authored from the public API documentation; the documentation and the report state NOT TESTED against the live service",
+        "A single function find_and_acquire(request, registry, library, transport, context) runs search, triage and acquisition and returns a deterministic report listing acquired, quarantined, rejected and failed items with reasons; ordering is stable across runs",
+        "At least 60 new offline tests in orchestrator/tests/test_asset_acquisition.py; one test proves no network is touched (socket creation is patched to fail); synthetic tiny files only, no real media; the existing test_assets.py passes (it may be extended, never weakened)",
+        "ASSETS.md documents the acquisition flow, the sidecar schema, the failure behaviour and what is IMPLEMENTED versus NOT TESTED (live providers, real media); open questions are listed, not decided; the lane report lists anything needing a decision from Lukas"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 as lane L1 of wave w01-acquisition-providers-review; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head da3f4ddc319e6c53378e09754cf9283b24bce0bc, lane head d105e6b7c1858abe0cdfc5f92e2e7547171ff05a). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-GOV-007",
+      "title": "Record the outcome of wave w01 in PROJECT_STATUS.json",
+      "owner": "claude:governance-session",
+      "description": "wave close writes only the four closeout records, so the milestone outcome of wave w01 is recorded here: M-AST-02 moves from NOT_STARTED to IN_PROGRESS (not complete) with unit-level evidence from lane L1, and the deferred Research and Creator DNA work is listed in next_actions. No milestone is verified on real input.",
+      "branch": "task/t-gov-007-w01-status",
+      "worktree": "../CreatorStudio-worktrees/t-gov-007-w01-status",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "M-AST-02 is IN_PROGRESS with unit-level evidence naming the lane commit and the not-yet-done work; it is not marked implemented or verified",
+        "The computed progress block is refreshed with governance score --write",
+        "The deferred Research and Creator DNA work is listed in next_actions",
+        "governance validate --against origin/main, handoff --check and tracker_check pass"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -m governance validate --against origin/main",
+        "cd orchestrator && python -B -m governance score --json",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-17 in one record-only pull request; checks were run on head 3222f237755fd84e4aa5846576e9b62c7e9fe994 before the closeout commits."
+    },
+    {
       "id": "T-DNA-002",
       "title": "Learning-ready Creator DNA core (M-DNA-02a): attribution verification, consent, analyzers, review loop",
       "description": "In orchestrator/creator_dna/: (1) AttributionVerifier protocol with verified/stale/unknown/invalid outcomes injected into DNAStore, fail closed, audit_attributions(); (2) schema v5 purpose-scoped consent, withdrawal and quarantine events; (3) deterministic SentenceRhythm, PauseProfile and EnergyRange analyzers; (4) optional session provenance for evidence independence; (5) review_queue, apply_decisions, diff_exports; (6) tests, CREATOR_DNA.md and status records. Synthetic data only; no real footage; MVI_0879.MOV is never evidence; media_analysis, speaker_attribution and creator_state code is not touched.",
@@ -500,8 +625,8 @@
         "T-DNA-001"
       ],
       "lease": {
-        "acquired": "2026-11-17T16:09:28+00:00",
-        "expires": "2026-11-18T16:09:28+00:00"
+        "acquired": "2026-11-17T18:39:23+00:00",
+        "expires": "2026-11-18T18:39:23+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [

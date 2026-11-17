@@ -6,6 +6,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('dashboard', {
   getState: () => ipcRenderer.invoke('state:get'),
   refresh: () => ipcRenderer.invoke('state:refresh'),
+  setTheme: (mode) => ipcRenderer.invoke('theme:set', String(mode)),
   openLink: (url) => ipcRenderer.invoke('link:open', String(url)),
   onState: (cb) => { ipcRenderer.on('state:changed', (_event, state) => cb(state)); },
 });

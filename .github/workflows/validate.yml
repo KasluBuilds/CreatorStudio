@@ -59,7 +59,7 @@ jobs:
           if [ "$EVENT" = "pull_request" ]; then
             python -B -m governance wave verify "$WAVE_ID" --require-complete --allow-closeout
           else
-            python -B -m governance wave verify "$WAVE_ID"
+            python -B -m governance wave verify "$WAVE_ID" --allow-closeout
           fi
 
       - uses: actions/setup-node@v4

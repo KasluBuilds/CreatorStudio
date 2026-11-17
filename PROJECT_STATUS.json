@@ -30,7 +30,8 @@
     "Lukas reviews the milestone weights and confirms or changes package owners.",
     "Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.",
     "Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.",
-    "Lukas to confirm, in ChatGPT, that the weekly \"Phase 6 Readiness Check\" automation can read the repository (public since 2026-11-17) and to report the result of its first completed run; until then its successful access is NOT VERIFIED."
+    "Lukas to confirm, in ChatGPT, that the weekly \"Phase 6 Readiness Check\" automation can read the repository (public since 2026-11-17) and to report the result of its first completed run; until then its successful access is NOT VERIFIED.",
+    "Deferred from wave w01 (waves/w01-acquisition-providers-review/DEFERRED.md): Research providers (M-RSR-02, offline and transport-injected) to be scheduled in a future wave after PR #32 lands or is withdrawn, and the Creator review workflow (M-DNA-03) after PR #34 lands or is withdrawn; Q30 and Q39 (review workflow shape, how the creator is identified) remain decisions for Lukas."
   ],
   "evidence": {
     "E-FULLSUITE-0001": {
@@ -238,6 +239,16 @@
       "summary": "After T-GOV-004 merged (merge commit 984593b3e764a1b4f099a95aada6434a25475e7e) the Repository Coordinator configured branch protection on main and read it back: required status check validate with strict (up to date) true, enforce_admins true, pull request required with 0 approvals, force-pushes false, deletions false, linear history false (merge commits stay allowed); GET branches/main reported protected true. Merge-commit-only is still procedural (squash and rebase are allowed by the repository settings).",
       "ref": "gh api repos/KasluBuilds/CreatorStudio/branches/main/protection",
       "observer": "claude:repository-coordinator"
+    },
+    "E-AST-ACQ-0001": {
+      "id": "E-AST-ACQ-0001",
+      "type": "test_run",
+      "date": "2026-11-17",
+      "summary": "Wave w01 lane L1 (T-AST-003): test_asset_acquisition.py 135 tests and test_assets.py 149 tests passed (one skip each, symlinks unavailable); synthetic data only, no socket created, nothing run against a live service or with real media. Reported by the lane agent in its report.json and re-run by the Repository Coordinator on the merged wave tip.",
+      "ref": "orchestrator/tests/test_asset_acquisition.py",
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
+      "result": "Ran 135 tests: OK (skipped=1); test_assets.py Ran 149 tests: OK (skipped=1)",
+      "commit": "0044794e1ee0b547d4a51571d614d750839cad21"
     },
     "E-DNA-0002": {
       "id": "E-DNA-0002",
@@ -730,20 +741,25 @@
       "weight": 5,
       "weight_rationale": "External services and legal-risk handling; substantial and unavoidable before B-roll can be automated.",
       "implementation": {
-        "state": "NOT_STARTED",
-        "summary": "Not started."
+        "state": "IN_PROGRESS",
+        "summary": "Offline, transport-injected acquisition step delivered by wave w01 lane L1 (T-AST-003): bounded https-only fetch, quarantine ledger, licence-text evidence with drift detection, LocalFolderProvider and an Openverse request builder/parser. Acquired assets always land QUARANTINED; only a named human attestation approves them. NOT done: a run against the live Openverse service and a host allow-list choice, a Wikimedia Commons adapter, Research and Creative Director integration."
       },
       "verification": {
-        "state": "NOT_STARTED",
-        "level": "NONE",
-        "summary": "Nothing to verify.",
-        "evidence": []
+        "state": "IN_PROGRESS",
+        "level": "UNIT_ISOLATED",
+        "summary": "135 offline unit tests on synthetic data; nothing run against a live service or real media.",
+        "evidence": [
+          "E-AST-ACQ-0001"
+        ]
       },
       "depends_on": [
         "M-AST-01"
       ],
-      "commit": null,
-      "open_questions": [],
+      "commit": "0044794e1ee0b547d4a51571d614d750839cad21",
+      "open_questions": [
+        "Whether to hash a normalised legal-code text instead of the licence page, because a page hash detects page changes rather than licence changes and dynamic boilerplate causes false drift (it fails closed).",
+        "Which download hosts to allow for the Openverse provider, decided together with the first live-service run (NOT TESTED)."
+      ],
       "blockers": []
     },
     {
@@ -1059,8 +1075,8 @@
     }
   ],
   "computed": {
-    "implementation_percent": 37.8,
-    "verification_percent": 12.7,
+    "implementation_percent": 39.3,
+    "verification_percent": 13.4,
     "total_weight": 164,
     "milestone_count": 29
   },

@@ -777,6 +777,210 @@
       ]
     },
     {
+      "task_id": "T-DSH-002",
+      "title": "Desktop dashboard dark mode",
+      "steps": [
+        {
+          "id": "S-DSH-002-00",
+          "title": "Step 0: appearance switch, palettes, persistence, tests, packaging and documentation (claim, implementation and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Light, Dark and System with persistence and live System following",
+            "Both palettes meet contrast; the rendered-window audit passes in every mode",
+            "Existing business logic and the original self-test checks are unchanged and pass"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Pull request head on which the gates were run (validate green on GitHub) before the closeout commits.",
+              "commit": "c5d92dca144eb5cf1e79c4952cc5179bd6b22c5b"
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate on pull request #35 at the commit above (same tree as this branch's head before the closeout): Node tests (79: 61 original + 18 theme tests) and the full Python suite (skips 49 on the runner).",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "79 tests, fail 0; full Python suite Ran 1393 tests OK (skipped=49)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Dev-mode application self-test against local fixtures, run locally by Claude Code before the commit: the original checks plus Light/Dark/System switching, prefers-color-scheme, page background, saved file, unchanged canonical figure, and a rendered contrast audit of every visible text element on four screens in each mode.",
+              "command": "electron . --selftest --fixture=<checkout>",
+              "result": "76 of 76 checks passed"
+            },
+            {
+              "type": "observation",
+              "summary": "The first audit run reported 12 false positives (it could not see SVG node fills or CSS gradients behind text); the audit was corrected and no threshold was lowered. Screenshots of both themes were reviewed. The release exe is built from merged main and re-tested live, offline and across two launches for persistence before publication."
+            },
+            {
+              "type": "observation",
+              "summary": "Only dashboard/desktop/ and the four shared registry records changed. model.js, sync.js, github.js and controller.js are unchanged (a test asserts they never mention the theme). No governance machinery, product package, wave w01 file or other session's pull request was touched. The first pull request for this task (#35) was closed because its history contained a step jump the tracker rule rejects; this branch walks the step IN_PROGRESS, READY_FOR_REVIEW, COMPLETED."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas assigned this dark-mode work to the Repository Coordinator session on 2026-11-17 and told it to proceed autonomously, including building and publishing a new release. This records that direct assignment; it does not claim that Lukas or ChatGPT reviewed the code, which was written by this same session. The gates were mechanical (CI, validators, tests, rendered audit) plus the self-review recorded in the pull request."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-GOV-006",
+      "title": "Wave tooling fixes",
+      "steps": [
+        {
+          "id": "S-GOV-006-00",
+          "title": "Step 0: verify merge-base fix and workflow closeout allowance (claim, fix and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "verify ignores main's files and catches real strays",
+            "workflow accepts the closeout commit on wave pushes"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Head on which the checks below were run before the closeout commits.",
+              "commit": "b88adbfae81ab35e2b8d4c92a71b06cd27038ec9"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run locally by Claude Code: the verify tests including the new git test (main merged into the wave branch, a real stray still caught) and the workflow assertion.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py -k verify",
+              "result": "Ran 3 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "Reproduced on the real wave w01: the push-event run failed after wave close with 'belongs to no lane' for the four closeout files, and verify flagged every file merged in from main until base_commit was moved by hand. The fix removes both."
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate on pull request #38 at the head named in the integration notes: Node tests and the full Python suite (skips 49 on the runner).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1395 tests: OK (skipped=49); Node tests fail 0"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas told the Repository Coordinator session on 2026-11-17 to close wave w01 autonomously and keep the wave infrastructure working; this fixes two defects in that tooling found while doing so. It does not claim that Lukas or ChatGPT reviewed the code, which was written by this same session; the gates were mechanical (CI, validators, tests)."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-AST-003",
+      "title": "Asset acquisition pipeline and rights-evidence handling (offline, transport-injected)",
+      "steps": [
+        {
+          "id": "S-AST-003-00",
+          "title": "Lane L1 of wave w01-acquisition-providers-review",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "A new module orchestrator/assets/acquisition.py provides an explicit acquire step: it runs the existing triage/rights decision first, fetches only PERMITTED candidates, records QUARANTINE candidates as quarantined records with their reason codes and never fetches them, and never fetches REJECT candidates; unknown rights are never permission",
+            "Fetching goes through an injected Transport protocol (no real network code is exercised anywhere): https-only URLs, a per-provider host allow-list, a maximum byte size, a content-type allow-list per media type, a timeout parameter; the file is written atomically (temporary file, sha256 verified, then moved into the library layout), refuses path traversal, never overwrites an existing asset, and detects duplicates by sha256",
+            "Every failure path (transport error, truncated or oversize download, wrong content type, hash mismatch, library write error) leaves no partial file behind and records a scrubbed error that contains no credential-like text; each path has its own test",
+            "Rights-evidence handling: the licence evidence captured at acquisition (source URL, retrieval date, a hash of the licence text snapshot, the verifier) is stored with the asset; a re-verification function detects licence drift (stored hash differs from the current text) and moves the asset to quarantine without deleting it; human attestations keep working through the existing Attestation model",
+            "A concrete offline LocalFolderProvider searches a directory of user-supplied files described by sidecar rights files (documented, validated schema, strict: unknown keys and missing rights are quarantined, never permitted); acquisition copies, and original files are never modified, moved or deleted (a test hashes the originals before and after)",
+            "At least one open-licence catalogue adapter (Openverse or Wikimedia Commons) is implemented as a pure request builder plus response parser over the injected transport and tested only against fixture payloads authored from the public API documentation; the documentation and the report state NOT TESTED against the live service",
+            "A single function find_and_acquire(request, registry, library, transport, context) runs search, triage and acquisition and returns a deterministic report listing acquired, quarantined, rejected and failed items with reasons; ordering is stable across runs",
+            "At least 60 new offline tests in orchestrator/tests/test_asset_acquisition.py; one test proves no network is touched (socket creation is patched to fail); synthetic tiny files only, no real media; the existing test_assets.py passes (it may be extended, never weakened)",
+            "ASSETS.md documents the acquisition flow, the sidecar schema, the failure behaviour and what is IMPLEMENTED versus NOT TESTED (live providers, real media); open questions are listed, not decided; the lane report lists anything needing a decision from Lukas"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "d105e6b7c1858abe0cdfc5f92e2e7547171ff05a"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w01-acquisition-providers-review",
+              "commit": "da3f4ddc319e6c53378e09754cf9283b24bce0bc"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_assets.py",
+              "result": "Ran 149 tests: OK (skipped=1; the skip is the symlink test, symlinks unavailable)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_asset_acquisition.py",
+              "result": "Ran 135 tests: OK (skipped=1; symlink test, symlinks unavailable)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1442 tests: OK (skipped=4) before the final gate tightening (133 acquisition tests then); only test_assets.py and test_asset_acquisition.py were re-run afterwards"
+            },
+            {
+              "type": "observation",
+              "summary": "Implemented the offline, transport-injected acquisition step for the Asset Agent (T-AST-003): orchestrator/assets/acquisition.py (Transport protocol, bounded fetch with https-only, per-provider host allow-list also checked after redirects, byte limit, content-type allow-list and magic-byte check, atomic staging then AssetLibrary.add copy with sha256 re-verification, scrubbed errors, no partial files on any failure path, candidate quarantine ledger, licence-text snapshot evidence with hash/url/date/verifier, reverify_license drift detection that holds the asset without deleting anything, deterministic find_and_acquire report), local_provider.py (LocalFolderProvider with a strict sidecar rights schema; originals only read), openverse.py (pure request builder and response parser over the transport; images and audio) and additive fields on AssetCandidate. Acquired assets always land QUARANTINED; only a named human attestation can approve them. 135 new offline unit tests, including one that patches the socket layer to fail and one that proves the modules import no network code. NOT VERIFIED: nothing was run against the live Openverse service or with real media; Openverse fixtures are authored from the public API documentation, not recorded. Nothing here is VERIFIED."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: the Repository Coordinator integrated this wave under Lukas's standing delegation (PROJECT_OPERATING_PROTOCOL.md section 18); Lukas directly approved removing lanes L2 and L3 and closing w01 as a one-lane wave on 2026-11-17. Lane L1's own report is the evidence; this does not claim that Lukas or ChatGPT reviewed the code, and nothing is VERIFIED."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-GOV-007",
+      "title": "Record the outcome of wave w01",
+      "steps": [
+        {
+          "id": "S-GOV-007-00",
+          "title": "Step 0: milestone and next-action records for wave w01 (claim, record and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "M-AST-02 IN_PROGRESS with evidence, not complete",
+            "Deferred work listed",
+            "Computed block refreshed"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Head on which the checks were run before the closeout commits.",
+              "commit": "11bf7a9d6ba3489e0cd3192855d1f1ce0dff5614"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run locally by Claude Code: the canonical validator with the transition rules against origin/main, and the score calculation.",
+              "command": "cd orchestrator && python -B -m governance validate --against origin/main",
+              "result": "OK: status and task registry are valid and consistent"
+            },
+            {
+              "type": "observation",
+              "summary": "Record-only change to PROJECT_STATUS.json and the four registry records. M-AST-02 is IN_PROGRESS, not implemented or verified; the lane's own report states which work remains."
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate on this pull request at the head named in the integration notes.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "validate check SUCCESS"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas told the Repository Coordinator session on 2026-11-17 to close wave w01 and record the deferred work, proceeding autonomously. This records the wave's milestone outcome; it does not claim that Lukas or ChatGPT reviewed the evidence, which comes from lane L1's own report and a re-run of its tests."
+          }
+        }
+      ]
+    },
+    {
       "task_id": "T-DNA-002",
       "title": "Learning-ready Creator DNA core (M-DNA-02a): attribution verification, consent, analyzers, review loop",
       "steps": [
