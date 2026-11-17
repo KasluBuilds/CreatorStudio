@@ -556,7 +556,7 @@
         {
           "id": "S-CRD-001-01",
           "title": "Step 1: exact Research contract, safety metadata, research digest, tests and README",
-          "status": "READY_FOR_REVIEW",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "Exact research->creative_director/0.3 contract; invalid versions produce no partial Research context",
             "Original Research claim status, safety_critical, unresolved_safety_warning and producer usage preserved as typed metadata; missing or malformed safety metadata fails closed",
@@ -592,6 +592,10 @@
             {
               "type": "observation",
               "summary": "Independent safety review found that a source with missing review_label or verification_level could still count as supporting evidence. source_supports() now requires both fields to be present and recognized; missing, null or unknown values fail closed. Added regression cases, and README documents the provenance requirements."
+            },
+            {
+              "type": "observation",
+              "summary": "Reviewer rework opened: require complete supporting-source review metadata; source_supports now fails closed for missing or unrecognized review_label and verification_level. Re-run the full validation gate before returning to READY_FOR_REVIEW."
             }
           ]
         }
