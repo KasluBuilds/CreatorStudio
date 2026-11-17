@@ -373,8 +373,9 @@ class TestCliAgainstBase(unittest.TestCase):
 
     def git(self, *args):
         import subprocess
-        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
-                        "-c", "commit.gpgsign=false", *args], check=True, capture_output=True)
+        result = subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                                 "-c", "commit.gpgsign=false", *args], check=True, capture_output=True, text=True)
+        return result.stdout.strip()
 
     def write(self, d):
         (self.root / "DEVELOPMENT_TRACKER.json").write_text(json.dumps(d), encoding="utf-8")
@@ -393,11 +394,23 @@ class TestCliAgainstBase(unittest.TestCase):
         return code, out.getvalue() + err.getvalue()
 
     def test_valid_transition_passes(self):
+        self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED"), step(2)))
+        base = self.git("rev-parse", "HEAD")
         self.commit(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"), step(2)))
-        self.write(doc(step(0, "COMPLETED"), step(1, "READY_FOR_REVIEW"), step(2)))
-        code, out = self.run_cli("--against", "HEAD")
+        self.commit(doc(step(0, "COMPLETED"), step(1, "READY_FOR_REVIEW"), step(2)))
+        code, out = self.run_cli("--against", base)
         self.assertEqual(code, 0, out)
-        self.assertIn("transitions checked against HEAD", out)
+        self.assertIn("first-parent history", out)
+
+    def test_illegal_intermediate_transition_cannot_be_hidden_by_later_state(self):
+        self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED"), step(2)))
+        base = self.git("rev-parse", "HEAD")
+        self.commit(doc(step(0, "COMPLETED"), step(1, "READY_FOR_REVIEW"), step(2)))
+        # READY_FOR_REVIEW -> IN_PROGRESS is legal, but it cannot erase the earlier skipped state.
+        self.write(doc(step(0, "COMPLETED"), step(1, "IN_PROGRESS"), step(2)))
+        code, out = self.run_cli("--against", base)
+        self.assertEqual(code, 1)
+        self.assertIn("PLANNED -> READY_FOR_REVIEW is not allowed", out)
 
     def test_illegal_transition_fails_through_the_cli(self):
         self.commit(doc(step(0, "COMPLETED"), step(1, "PLANNED")))
