@@ -5,6 +5,7 @@ Owner: `claude:asset-recovery`  |  Task id: `T-AST-004`  |  Branch: `lane/w02-op
 ## You may edit only
 - `orchestrator/assets/openverse.py`
 - `orchestrator/assets/providers.py`
+- `orchestrator/assets/acquisition.py`
 - `orchestrator/tests/test_asset_acquisition.py`
 - `AI_Creator_Studio_Documentation/ASSETS.md`
 - `waves/w02-openverse-live-fixes/lanes/L1/` (your private directory: `report.json`)

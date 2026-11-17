@@ -16,6 +16,7 @@
       "owned_paths": [
         "orchestrator/assets/openverse.py",
         "orchestrator/assets/providers.py",
+        "orchestrator/assets/acquisition.py",
         "orchestrator/tests/test_asset_acquisition.py",
         "AI_Creator_Studio_Documentation/ASSETS.md"
       ],
