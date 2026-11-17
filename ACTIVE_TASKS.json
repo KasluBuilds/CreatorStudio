@@ -113,6 +113,17 @@
         "CHANGELOG.md",
         "SESSION_HANDOFF.md"
       ]
+    },
+    "AGR-CRD-TRACKER-HISTORY-01": {
+      "description": "For T-CRD-001 only, ChatGPT acting as the default integrator under Lukas's standing delegation is authorized to update the tracker-history checker, its tests and the development-step protocol. The change checks every first-parent tracker snapshot in order; it does not alter or waive any legal transition. Paths are limited to the files named here.",
+      "task_ids": [
+        "T-CRD-001"
+      ],
+      "paths": [
+        "dashboard/tracker_check.py",
+        "orchestrator/tests/test_development_tracker.py",
+        "DEVELOPMENT_STEP_PROTOCOL.md"
+      ]
     }
   },
   "tasks": [
