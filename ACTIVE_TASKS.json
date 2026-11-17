@@ -109,7 +109,8 @@
         "T-DSH-001",
         "T-DSH-002",
         "T-GOV-006",
-        "T-GOV-007"
+        "T-GOV-007",
+        "T-DNA-002"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -128,6 +129,18 @@
         "orchestrator/tests/test_development_tracker.py",
         "DEVELOPMENT_STEP_PROTOCOL.md",
         ".github/workflows/validate.yml"
+      ]
+    },
+    "AGR-DNA-VERIFIER-01": {
+      "description": "PROPOSED by claude:creator-dna-stream; takes effect when the Repository Coordinator or Lukas merges this pull request. T-DNA-002 makes DNAStore refuse footage evidence unless an injected attribution verifier verified the stamp (no insecure default). Three test files owned by UNRESOLVED packages build a DNAStore without a verifier and with hand-built or upstream stamps, so they break by design. T-DNA-002 may edit them ONLY to give the DNAStore constructor an explicit test-only verifier (or use a test-only fixture); no assertion is removed or weakened and no production code of media_analysis, speaker_attribution or creator_state is touched. tests/test_creative_director.py (one constructor in TestCreatorDNA.test_real_store_export_is_accepted_and_unchanged) is covered since T-CRD-001 was closed out.",
+      "task_ids": [
+        "T-DNA-002"
+      ],
+      "paths": [
+        "orchestrator/tests/test_speaker_attribution.py",
+        "orchestrator/tests/test_integration_phase2_phase3.py",
+        "orchestrator/tests/_dna_lenient.py",
+        "orchestrator/tests/test_creative_director.py"
       ]
     }
   },
@@ -341,25 +354,15 @@
       "owner": "claude:creative-director-stream",
       "branch": "task/t-crd-001-impl",
       "worktree": "../CreatorStudio-worktrees/t-crd-001-impl",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-17T13:39:25+00:00",
-        "expires": "2026-11-18T13:39:25+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01",
         "AGR-CRD-TRACKER-HISTORY-01"
       ],
-      "owned_paths": [
-        "orchestrator/creative_director/",
-        "orchestrator/tests/test_creative_director.py",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "Only the exact contract research->creative_director/0.3 is accepted; a missing, malformed, non-string or unsupported version yields an unusable Research context with no partial items and a recorded issue",
         "ResearchItem preserves the original Research claim status, safety_critical, unresolved_safety_warning and producer usage as typed metadata, separate from the Creative Director derived usage; producer values are never silently replaced or discarded",
@@ -380,7 +383,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14; refreshed 2026-11-17 by merging origin/main 9317119 (no force-push) with the lease renewed for 24 hours. Task definition, owned paths and scope unchanged. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage. Implementation started 2026-11-17 after claim PR #18 merged (9dfaec2) and Lukas/ChatGPT authorized T-CRD-001 as ONE implementation batch in ONE PR; branch and worktree fields moved from the merged claim branch to task/t-crd-001-impl so the scope check resolves this task. Owned paths, lease and agreement unchanged. Integrator-owned CI correction is separately authorized by AGR-CRD-TRACKER-HISTORY-01, limited to dashboard/tracker_check.py, DEVELOPMENT_STEP_PROTOCOL.md and orchestrator/tests/test_development_tracker.py; it checks the existing legal transitions across the branch's first-parent history and does not waive or alter them. The validate workflow now passes origin/$HEAD_REF to the tracker checker because GitHub's PR checkout is a synthetic merge commit; this path is covered by the same narrow integration agreement. The agreement also covers .github/workflows/validate.yml, which passes the actual PR head ref to the checker; GitHub's synthetic merge checkout otherwise hides the task branch's intermediate tracker state."
+      "integration_notes": "Claim branch created from origin/main a6a89a2 (T-DNA-001 claim PR #15 and agreement extension PR #16 merged) on 2026-11-14; refreshed 2026-11-17 by merging origin/main 9317119 (no force-push) with the lease renewed for 24 hours. Task definition, owned paths and scope unchanged. Step 00 is the claim only; Step 01 (implementation, tests, README) is not started and needs ChatGPT's written authorization after the claim is merged. Design approved by Lukas with refinements: no test importing research.outputs._USAGE (mirrored producer rules tested against explicit cases, synchronization risk documented), and the original Research claim status preserved and digested. orchestrator/creative_director/README.md is approved as the in-package documentation location and falls under the claimed package path; no shared documentation file is claimed. The Research producer (orchestrator/research/), Editor schema, Asset package, creator_dna, UNRESOLVED packages and cross-package tests are NOT claimed and must not change. The shared registry, tracker, handoff and changelog files are covered by AGR-GOV-REGISTRY-01: this task edits only its own records. Synthetic data only; no real footage. Implementation started 2026-11-17 after claim PR #18 merged (9dfaec2) and Lukas/ChatGPT authorized T-CRD-001 as ONE implementation batch in ONE PR; branch and worktree fields moved from the merged claim branch to task/t-crd-001-impl so the scope check resolves this task. Owned paths, lease and agreement unchanged. Integrator-owned CI correction is separately authorized by AGR-CRD-TRACKER-HISTORY-01, limited to dashboard/tracker_check.py, DEVELOPMENT_STEP_PROTOCOL.md and orchestrator/tests/test_development_tracker.py; it checks the existing legal transitions across the branch's first-parent history and does not waive or alter them. The validate workflow now passes origin/$HEAD_REF to the tracker checker because GitHub's PR checkout is a synthetic merge commit; this path is covered by the same narrow integration agreement. The agreement also covers .github/workflows/validate.yml, which passes the actual PR head ref to the checker; GitHub's synthetic merge checkout otherwise hides the task branch's intermediate tracker state. Closed out 2026-11-17: both tracker steps (S-CRD-001-00, S-CRD-001-01) are COMPLETED with ChatGPT's REPORTED technical approval, implementation PR #27 is merged into main (merge commit a8d57b4, reviewed head b287d05), orchestrator/creative_director/README.md exists, and the task's tests ran green in the validate workflow on main. The task stayed ACTIVE only because no follow-up closeout pull request had been opened after the merge (lease would have expired 2026-11-18T13:39:25+00:00). This closeout is a registry record only, made inside T-DNA-002's pull request #34 on the direct instruction of the user in that session so that the one-line constructor change in test_creative_director.py could be authorized; it is not a code review and changes no T-CRD-001 code, step or evidence. T-DNA-002 changed only one test constructor in that file under AGR-DNA-VERIFIER-01."
     },
     {
       "id": "T-GOV-004",
@@ -600,6 +603,63 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Completed 2026-11-17 in one record-only pull request; checks were run on head 3222f237755fd84e4aa5846576e9b62c7e9fe994 before the closeout commits."
+    },
+    {
+      "id": "T-DNA-002",
+      "title": "Learning-ready Creator DNA core (M-DNA-02a): attribution verification, consent, analyzers, review loop",
+      "description": "In orchestrator/creator_dna/: (1) AttributionVerifier protocol with verified/stale/unknown/invalid outcomes injected into DNAStore, fail closed, audit_attributions(); (2) schema v5 purpose-scoped consent, withdrawal and quarantine events; (3) deterministic SentenceRhythm, PauseProfile and EnergyRange analyzers; (4) optional session provenance for evidence independence; (5) review_queue, apply_decisions, diff_exports; (6) tests, CREATOR_DNA.md and status records. Synthetic data only; no real footage; MVI_0879.MOV is never evidence; media_analysis, speaker_attribution and creator_state code is not touched.",
+      "owner": "claude:creator-dna-stream",
+      "branch": "task/t-dna-002-claim",
+      "worktree": "../CreatorStudio-worktrees/t-dna-002",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DNA-001"
+      ],
+      "lease": {
+        "acquired": "2026-11-17T18:39:23+00:00",
+        "expires": "2026-11-18T18:39:23+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01",
+        "AGR-DNA-VERIFIER-01"
+      ],
+      "owned_paths": [
+        "orchestrator/creator_dna/",
+        "orchestrator/tests/test_creator_dna.py",
+        "orchestrator/tests/test_creator_dna_learning.py",
+        "orchestrator/tests/_dna_verifiers.py",
+        "AI_Creator_Studio_Documentation/CREATOR_DNA.md",
+        "PROJECT_STATUS.json",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md",
+        "orchestrator/tests/test_speaker_attribution.py",
+        "orchestrator/tests/test_integration_phase2_phase3.py",
+        "orchestrator/tests/_dna_lenient.py",
+        "orchestrator/tests/test_creative_director.py"
+      ],
+      "acceptance_criteria": [
+        "DNAStore refuses footage-derived evidence unless an injected verifier returns VERIFIED for the stamp; missing, unavailable, unknown, stale and invalid outcomes all refuse; there is no insecure default and the test fixture is test-only",
+        "audit_attributions(verifier) revokes stale or invalid evidence through idempotent, replay-consistent attribution_revoked events",
+        "Schema v5 consent record, withdrawal and quarantine_all; consent is purpose-scoped and project-scoped; withdrawal stops ingestion and excludes existing footage evidence from confidence and scope; v1-v4 logs replay unchanged and older readers refuse v5 events",
+        "SentenceRhythmAnalyzer, PauseProfileAnalyzer and EnergyRangeAnalyzer are deterministic, validate inputs, never invent measurements and never label humor or emotion",
+        "Optional session provenance: evidence from one session counts as one independent witness; a stable trait needs three sessions when session ids exist; behaviour without session ids is unchanged",
+        "review_queue, apply_decisions (dry run, all-or-nothing) and diff_exports are deterministic and tested with golden outputs",
+        "At least 60 new tests; existing Creator DNA tests are not weakened; the full suite passes; CREATOR_DNA.md and status records are reconciled and state that nothing is real-input verified",
+        "No change to media_analysis, speaker_attribution, creator_state or creative_director code; the only edits to test files owned by others are those allowed by AGR-DNA-VERIFIER-01"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creator_dna.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creator_dna_learning.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main"
+      ],
+      "integration_notes": "Synthetic data only; no real footage; MVI_0879.MOV is never Creator DNA evidence. Claim, implementation and records travel in one pull request at the explicit instruction to deliver the milestone as one unit; claim pull request #34 had not been merged when the implementation was finished, so this is recorded as a deviation for the integrator to accept or reject. creator_dna package ownership is REPORTED, not confirmed by Lukas. Shared registry files are covered by AGR-GOV-REGISTRY-01 (T-DNA-002 added to its members). AGR-DNA-VERIFIER-01 was used for constructor-level test changes only: test_speaker_attribution.py, test_integration_phase2_phase3.py and test_creative_director.py (test-only fixture tests/_dna_verifiers.py; no assertion changed). The creative_director file was unblocked by closing T-CRD-001 (see its record). Fix commit 1b0ae72d2a0517d7460b17392dd329ebd43efd61."
     }
   ]
 }

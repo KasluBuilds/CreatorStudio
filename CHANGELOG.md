@@ -39,6 +39,17 @@ before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed
 - New canonical file `AGENT_REGISTRY.json` (who is responsible for which milestones and streams; no progress data) with `orchestrator/governance/agents.py`, checked by `governance validate`. Adding an `active` agent gives it a tab with no code change. Wave lanes may carry an optional `milestones` list; generated lane briefs ask lanes to push their branch regularly so the dashboard can see them working.
 - Tests: 61 Node tests (GitHub parsing, missing/malformed/stale/offline data, dynamic tabs, gate before and after its trigger, no credentials in the source), 17 registry tests and 7 cross-language tests proving the app's credits, phase figures, agent assignment and gate state equal `governance.status` on the current records. The packaged exe was run end to end with `--selftest` (live GitHub, offline from the saved copy, and local fixture). `validate.yml` now runs the Node tests. Windows only; unsigned; Linux and macOS NOT TESTED.
 
+## 2026-11-17 — task `T-CRD-001` closed out (registry record only)
+
+- Both steps were COMPLETED and PR #27 merged (a8d57b4) but the task record stayed ACTIVE with its lease and owned paths. Now COMPLETED, lease and paths released, merge evidence in `integration_notes`. Recorded in the T-DNA-002 pull request on the user's direct instruction; no Creative Director code, step or evidence changed; not a code review.
+
+## 2026-11-17 — task `T-DNA-002` Creator DNA learning-ready core, M-DNA-02a (READY_FOR_REVIEW; synthetic data only)
+
+- `creator_dna` schema v5. `DNAStore` takes an injected `AttributionVerifier` and refuses footage evidence unless it answers VERIFIED (missing, unavailable, unknown, stale and invalid all refuse; no insecure default) and a current purpose-scoped consent covers style learning. `audit_attributions()` revokes stale, invalid and unknown stamps through idempotent `attribution_revoked` events.
+- New: consent record, withdrawal and reversible quarantine (events `consent_recorded`, `consent_withdrawn`, `evidence_quarantined`, `quarantine_released`); `SentenceRhythmAnalyzer`, `PauseProfileAnalyzer`, `EnergyRangeAnalyzer`; optional `Origin.session_id`/`project_id` with session-aware witness grouping (legacy results unchanged); `review_queue`, `apply_decisions` (all-or-nothing, dry run) and `diff_exports`. v1-v4 logs replay unchanged; only the new event kinds are written as v5.
+- Tests: 141 new in `test_creator_dna_learning.py`; `test_creator_dna.py` (86) unchanged. `test_speaker_attribution.py` and `test_integration_phase2_phase3.py` changed at constructor level only (AGR-DNA-VERIFIER-01) to use the test-only `tests/_dna_verifiers.py`. `test_creative_director.py` changed at constructor level only (one test builds a strict store; T-CRD-001 closed out first). Full suite: Ran 1671 tests: OK (skipped=2).
+- Not real-input verified: no real footage processed, no profile exists. `CREATOR_DNA.md` documents the contracts, OPEN defaults and the integration requirements; M-DNA-02 is IN_PROGRESS (only sub-milestone M-DNA-02a delivered).
+
 ## 2026-11-17 — task `T-GOV-005` wave wording follow-up (complete)
 
 - `CLAUDE.md`: a wave lane's manifest entry is its claim and it never edits `ACTIVE_TASKS.json`; standalone tasks still claim first; a redundant sentence added by T-GOV-004 is removed; no step stops inside a wave.

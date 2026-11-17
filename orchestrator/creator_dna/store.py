@@ -10,6 +10,7 @@ log changed behind this process's back.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import dataclass, field
@@ -18,10 +19,12 @@ from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
 from . import confidence as conf
+from .consent import ConsentDecision, ConsentRecord, ConsentState, Purpose, parse_time
 from .inputs import TranscriptSegment, quote_in_transcript
 from .schema import (LAYER_METHODS, OBSERVED_METHODS, SCHEMA_VERSION, Category, DNAError, Evidence, Layer,
                      Method, Modality, Polarity, Scope, Status, TraitCandidate, normalize_text,
                      trait_id_for)
+from .verification import Outcome, safe_verify
 
 LOG_NAME = "events.jsonl"
 
@@ -30,6 +33,20 @@ LOG_NAME = "events.jsonl"
 # the same words), so it only ever raises a read-only warning flag; it is never migrated.
 LEGACY_REVOCATION_NOTE_PREFIX = "attribution revoked ("
 REVIEW_ACTIONS = ("reject", "restore")
+
+# Event types introduced by schema v5. Every other event is still written as v4, so a log that holds only
+# older kinds of event stays readable by a v4 reader; a v4 reader refuses the v5 ones (it must not guess).
+V5_EVENTS = frozenset({"consent_recorded", "consent_withdrawn", "evidence_quarantined", "quarantine_released"})
+
+
+def _event_version(type_: str, data: dict) -> int:
+    if type_ in V5_EVENTS:
+        return 5
+    if type_ == "evidence_added":
+        origin = data.get("evidence", {}).get("origin") or {}
+        if "project_id" in origin or "session_id" in origin:
+            return 5            # an older reader would silently drop these fields and score differently
+    return 4
 
 
 class DNALogError(DNAError):
@@ -49,6 +66,8 @@ class EvidenceItem:
     # Read-only warnings for replayed pre-v4 logs; never used to change what counts.
     legacy_possible_revocation: bool = False             # pre-v4 reject whose note looks like a revocation
     legacy_restored_after_possible_revocation: bool = False
+    quarantined: bool = False                    # held out of the profile (consent withdrawn / manual); reversible
+    quarantine_reason: str = ""
 
     @property
     def attribution_revoked(self) -> bool:
@@ -58,6 +77,12 @@ class EvidenceItem:
     def rejected(self) -> bool:
         """Compatibility: excluded from confidence for either reason."""
         return self.creator_rejected or self.attribution_revoked
+
+    @property
+    def excluded(self) -> bool:
+        """Excluded from confidence, scope and every derived profile for ANY reason: creator rejection,
+        attribution revocation or quarantine. `rejected` keeps its pre-v5 meaning and does not include quarantine."""
+        return self.creator_rejected or self.attribution_revoked or self.quarantined
 
 
 @dataclass
@@ -100,8 +125,22 @@ def _item_dict(i: EvidenceItem) -> dict:
              attribution_revoked=i.attribution_revoked, revocation_decision_id=i.revoked_decision_id,
              revocation_reason=i.revocation_reason,
              legacy_possible_revocation=i.legacy_possible_revocation,
-             legacy_restored_after_possible_revocation=i.legacy_restored_after_possible_revocation)
+             legacy_restored_after_possible_revocation=i.legacy_restored_after_possible_revocation,
+             quarantined=i.quarantined, quarantine_reason=i.quarantine_reason)
     return d
+
+
+@dataclass
+class AuditReport:
+    checked: int = 0
+    verified: int = 0
+    revoked: list[tuple[str, str, str]] = field(default_factory=list)       # (trait_id, evidence_id, outcome)
+    unavailable: list[tuple[str, str, str]] = field(default_factory=list)   # verifier could not answer: nothing changed
+    unattributed: list[tuple[str, str]] = field(default_factory=list)       # legacy footage evidence without a stamp
+
+    def to_dict(self) -> dict:
+        return {"checked": self.checked, "verified": self.verified, "revoked": [list(x) for x in self.revoked],
+                "unavailable": [list(x) for x in self.unavailable], "unattributed": [list(x) for x in self.unattributed]}
 
 
 @dataclass
@@ -122,14 +161,35 @@ def _utc_now() -> str:
 
 
 class DNAStore:
-    def __init__(self, directory: str | os.PathLike, clock: Callable[[], str] = _utc_now):
+    """`verifier` (an `AttributionVerifier`) is what makes footage evidence admissible: without one, every
+    footage-derived write is refused (fail closed). `project_id` names the project this profile belongs to;
+    consent is checked against it. Reading, replaying, creator feedback and self-report never need either."""
+
+    def __init__(self, directory: str | os.PathLike, clock: Callable[[], str] = _utc_now, *,
+                 verifier=None, project_id: str | None = None):
+        if project_id is not None and (not isinstance(project_id, str) or not project_id.strip()):
+            raise DNAError("project_id must be a non-empty string or None")
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.log_path = self.directory / LOG_NAME
         self._clock = clock
+        self._verifier = verifier
+        self.project_id = project_id
+        self._reset_state()
+        self._load()
+
+    def _reset_state(self) -> None:
         self.traits: dict[str, TraitState] = {}
+        self.consents: dict[str, ConsentState] = {}
         self._seq = 0
         self._size = 0
+
+    def _rollback(self, checkpoint: tuple[int, int]) -> None:
+        """Undo events appended after `checkpoint` (used only when a batch fails midway)."""
+        size, _seq = checkpoint
+        with open(self.log_path, "r+b") as fh:
+            fh.truncate(size)
+        self._reset_state()
         self._load()
 
     # ------------------------------------------------------------------ log
@@ -162,7 +222,7 @@ class DNAStore:
         actual = self.log_path.stat().st_size if self.log_path.exists() else 0
         if actual != self._size:
             raise DNALogError("event log changed since it was loaded (another writer?); reopen the store")
-        ev = {"v": SCHEMA_VERSION, "seq": self._seq + 1, "ts": self._clock(),
+        ev = {"v": _event_version(type_, data), "seq": self._seq + 1, "ts": self._clock(),
               "type": type_, "actor": actor, "data": data}
         line = (json.dumps(ev, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
         self._apply(ev)    # apply first: validation errors must not reach the log
@@ -191,6 +251,14 @@ class DNAStore:
             self._apply_review(ev, d)
         elif t == "attribution_revoked":
             self._apply_revocation(d)
+        elif t == "consent_recorded":
+            self._apply_consent(d, ts)
+        elif t == "consent_withdrawn":
+            self._apply_withdrawal(d, actor, ts)
+        elif t == "evidence_quarantined":
+            self._apply_quarantine(d, release=False)
+        elif t == "quarantine_released":
+            self._apply_quarantine(d, release=True)
         elif t == "layer_changed":
             tr = self._trait(d["trait_id"])
             tr.history.append({"ts": ts, "actor": actor, "change": f"layer {tr.layer.value} -> {d['layer']}",
@@ -234,6 +302,54 @@ class DNAStore:
         item.revoked_decision_id = decision_id
         item.revocation_reason = reason
         item.review_note = f"attribution revoked ({decision_id}): {reason}"
+
+    def _apply_consent(self, d: dict, ts: str) -> None:
+        try:
+            rec = ConsentRecord.from_event(d, ts)
+        except DNAError as exc:
+            raise ValueError(str(exc)) from exc
+        if rec.consent_id in self.consents:
+            raise ValueError(f"consent {rec.consent_id} already exists")
+        if self.project_id is not None and rec.project_id != self.project_id:
+            raise ValueError(f"consent is for project {rec.project_id!r}, this store belongs to {self.project_id!r}")
+        self.consents[rec.consent_id] = ConsentState(rec)
+
+    def _apply_withdrawal(self, d: dict, actor: str, ts: str) -> None:
+        cs = self.consents.get(d["consent_id"])
+        if cs is None:
+            raise ValueError(f"unknown consent {d['consent_id']!r}")
+        if cs.withdrawn_at is not None:
+            raise ValueError(f"consent {cs.record.consent_id} is already withdrawn")
+        reason = d.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("a consent withdrawal needs a reason")
+        cs.withdrawn_at, cs.withdrawn_by, cs.withdrawn_reason = ts, actor, reason
+
+    def _apply_quarantine(self, d: dict, release: bool) -> None:
+        reason = d.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("quarantine events need a reason")
+        items = d.get("items")
+        if not isinstance(items, list) or not items:
+            raise ValueError("quarantine events need a non-empty item list")
+        seen = set()
+        for pair in items:
+            if not (isinstance(pair, list) and len(pair) == 2 and all(isinstance(x, str) for x in pair)):
+                raise ValueError("quarantine items are [trait_id, evidence_id] pairs")
+            if tuple(pair) in seen:
+                raise ValueError("duplicate item in a quarantine event")
+            seen.add(tuple(pair))
+        targets = [self._item(self._trait(t), e) for t, e in items]
+        for it in targets:
+            if it.evidence.method is Method.CREATOR_STATEMENT:
+                raise ValueError("creator statements are never quarantined")
+            if release and not it.quarantined:
+                raise ValueError(f"evidence {it.evidence_id} is not quarantined")
+            if not release and it.quarantined:
+                raise ValueError(f"evidence {it.evidence_id} is already quarantined")
+        for it in targets:
+            it.quarantined = not release
+            it.quarantine_reason = "" if release else reason
 
     def _apply_feedback(self, d: dict, actor: str, ts: str) -> None:
         tr = self._trait(d["trait_id"])
@@ -283,14 +399,30 @@ class DNAStore:
 
     # ----------------------------------------------------------- validation
     def _check_attribution(self, ev: Evidence) -> None:
-        """Footage-derived evidence must carry an eligible-creator attribution stamp. Evidence about
-        someone else, an unknown person, overlapping speakers or playback has no valid stamp, so it
-        cannot enter the profile merely because an analyzer produced it."""
+        """Admission gate for footage-derived evidence. All three must hold, otherwise the write is refused:
+          1. an eligible-creator attribution stamp is present (a stamp is a claim, never proof);
+          2. the injected verifier answered VERIFIED for exactly this evidence (missing, unavailable, unknown,
+             stale and invalid all refuse; there is no unverified mode);
+          3. a current consent for this project covers style learning.
+        Creator statements (self-report) are exempt."""
         if ev.method is Method.CREATOR_STATEMENT:
             return
         if ev.attribution is None:
             raise DNAError("unattributed footage evidence refused: no eligible creator attribution "
                            "(speaker/visual-subject attribution is required before Creator DNA learning)")
+        outcome, reason = safe_verify(self._verifier, ev)
+        if outcome is not Outcome.VERIFIED:
+            label = "unavailable" if outcome is None else outcome.value
+            raise DNAError(f"attribution not verified ({label}): footage evidence refused; {reason}".rstrip("; "))
+        decision = self.consent_decision(Purpose.STYLE_LEARNING, self._evidence_project(ev))
+        if not decision.allowed:
+            raise DNAError(f"consent refused ({decision.code}): footage evidence not learned; {decision.detail}")
+
+    def _evidence_project(self, ev: Evidence) -> str | None:
+        own = ev.origin.project_id if ev.origin is not None else None
+        if own is not None and self.project_id is not None and own != self.project_id:
+            raise DNAError(f"evidence belongs to project {own!r} but this profile belongs to {self.project_id!r}")
+        return own if own is not None else self.project_id
 
     @staticmethod
     def _check_layer_vs_evidence(layer: Layer, ev: Evidence) -> None:
@@ -482,6 +614,149 @@ class DNAStore:
                       method=Method.CREATOR_STATEMENT, polarity=polarity, note=note)
         return self.add_evidence(trait_id, ev, actor)
 
+    # ------------------------------------------------------------ attribution audit
+    def audit_attributions(self, verifier=None, actor: str = "attribution_audit") -> "AuditReport":
+        """Re-check every stored footage item against the verifier. STALE, INVALID and UNKNOWN items (the
+        upstream decision was withdrawn, does not match, or no longer exists) are revoked through
+        append-only `attribution_revoked` events; an unreachable verifier revokes nothing and is reported.
+        Idempotent: items already revoked are skipped, so a second run writes nothing."""
+        v = verifier if verifier is not None else self._verifier
+        if v is None:
+            raise DNAError("audit_attributions needs a verifier")
+        rep = AuditReport()
+        for tid in sorted(self.traits):
+            tr = self.traits[tid]
+            for item in sorted(tr.evidence_items, key=lambda i: i.evidence_id):
+                ev = item.evidence
+                if ev.method is Method.CREATOR_STATEMENT or item.attribution_revoked:
+                    continue
+                if ev.attribution is None:
+                    rep.unattributed.append((tid, item.evidence_id))
+                    continue
+                rep.checked += 1
+                outcome, reason = safe_verify(v, ev)
+                if outcome is Outcome.VERIFIED:
+                    rep.verified += 1
+                elif outcome is None:
+                    rep.unavailable.append((tid, item.evidence_id, reason))
+                else:
+                    self._emit("attribution_revoked", actor, {
+                        "trait_id": tid, "evidence_id": item.evidence_id, "decision_id": ev.attribution.decision_id,
+                        "reason": f"audit: attribution {outcome.value}" + (f" ({reason})" if reason else "")})
+                    rep.revoked.append((tid, item.evidence_id, outcome.value))
+        return rep
+
+    # ----------------------------------------------------------- consent / quarantine
+    def consent_decision(self, purpose: Purpose | str, project_id: str | None) -> ConsentDecision:
+        """Does a CURRENT consent (recorded, not withdrawn, not expired) for `project_id` cover `purpose`?"""
+        purpose = purpose.value if isinstance(purpose, Purpose) else purpose
+        if purpose not in [p.value for p in Purpose]:
+            raise DNAError(f"unknown consent purpose {purpose!r}")
+        if project_id is None:
+            return ConsentDecision(False, "no_project", "the evidence and the profile name no project; "
+                                   "pass project_id to the store or set Origin.project_id")
+        now = self._now
+        mine = [self.consents[c] for c in sorted(self.consents) if self.consents[c].record.project_id == project_id]
+        if not mine:
+            return ConsentDecision(False, "no_consent", f"no consent recorded for project {project_id!r}")
+        kinds = {c.record.consent_id: c.status(now) for c in mine}
+        for c in mine:
+            if kinds[c.record.consent_id] == "active" and purpose in c.record.purposes:
+                return ConsentDecision(True, "ok", "covered", c.record.consent_id)
+        if any(k == "active" for k in kinds.values()):
+            return ConsentDecision(False, "purpose_not_covered", f"no active consent covers {purpose!r}")
+        if any(k == "expired" for k in kinds.values()):
+            return ConsentDecision(False, "expired", "every consent for this project has expired")
+        return ConsentDecision(False, "withdrawn", "every consent for this project was withdrawn")
+
+    def record_consent(self, creator_id: str, project_id: str, purposes: Sequence, authorized_by: str,
+                       provenance=None, expires_at: str | None = None, actor: str | None = None) -> str:
+        """Record the creator's permission for a project. `authorized_by` is the person who gave it
+        ("human:<name>"). Re-recording an identical, still-current consent writes nothing."""
+        rec = ConsentRecord.from_event(
+            {"consent_id": "cs_pending", "project_id": project_id, "creator_id": creator_id, "purposes": purposes,
+             "authorized_by": authorized_by, "provenance": provenance, "expires_at": expires_at},
+            self._clock() if expires_at is not None else "1970-01-01T00:00:00+00:00")
+        if self.project_id is not None and rec.project_id != self.project_id:
+            raise DNAError(f"consent is for project {rec.project_id!r}, this store belongs to {self.project_id!r}")
+        base = hashlib.sha1("|".join([rec.project_id, rec.creator_id, ",".join(rec.purposes), rec.authorized_by,
+                                      rec.expires_at or ""]).encode("utf-8")).hexdigest()[:10]
+        now = self._now
+        same = [c for c in self.consents.values() if c.record.consent_id.split("_")[1] == base]
+        for c in same:
+            if c.status(now) == "active":
+                return c.record.consent_id
+        cid = f"cs_{base}" if not same else f"cs_{base}_{len(same)}"
+        self._emit("consent_recorded", actor or authorized_by, {
+            "consent_id": cid, "project_id": rec.project_id, "creator_id": rec.creator_id,
+            "purposes": list(rec.purposes), "authorized_by": rec.authorized_by, "expires_at": rec.expires_at,
+            "provenance": dict(rec.provenance)})
+        return cid
+
+    def withdraw_consent(self, reason: str, actor: str, consent_id: str | None = None, quarantine: bool = True) -> dict:
+        """Withdraw one consent (or every consent that is not yet withdrawn). Learning stops at once. Unless
+        `quarantine=False`, footage evidence of any project left with no current style-learning consent is
+        quarantined (excluded from every derived profile, kept in the log). Repeating it writes nothing."""
+        if not isinstance(reason, str) or not reason.strip():
+            raise DNAError("withdrawing consent needs a reason")
+        if consent_id is not None:
+            if consent_id not in self.consents:
+                raise DNAError(f"unknown consent {consent_id!r}")
+            targets = [consent_id]
+        else:
+            targets = sorted(self.consents)
+        withdrawn, projects = [], []
+        for cid in targets:
+            cs = self.consents[cid]
+            if cs.withdrawn_at is not None:
+                continue
+            self._emit("consent_withdrawn", actor, {"consent_id": cid, "reason": reason})
+            withdrawn.append(cid)
+            if cs.record.project_id not in projects:
+                projects.append(cs.record.project_id)
+        quarantined: list[tuple[str, str]] = []
+        if quarantine:
+            for proj in projects:
+                if not self.consent_decision(Purpose.STYLE_LEARNING, proj).allowed:
+                    quarantined += self.quarantine_all(f"consent withdrawn: {reason}", actor, project_id=proj)
+        return {"withdrawn": withdrawn, "quarantined": quarantined}
+
+    def _item_project(self, item: EvidenceItem) -> str | None:
+        own = item.evidence.origin.project_id if item.evidence.origin is not None else None
+        return own if own is not None else self.project_id
+
+    def quarantine_all(self, reason: str, actor: str, project_id: str | None = None) -> list[tuple[str, str]]:
+        """Hold every not-yet-quarantined footage-derived item (of one project, if given) out of the profile.
+        Deterministic order, one event, nothing deleted; creator statements are untouched. Returns the pairs
+        newly quarantined (empty and no event when there is nothing to do)."""
+        if not isinstance(reason, str) or not reason.strip():
+            raise DNAError("quarantine needs a reason")
+        pairs = sorted((tid, i.evidence_id) for tid, tr in self.traits.items() for i in tr.evidence_items
+                       if i.evidence.method is not Method.CREATOR_STATEMENT and not i.quarantined
+                       and (project_id is None or self._item_project(i) == project_id))
+        if not pairs:
+            return []
+        self._emit("evidence_quarantined", actor, {"reason": reason, "items": [list(p) for p in pairs]})
+        return pairs
+
+    def release_quarantine(self, reason: str, actor: str) -> list[tuple[str, str]]:
+        """Return quarantined items to the profile, but only those whose project has a CURRENT style-learning
+        consent. This never undoes a creator rejection or an attribution revocation (independent states)."""
+        if not isinstance(reason, str) or not reason.strip():
+            raise DNAError("releasing quarantine needs a reason")
+        pairs = sorted((tid, i.evidence_id) for tid, tr in self.traits.items() for i in tr.evidence_items
+                       if i.quarantined and self.consent_decision(Purpose.STYLE_LEARNING, self._item_project(i)).allowed)
+        if not pairs:
+            return []
+        self._emit("quarantine_released", actor, {"reason": reason, "items": [list(p) for p in pairs]})
+        return pairs
+
+    def _now(self):
+        return parse_time(self._clock())
+
+    def current_consents(self) -> list[dict]:
+        return [self.consents[c].to_dict(self._now) for c in sorted(self.consents)]
+
     # ---------------------------------------------------------------- reading
     def legacy_warnings(self) -> list[dict]:
         """Read-only report of ambiguous pre-v4 history. Nothing here changes what counts."""
@@ -533,8 +808,15 @@ class DNAStore:
         inactive = [{"trait_id": t.trait_id, "statement": t.statement, "status": t.status.value,
                      "superseded_by": t.superseded_by, "evidence_count": len(t.evidence_items)}
                     for t in self.traits.values() if t.status in (Status.REJECTED, Status.CORRECTED)]
+        generated_at = self._clock()
+
+        def now():
+            return parse_time(generated_at)
         return {
-            "schema_version": SCHEMA_VERSION, "generated_at": self._clock(), "events": self._seq,
+            "schema_version": SCHEMA_VERSION, "generated_at": generated_at, "events": self._seq,
+            "consent": [self.consents[c].to_dict(now) for c in sorted(self.consents)],
+            "quarantined_evidence": sorted([tid, i.evidence_id] for tid, tr in self.traits.items()
+                                           for i in tr.evidence_items if i.quarantined),
             "observed_facts": section(Layer.OBSERVED),
             "ai_interpretations": section(Layer.INTERPRETATION),
             "hypotheses": section(Layer.HYPOTHESIS),

@@ -913,13 +913,16 @@ class TestCreatorDNA(unittest.TestCase):
     def test_real_store_export_is_accepted_and_unchanged(self):
         from creator_dna import Category, DNAStore, Evidence, Layer, Method, Modality
         from creator_dna.schema import EvidenceAttribution
+        from _dna_verifiers import RegistryVerifier, strict_test_store     # strict store: verifier + consent (test doubles)
+        verifier = RegistryVerifier()
         with tempfile.TemporaryDirectory() as td:
-            st = DNAStore(Path(td) / "dna")
+            st = strict_test_store(Path(td) / "dna", verifier=verifier)
             tid = st.propose_trait(Category.PAUSES, "holds a pause before punchlines", Layer.OBSERVED, "test")
             tid = tid if isinstance(tid, str) else getattr(tid, "trait_id", tid)
             for i, src in enumerate(["a/1", "b/2", "c/3"]):
                 stamp = EvidenceAttribution(f"dec{i}", f"rec{i}", f"m{i}", "speech", 0.0, 5.0, "human_confirmation",
                                             0.9, "synthetic-policy", attribution_evidence_ids=(f"ev{i}",))
+                verifier.register(stamp)                       # the upstream decision exists, so the strict store admits it
                 st.add_evidence(tid, Evidence(source_id=src, modality=Modality.TRANSCRIPT, method=Method.VERBATIM,
                                               start_s=1.0, end_s=2.0, quote="pause", reviewed_by="human:t",
                                               context=(f"ctx{i}",), attribution=stamp), "test")

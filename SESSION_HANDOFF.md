@@ -26,7 +26,7 @@ Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`
 
 ## Progress (computed from PROJECT_STATUS.json)
 
-- Implementation: **36.9%**  
+- Implementation: **39.3%**  
 - Verification: **13.4%**  
 - 29 milestones, total weight 164. Verification never exceeds implementation. Weights are PROPOSED: drafted by an AI session and not yet reviewed by Lukas, so these figures are provisional. 
 - How to read them: *implementation* is the weighted share of milestones whose code exists (half credit if in progress); *verification* is the weighted share demonstrated at the level evidence supports. Neither measures effort, time left, or whether the product works on real footage.
@@ -40,7 +40,7 @@ Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`
 | Phase 0 | 5 | 100.0% | 50.0% |
 | Phase 1 | 10 | 0.0% | 0.0% |
 | Phase 2 | 22 | 59.1% | 29.5% |
-| Phase 3 | 21 | 47.6% | 16.7% |
+| Phase 3 | 21 | 66.7% | 16.7% |
 | Phase 4 | 22 | 65.9% | 19.3% |
 | Phase 5 | 26 | 23.1% | 5.8% |
 | Phase 6 | 22 | 0.0% | 0.0% |
@@ -57,7 +57,7 @@ Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`
 | M-CRD-01 | Creative Director offline foundation | 6 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |
 | M-CRD-02 | Creative Director on real transcripts with Research and Creator DNA | 4 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-DNA-01 | Creator DNA evidence store and confidence model | 6 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |
-| M-DNA-02 | Creator DNA learned from real recordings | 8 | NOT_STARTED | NONE (NOT_STARTED) |
+| M-DNA-02 | Creator DNA learned from real recordings | 8 | IN_PROGRESS | NONE (NOT_STARTED) |
 | M-DNA-03 | Creator-facing review of transcripts, speakers and traits | 3 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-EDT-01 | Validated edit-plan schema and Editor planning workflow | 8 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-EDT-02 | High-level validated Resolve wrapper | 8 | NOT_STARTED | NONE (NOT_STARTED) |
@@ -86,7 +86,7 @@ Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`
 
 | Task | Owner | Branch | Status | Lease expires | Owns |
 |---|---|---|---|---|---|
-| T-CRD-001 Enforce Research contract version and safety-critical signals | claude:creative-director-stream | `task/t-crd-001-impl` | ACTIVE | 2026-11-18T13:39:25+00:00 | orchestrator/creative_director/, orchestrator/tests/test_creative_director.py, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
+| T-DNA-002 Learning-ready Creator DNA core (M-DNA-02a): attribution verification, consent, analyzers, review loop | claude:creator-dna-stream | `task/t-dna-002-claim` | ACTIVE | 2026-11-18T18:39:23+00:00 | orchestrator/creator_dna/, orchestrator/tests/test_creator_dna.py, orchestrator/tests/test_creator_dna_learning.py, orchestrator/tests/_dna_verifiers.py, AI_Creator_Studio_Documentation/CREATOR_DNA.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md, orchestrator/tests/test_speaker_attribution.py, orchestrator/tests/test_integration_phase2_phase3.py, orchestrator/tests/_dna_lenient.py, orchestrator/tests/test_creative_director.py |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
