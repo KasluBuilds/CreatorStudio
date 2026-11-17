@@ -238,6 +238,11 @@ def _print(svc: Services, data: Any, as_json: bool, text: Optional[str] = None) 
         svc.out.write(text.rstrip("\n") + "\n")
 
 
+def _short(session_id: Optional[str]) -> str:
+    """First 8 characters of a session id: full UUIDs look like opaque tokens to the public-log scrubber."""
+    return str(session_id)[:8] if session_id else "none"
+
+
 def _logger(svc: Services, store: StateStore) -> Optional[github_log.GitHubLogger]:
     if not svc.config.github_issue:
         return None
@@ -340,7 +345,7 @@ class SupervisorLoop:
                           prompt_file=prompt.name)
         replacement.register_session(self.store, sid, MAIN_ROLE)
         _gh_event(self.svc, self.store, github_log.EventKind.TASK_STARTED, "dev-supervisor", "Main session started",
-                  evidence=(f"session {sid}", f"model {self.cfg.model(MAIN_ROLE)}"))
+                  evidence=(f"session {_short(sid)}", f"model {self.cfg.model(MAIN_ROLE)}"))
         return main
 
     # -------------------------------------------------- requests
@@ -402,7 +407,8 @@ class SupervisorLoop:
         _gh_event(self.svc, self.store, github_log.EventKind.HANDOFF, "dev-supervisor",
                   f"Main replacement: {res.status}",
                   detail=replacement.USAGE_NOTE,
-                  evidence=(f"handoff {handoff_id}", f"old {old}", f"new {res.new_session_id}"))
+                  evidence=(f"handoff {handoff_id}", f"old session {_short(old)}",
+                            f"new session {_short(res.new_session_id)}"))
         return res.to_dict()
 
     def check_pressure(self) -> Dict[str, Any]:
@@ -636,7 +642,7 @@ def cmd_handoff(svc: Services, a: argparse.Namespace) -> int:
     rec = handoff.write_handoff(store, h)
     rep = handoff.verify_handoff(store, rec.handoff_id, checkers, expected_hash=rec.content_hash)
     _gh_event(svc, store, github_log.EventKind.HANDOFF, "dev-supervisor", f"handoff {rep.status}",
-              evidence=(f"handoff {rec.handoff_id}", f"hash {rec.content_hash[:19]}", f"session {sid}"))
+              evidence=(f"handoff {rec.handoff_id}", f"hash {rec.content_hash[:19]}", f"session {_short(sid)}"))
     _print(svc, {"handoff_id": rec.handoff_id, "content_hash": rec.content_hash, **rep.to_dict()}, a.json,
            f"{rep.status} {rec.handoff_id} {rec.content_hash}" + "".join(f"\n- {r}" for r in rep.reasons))
     return EXIT_OK if rep.safe else EXIT_FAIL
