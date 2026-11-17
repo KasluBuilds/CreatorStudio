@@ -264,11 +264,11 @@
       "id": "E-DNA-0003",
       "type": "test_run",
       "date": "2026-11-17",
-      "summary": "T-DNA-002: full suite at the implementation commit. One error remains by design: test_creative_director.py::TestCreatorDNA::test_real_store_export_is_accepted_and_unchanged builds a DNAStore with a hand-made stamp and no verifier, which is exactly what the store now refuses. That file belongs to active T-CRD-001 and is not claimed by T-DNA-002, so it was not edited; the fix is one constructor line (use a strict store with a verifier and consent) once T-CRD-001 releases the file. All other tests pass.",
+      "summary": "T-DNA-002: full suite on a clean detached checkout of the fix commit, after the creative_director test was adapted to the strict store (constructor-level change under AGR-DNA-VERIFIER-01). Synthetic data only.",
       "ref": "orchestrator/tests",
       "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
-      "result": "Ran 1534 tests: FAILED (errors=1, skipped=1); the one error is the creative_director test described in the summary",
-      "commit": "56bcc9389f25c5581db3daf34f0659ed96261680"
+      "result": "Ran 1671 tests: OK (skipped=2)",
+      "commit": "1b0ae72d2a0517d7460b17392dd329ebd43efd61"
     },
     "E-DNA-0004": {
       "id": "E-DNA-0004",
@@ -556,7 +556,7 @@
       "verification": {
         "state": "IN_PROGRESS",
         "level": "UNIT_ISOLATED",
-        "summary": "86 + 141 unit tests on synthetic data (test_creator_dna.py, test_creator_dna_learning.py); 56 speaker-attribution and 38 media-analysis integration tests pass with constructor-level adaptation; no real recording analysed; no profile exists; not real-input verified. One creative_director test is pending its owner's release (E-DNA-0003).",
+        "summary": "86 + 141 unit tests on synthetic data (test_creator_dna.py, test_creator_dna_learning.py); 56 speaker-attribution and 38 media-analysis integration tests pass with constructor-level adaptation; no real recording analysed; no profile exists; not real-input verified. The creative_director DNA export test was adapted to the strict store (E-DNA-0003).",
         "evidence": [
           "E-MOD-DNA",
           "E-DNA-0002",

@@ -1010,19 +1010,23 @@
             },
             {
               "type": "test_run",
-              "summary": "Full suite at the implementation commit: 1534 tests, one known error in test_creative_director.py (file owned by active T-CRD-001, see E-DNA-0003).",
+              "summary": "Full suite on a clean detached checkout of the fix commit (includes test_creative_director.py).",
               "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
-              "result": "Ran 1534 tests: FAILED (errors=1, skipped=1)"
+              "result": "Ran 1671 tests: OK (skipped=2)"
+            },
+            {
+              "type": "commit",
+              "summary": "Follow-up fix in the same pull request: the creative_director DNA export test builds a strict store (verifier registered for its stamps, consent recorded).",
+              "commit": "1b0ae72d2a0517d7460b17392dd329ebd43efd61"
             }
           ]
         },
         {
           "id": "S-DNA-002-01",
-          "title": "Step 1 (follow-up): adapt tests/test_creative_director.py to the strict store after T-CRD-001 releases the file",
+          "title": "Step 1 (folded into step 0): creative_director test adaptation after T-CRD-001 was closed out",
           "status": "PLANNED",
           "acceptance_criteria": [
-            "test_real_store_export_is_accepted_and_unchanged builds its store with tests/_dna_verifiers.py strict_test_store (constructor-level change only, no assertion weakened)",
-            "The full suite passes with 0 errors and 0 failures"
+            "Delivered together with step 0 in the same pull request; evidence is recorded on step 0. This step stays PLANNED and is not separately reviewed."
           ],
           "evidence": []
         }
