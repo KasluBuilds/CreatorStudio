@@ -239,7 +239,7 @@ def load_base(root: Path, ref: str) -> Optional[Dict[str, Any]]:
 
 
 def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any], head_ref: str = "HEAD") -> List[str]:
-    """Check each committed tracker snapshot from the branch fork point through HEAD.
+    """Check each committed tracker snapshot from the branch fork point through the selected head ref.
 
     The supplied base ref must be an ancestor of the selected head ref (the branch is up to date). If
     main was merged into the task branch, the fork point is the nearest first-parent
@@ -268,7 +268,7 @@ def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any
 
     first_parent = git("rev-list", "--first-parent", head_sha)
     if first_parent.returncode != 0:
-        raise BaseError("cannot read first-parent history from {head_ref!r}")
+        raise BaseError(f"cannot read first-parent history from {head_ref!r}")
     fork_base = None
     for candidate in first_parent.stdout.split():
         ancestry = git("merge-base", "--is-ancestor", candidate, base_sha)
