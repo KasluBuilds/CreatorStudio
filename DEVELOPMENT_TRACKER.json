@@ -941,7 +941,7 @@
         {
           "id": "S-GOV-007-00",
           "title": "Step 0: milestone and next-action records for wave w01 (claim, record and closeout in one pull request)",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "M-AST-02 IN_PROGRESS with evidence, not complete",
             "Deferred work listed",
@@ -962,8 +962,21 @@
             {
               "type": "observation",
               "summary": "Record-only change to PROJECT_STATUS.json and the four registry records. M-AST-02 is IN_PROGRESS, not implemented or verified; the lane's own report states which work remains."
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions validate on this pull request at the head named in the integration notes.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "validate check SUCCESS"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas told the Repository Coordinator session on 2026-11-17 to close wave w01 and record the deferred work, proceeding autonomously. This records the wave's milestone outcome; it does not claim that Lukas or ChatGPT reviewed the evidence, which comes from lane L1's own report and a re-run of its tests."
+          }
         }
       ]
     }

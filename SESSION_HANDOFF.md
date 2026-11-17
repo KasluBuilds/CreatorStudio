@@ -87,7 +87,6 @@ Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`
 | Task | Owner | Branch | Status | Lease expires | Owns |
 |---|---|---|---|---|---|
 | T-CRD-001 Enforce Research contract version and safety-critical signals | claude:creative-director-stream | `task/t-crd-001-impl` | ACTIVE | 2026-11-18T13:39:25+00:00 | orchestrator/creative_director/, orchestrator/tests/test_creative_director.py, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
-| T-GOV-007 Record the outcome of wave w01 in PROJECT_STATUS.json | claude:governance-session | `task/t-gov-007-w01-status` | ACTIVE | 2026-11-18T18:30:42+00:00 | PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 

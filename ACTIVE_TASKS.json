@@ -579,23 +579,14 @@
       "description": "wave close writes only the four closeout records, so the milestone outcome of wave w01 is recorded here: M-AST-02 moves from NOT_STARTED to IN_PROGRESS (not complete) with unit-level evidence from lane L1, and the deferred Research and Creator DNA work is listed in next_actions. No milestone is verified on real input.",
       "branch": "task/t-gov-007-w01-status",
       "worktree": "../CreatorStudio-worktrees/t-gov-007-w01-status",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-17T18:30:42+00:00",
-        "expires": "2026-11-18T18:30:42+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
       ],
-      "owned_paths": [
-        "PROJECT_STATUS.json",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "M-AST-02 is IN_PROGRESS with unit-level evidence naming the lane commit and the not-yet-done work; it is not marked implemented or verified",
         "The computed progress block is refreshed with governance score --write",
@@ -608,7 +599,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Directed by Lukas's instruction on 2026-11-17 to close wave w01 and record its outcome. Record-only pull request: no source, test or documentation change. Walked through IN_PROGRESS, READY_FOR_REVIEW and COMPLETED in separate commits."
+      "integration_notes": "Completed 2026-11-17 in one record-only pull request; checks were run on head 3222f237755fd84e4aa5846576e9b62c7e9fe994 before the closeout commits."
     }
   ]
 }
