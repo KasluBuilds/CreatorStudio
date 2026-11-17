@@ -288,6 +288,7 @@ class ResearchItem:
     usage_check: str = "missing"                    # matches | mismatch | missing | unverifiable
     restricted: bool = False                        # True: capped below verified; never ordinary factual guidance
     restriction_reasons: tuple[str, ...] = ()
+    metadata_conflicts: tuple[str, ...] = ()        # duplicate entries that disagreed on producer metadata
 
 
 @dataclass(frozen=True)

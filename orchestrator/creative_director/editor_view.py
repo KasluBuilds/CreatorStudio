@@ -18,7 +18,8 @@ from typing import Any
 
 from . import schema as S
 from .inputs import Material
-from .safety import Checker, check_arc, check_hook_claims, check_research_contract, check_short, _segset
+from .safety import (Checker, check_arc, check_hook_claims, check_research_contract, check_research_digest,
+                     check_short, _segset)
 from .schema import (Arc, Audience, BoundaryOption, Callback, CentralIdea, GuidanceItem, Hook, Issue, Moment, Pause,
                      ResearchItem, ShortConcept, StoryBrief, StyleConsideration, to_plain)
 from .serialize import from_plain
@@ -62,6 +63,7 @@ class EditorView:
     callbacks: tuple[Callback, ...]
     research_context: tuple[ResearchItem, ...]
     research_meta: dict[str, Any]
+    research_digest: dict[str, Any]             # integrity consistency check over research_context (NOT authentication)
     style_considerations: tuple[StyleConsideration, ...]
     dna_notice: str
     issues: tuple[Issue, ...]
@@ -136,7 +138,8 @@ def build_editor_view(brief: StoryBrief, *, arc_id: str | None = None, concept_i
         S.EDITOR_VIEW_CONTRACT, brief.brief_id, brief.schema_version, kind, EDITOR_NOTICE, EDITOR_CONSTRAINTS,
         evidence_verified, dict(brief.material_digest), brief.central_idea, brief.audience,
         brief.recommended_arc_id, brief.recommendation_basis, arc, concept, hooks, tuple(begin), tuple(end), moments,
-        pauses, callbacks, brief.research_context, dict(brief.research_meta), brief.style_considerations,
+        pauses, callbacks, brief.research_context, dict(brief.research_meta), dict(brief.research_digest),
+        brief.style_considerations,
         brief.dna_notice, issues, tuple(i.issue_id for i in issues if i.severity in ("blocking", "high")),
         guidance, brief.warnings, dict(brief.confidence))
 
@@ -176,6 +179,7 @@ def view_cross(c: Checker, d: dict, brief: StoryBrief | None) -> None:
     for cb in d["callbacks"]:
         c.need([cb["setup_moment_id"], cb["payoff_moment_id"]], mids, "/callbacks")
     check_research_contract(c, d)
+    check_research_digest(c, d)
     for h in d["hooks"]:
         c.need(h["moment_ids"] + h["promise_delivered_by"], mids, "/hooks")
         check_hook_claims(c, h, f"/hooks[{h['hook_id']}]", d["research_context"])
@@ -212,7 +216,7 @@ def _against_brief(c: Checker, d: dict, brief: StoryBrief) -> None:
         c.err("/arc", "differs from the arc in the brief")
     if d["short_concept"] is not None and d["short_concept"] not in b["short_concepts"]:
         c.err("/short_concept", "differs from the short concept in the brief")
-    for key in ("research_context", "style_considerations"):
+    for key in ("research_context", "research_digest", "style_considerations"):
         if d[key] != b[key]:
             c.err(f"/{key}", "differs from the brief")
     for key, bkey in (("moments", "moments"), ("issues", "issues"), ("callbacks", "callbacks"),

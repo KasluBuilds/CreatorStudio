@@ -406,7 +406,8 @@ def check_producer_usage(kind: str, status: str | None, safety_critical: bool | 
 
 
 def restriction_reasons(kind: str, status: str | None, safety_critical: bool | None,
-                        unresolved_warning: bool | None, safety_state: str, usage_check: str) -> tuple[str, ...]:
+                        unresolved_warning: bool | None, safety_state: str, usage_check: str,
+                        metadata_conflict: bool = False) -> tuple[str, ...]:
     """Why a claim is restricted (capped below verified, never ordinary factual guidance); () if it is not.
     A VERIFIED safety-critical claim without a warning is NOT restricted, but may never be a hook."""
     r: list[str] = []
@@ -424,6 +425,8 @@ def restriction_reasons(kind: str, status: str | None, safety_critical: bool | N
             r.append("safety-critical claim is not verified")
     if usage_check != "matches":
         r.append(f"producer usage {usage_check}")
+    if metadata_conflict:
+        r.append("duplicate entries disagree on producer metadata")
     return tuple(r)
 
 
@@ -431,12 +434,14 @@ def derived_usage(category: ResearchCategory, restricted: bool) -> str:
     return UNRESOLVED_SAFETY_USAGE if restricted else CATEGORY_USAGE[category]
 
 
-RESEARCH_DIGEST_SCOPE = ("research claims: id, derived category and usage, original producer kind/status/usage, "
-                         "safety metadata, restriction, plus the research contract. An integrity consistency "
-                         "check only: it is NOT authentication and not proof of who wrote the packet")
-_DIGEST_FIELDS = ("claim_id", "category", "usage", "producer_kind", "producer_status", "producer_usage",
+RESEARCH_DIGEST_SCOPE = ("research claims: id, text, attribution, source ids, derived category and usage, "
+                         "original producer kind/status/usage, safety metadata, duplicate-metadata conflicts, "
+                         "restriction, plus the research contract. An integrity consistency check only: it is NOT "
+                         "authentication and not proof of who wrote the packet")
+_DIGEST_FIELDS = ("claim_id", "text", "attributed_to", "source_ids", "category", "usage", "producer_kind",
+                  "producer_status", "producer_usage",
                   "usage_check", "safety_critical", "unresolved_safety_warning", "safety_metadata",
-                  "restricted", "restriction_reasons")
+                  "metadata_conflicts", "restricted", "restriction_reasons")
 
 
 def compute_research_digest(contract: str | None, items: Iterable[Mapping[str, Any]]) -> dict:
@@ -724,27 +729,38 @@ class ResearchContext:
                 attributed = c.get("attributed_to")
                 attributed = (clean_text(str(attributed))
                               if isinstance(attributed, (str, int, float)) and attributed != "" else None)
+                # this entry's own restriction, from its own metadata; a restricted entry is capped here, so a
+                # duplicate can never be more permissive than its own metadata allows
+                e_sc, e_uw = (None, None) if pkind in _KIND_TO_CAT else (_merge_flag([sc]), _merge_flag([uw]))
+                e_state = "not_applicable" if pkind in _KIND_TO_CAT else _merge_state([sc, uw])
+                e_reasons = restriction_reasons(pkind, pstatus, e_sc, e_uw, e_state,
+                                                check_producer_usage(pkind, pstatus, e_sc, pusage))
+                # `eff` is the category after this entry's own cap: used to order and compare duplicates only;
+                # `cat` stays as derived so the later "verified without a qualifying source" check still fires
+                eff = ResearchCategory.UNVERIFIED_FACT if (e_reasons and cat in _CAPPABLE) else cat
                 if cid not in entries:
                     order.append(cid)
                 entries.setdefault(cid, []).append({"text": text, "cat": cat, "caveats": caveats, "attr": attributed,
-                                                    "records": records, "dropped": dropped, "kind": pkind,
-                                                    "pstatus": pstatus, "pusage": pusage, "sc": sc, "uw": uw})
+                                                    "records": records, "dropped": dropped, "kind": pkind, "eff": eff,
+                                                    "pstatus": pstatus, "pusage": pusage, "sc": sc, "uw": uw,
+                                                    "restricted": bool(e_reasons)})
         items: list[ResearchItem] = []
         for cid in order:
             group = entries[cid]
-            best = min(group, key=lambda e: (PERMISSIVENESS[e["cat"]], e["text"], e["attr"] or ""))
+            best = min(group, key=lambda e: (PERMISSIVENESS[e["eff"]], not e["restricted"], e["kind"],
+                                             e["pstatus"] or "", e["pusage"] or "", e["text"], e["attr"] or ""))
             cat, text = best["cat"], best["text"]
             caveats = list(best["caveats"]) + sorted({x for e in group for x in e["caveats"]} - set(best["caveats"]))
             attributed = best["attr"] if best["attr"] is not None else min(
                 (e["attr"] for e in group if e["attr"] is not None), default=None)
             conflict_notes: list[str] = []
-            differing = [e for e in group if (e["cat"], e["text"]) != (cat, text)]
+            differing = [e for e in group if (e["eff"], e["text"]) != (best["eff"], text)]
             if len(group) > 1 and not differing:
                 warns.append(f"duplicate claim id {cid!r}: identical entries collapsed")
             if differing:
-                desc = sorted({e["cat"].value for e in group})
+                desc = sorted({e["eff"].value for e in group})
                 note = (f"conflicting duplicate entries ({', '.join(desc)}); the most restrictive "
-                        f"({cat.value}) was kept")
+                        f"({best['eff'].value}) was kept")
                 warns.append(f"claim {cid}: {note}")
                 conflict_notes.append(note)
             # ---- provenance: merge conservatively, report what was dropped or disputed
@@ -759,8 +775,15 @@ class ResearchContext:
                 uw = _merge_flag([e["uw"] for e in same])
                 sstate = _merge_state([e["sc"] for e in same] + [e["uw"] for e in same])
             pstatus, pusage = best["pstatus"], best["pusage"]
+            mconf: list[str] = []
+            for label, key, pool in (("kind", "kind", group), ("status", "pstatus", group),
+                                     ("usage", "pusage", group), ("safety_critical", "sc", same),
+                                     ("unresolved_safety_warning", "uw", same)):
+                vals = sorted({"<missing>" if e[key] is None else str(e[key])[:60] for e in pool})
+                if len(vals) > 1:
+                    mconf.append(f"producer {label}: " + " | ".join(vals))
             ucheck = check_producer_usage(pkind, pstatus, sc, pusage)
-            reasons = restriction_reasons(pkind, pstatus, sc, uw, sstate, ucheck)
+            reasons = restriction_reasons(pkind, pstatus, sc, uw, sstate, ucheck, bool(mconf))
             if reasons:
                 caveats.append("restricted (" + "; ".join(reasons) + "): never ordinary factual guidance, "
                                "never to be recommended or presented as verified")
@@ -771,7 +794,9 @@ class ResearchContext:
                          [x for x in reasons if "safety" in x and not x.startswith("safety metadata")]),
                         ("research_usage_mismatch", "medium", [x for x in reasons if x.startswith("producer usage")]),
                         ("research_claim_unrecognised", "medium",
-                         [x for x in reasons if x.startswith("unrecognised")])):
+                         [x for x in reasons if x.startswith("unrecognised")]),
+                        ("research_duplicate_metadata_conflict", "medium",
+                         [x for x in reasons if x.startswith("duplicate entries")] + mconf)):
                     if hit:
                         txt = f"claim {cid} is restricted: {'; '.join(hit)}"
                         warns.append(txt)
@@ -815,7 +840,7 @@ class ResearchContext:
                                       tuple(conflict_notes), producer_kind=pkind, producer_status=pstatus,
                                       safety_critical=sc, unresolved_safety_warning=uw, safety_metadata=sstate,
                                       producer_usage=pusage, usage_check=ucheck, restricted=bool(reasons),
-                                      restriction_reasons=reasons))
+                                      restriction_reasons=reasons, metadata_conflicts=tuple(mconf)))
         sugg: list[dict] = []
         for a in p.get("angles", []) or []:
             if isinstance(a, Mapping):

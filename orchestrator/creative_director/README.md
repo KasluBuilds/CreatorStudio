@@ -35,6 +35,7 @@ Producer fields are kept **as supplied and typed**, separate from what this pack
 | `usage_check` | `matches`, `mismatch`, `missing`, `unverifiable` against the mirrored producer rule |
 | `category`, `usage` | **derived here**; `usage` is this package's rule, distinct from `producer_usage` |
 | `restricted`, `restriction_reasons` | why a claim is capped (below) |
+| `metadata_conflicts` | duplicate entries that disagreed on producer metadata (below), kept as text, never dropped |
 
 ### 3. Restrictions
 
@@ -48,7 +49,18 @@ claim, the planner's issue is raised at high severity.
 A **verified safety-critical claim without a warning may stay verified** (not restricted), with a caveat, but it can
 **never be used as a hook**.
 
-Duplicate claim ids merge pessimistically: any `true` flag wins, then any missing/malformed flag.
+**Duplicate claim ids** (same id sent more than once, in either claim list) are resolved deterministically and
+pessimistically, whatever the input order:
+
+- each entry is judged on its **own** metadata; a restricted entry is capped before entries are compared;
+- the entry kept is the most restrictive one (lowest permissiveness, restricted first), with remaining ties broken by
+  kind, status, usage, text and attribution, never by position;
+- safety flags merge pessimistically: any `true` wins, then any missing/malformed flag;
+- if the entries disagree on producer kind, status, usage or either safety flag, the disagreement is written to
+  `metadata_conflicts` (original values, `<missing>` for absent ones), the claim is restricted
+  (`duplicate entries disagree on producer metadata`) and a medium issue `research_duplicate_metadata_conflict` is
+  raised. A later entry therefore can never be silently ignored, and a conflict can never make a claim more
+  permissive. Identical entries still collapse without restriction.
 
 ### 4. Producer usage rule (mirrored)
 
@@ -64,9 +76,10 @@ contract version. The tests here check the mirror only against explicit expected
 
 ### 5. Research digest (integrity consistency, not authentication)
 
-`StoryBrief.research_digest` is a deterministic sha256 over the research contract and, per claim (sorted by id):
-derived category and usage, original producer kind, status and usage, the usage check, both safety flags, the safety
-state, and the restriction. Validation recomputes it and rejects any difference, so an edit to a covered field is
+`StoryBrief.research_digest` (and the same value on the editor view) is a deterministic sha256 over the research contract
+and, per claim (sorted by id): text, attribution, source ids, derived category and usage, original producer kind, status
+and usage, the usage check, both safety flags, the safety state, duplicate-metadata conflicts and the restriction.
+Provenance records and caveats are not in the digest (they are validated structurally). Validation recomputes it and rejects any difference, so an edit to a covered field is
 detected. Validation also re-derives `usage_check`, `restricted`, `restriction_reasons`, `category` limits and `usage`
 from the preserved producer fields, so a forged flag cannot be hidden by recomputing the digest alone for the
 derived fields.
@@ -92,7 +105,7 @@ inconsistent flag/state combinations.
 ### Schema versions
 
 `creative_director.story_brief/0.3` and `creative_director.editor_view/0.3` (both were 0.2). `ResearchItem` gained the
-fields above and `StoryBrief` gained `research_digest`; documents written under 0.2 no longer validate and must be
+fields above, `StoryBrief` and `EditorView` gained `research_digest`; documents written under 0.2 no longer validate and must be
 re-planned. No consumer outside this package reads these versions (checked by search at implementation time).
 
 ### Not covered

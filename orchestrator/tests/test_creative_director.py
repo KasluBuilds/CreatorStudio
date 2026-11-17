@@ -1895,7 +1895,9 @@ class TestResearchSafetyMetadata(unittest.TestCase):
         it = r.items[0]
         self.assertEqual((it.restricted, it.unresolved_safety_warning), (True, True))
         r = research_of(claim("c1", "verified"), claim("c1", "verified", safety_critical=True))
-        self.assertEqual((r.items[0].safety_critical, r.items[0].restricted), (True, False))
+        # the two entries disagree on the flag: pessimistic merge, restricted, conflict recorded
+        self.assertEqual((r.items[0].safety_critical, r.items[0].restricted), (True, True))
+        self.assertTrue(r.items[0].metadata_conflicts)
         r = research_of(claim("c1", "verified"), without(claim("c1", "verified"), "safety_critical"))
         self.assertEqual((r.items[0].safety_metadata, r.items[0].restricted), ("missing", True))
 
@@ -2153,6 +2155,235 @@ class TestHookValidation(unittest.TestCase):
         x["hooks"][0]["relies_on_claim_ids"] = ["c1"]
         x["research_context"][0]["safety_critical"] = False          # forged flag: digest + hook rules still fire
         self.assertTrue(validate_brief_dict(x, self.m))
+
+
+class TestDuplicateClaimMetadataIsPessimisticAndOrderIndependent(unittest.TestCase):
+    """Adversarial duplicates: the same claim id, text and derived category, but disagreeing producer metadata.
+    Whatever the input order, the merged item is identical, never more permissive than any single entry, and the
+    disagreement is recorded (typed, in the digest) instead of silently ignored."""
+
+    def merged_every_order(self, *entries, split=False):
+        """from_packet over every ordering of `entries`; asserts all results are identical; returns the item."""
+        import itertools
+        results = []
+        for perm in itertools.permutations(entries):
+            if split:       # the same entries spread over both claim lists, in every placement
+                for cut in range(len(perm) + 1):
+                    p = packet(list(perm[:cut]), list(perm[cut:]))
+                    results.append(ResearchContext.from_packet(p))
+            else:
+                results.append(ResearchContext.from_packet(packet(list(perm))))
+        first = results[0]
+        for r in results[1:]:
+            self.assertEqual(r.items, first.items)
+            self.assertEqual(sorted(i["text"] for i in r.issues), sorted(i["text"] for i in first.issues))
+        self.assertEqual(len(first.items), 1)
+        return first.items[0]
+
+    def assertNeverMorePermissive(self, merged, *entries):
+        from creative_director.inputs import PERMISSIVENESS
+        singles = [research_of(e).items[0] for e in entries]
+        self.assertLessEqual(PERMISSIVENESS[merged.category], min(PERMISSIVENESS[s.category] for s in singles))
+        if any(s.restricted for s in singles):
+            self.assertTrue(merged.restricted)
+        if any(s.safety_critical is True for s in singles):
+            self.assertIn(merged.safety_critical, (True, None))
+        if any(s.unresolved_safety_warning is True for s in singles):
+            self.assertIn(merged.unresolved_safety_warning, (True, None))
+
+    def assertRestrictedWithConflict(self, it, *words):
+        self.assertTrue(it.restricted, it)
+        self.assertEqual(it.usage, "unresolved_safety_do_not_recommend")
+        self.assertNotIn(it.category.value, ("verified_fact", "partially_supported_fact"))
+        self.assertIn("duplicate entries disagree on producer metadata", it.restriction_reasons)
+        for w in words:
+            self.assertTrue(any(w in c for c in it.metadata_conflicts), (w, it.metadata_conflicts))
+
+    def test_identical_entries_collapse_and_stay_unrestricted(self):
+        it = self.merged_every_order(claim("c1", "verified"), claim("c1", "verified"))
+        self.assertEqual((it.category.value, it.restricted, it.metadata_conflicts), ("verified_fact", False, ()))
+
+    def test_conflicting_kinds(self):
+        clean, odd = claim("c1", "verified"), dict(claim("c1", "verified"), kind="mystery")
+        it = self.merged_every_order(clean, odd)
+        self.assertRestrictedWithConflict(it, "producer kind")
+        self.assertNeverMorePermissive(it, clean, odd)
+        self.assertEqual(it.producer_kind, "unknown")                    # the least trusted entry, kept honestly
+        for other in ("opinion", "hypothesis", "interpretation"):        # fact vs non-fact under one id
+            it = self.merged_every_order(clean, dict(claim("c1", "verified"), kind=other, usage="label_as_" + other))
+            self.assertRestrictedWithConflict(it, "producer kind")
+            self.assertEqual(it.category.value, other)                    # never promoted to a fact
+
+    def test_conflicting_statuses(self):
+        for a, b in (("verified", "partial"), ("verified", "unverified"), ("verified", "Verified"),
+                     ("partial", "weird"), ("verified", "contradicted")):
+            ea, eb = claim("c1", a), claim("c1", b)
+            it = self.merged_every_order(ea, eb)
+            self.assertRestrictedWithConflict(it, "producer status")
+            self.assertNeverMorePermissive(it, ea, eb)
+
+    def test_matching_versus_mismatching_producer_usage(self):
+        good = claim("c1", "verified")
+        for bad_usage in ("do_not_state_as_fact", "unresolved_safety_claim_do_not_recommend", "", "surprise"):
+            bad = dict(good, usage=bad_usage)
+            it = self.merged_every_order(good, bad)
+            self.assertRestrictedWithConflict(it, "producer usage")
+            self.assertNeverMorePermissive(it, good, bad)
+            self.assertIn(it.producer_usage, ("may_state_as_fact", bad_usage))
+        for gone in (without(good, "usage"), dict(good, usage=None), dict(good, usage=5)):
+            it = self.merged_every_order(good, gone)
+            self.assertRestrictedWithConflict(it, "<missing>")
+            self.assertNeverMorePermissive(it, good, gone)
+
+    def test_missing_or_malformed_safety_flags_among_duplicates(self):
+        good = claim("c1", "verified")
+        for i, bad in enumerate((without(good, "safety_critical"), without(good, "unresolved_safety_warning"),
+                                 without(good, "safety_critical", "unresolved_safety_warning"),
+                                 dict(good, safety_critical="false"), dict(good, unresolved_safety_warning=0),
+                                 dict(good, safety_critical=None), dict(good, unresolved_safety_warning="no"))):
+            it = self.merged_every_order(good, bad)
+            self.assertRestrictedWithConflict(it)
+            self.assertIn(it.safety_metadata, ("missing", "malformed"))
+            self.assertTrue(it.safety_critical is None or it.unresolved_safety_warning is None)
+            self.assertNeverMorePermissive(it, good, bad)
+
+    def test_a_true_flag_in_any_duplicate_wins(self):
+        good = claim("c1", "verified")
+        warned = claim("c1", "verified", unresolved_safety_warning=True)
+        it = self.merged_every_order(good, warned)
+        self.assertRestrictedWithConflict(it)
+        self.assertEqual(it.unresolved_safety_warning, True)
+        crit = claim("c1", "verified", safety_critical=True)
+        it = self.merged_every_order(good, crit)
+        self.assertRestrictedWithConflict(it)
+        self.assertEqual(it.safety_critical, True)
+        self.assertNeverMorePermissive(it, good, crit)
+        both = self.merged_every_order(good, warned, crit)                # three entries, six orders
+        self.assertRestrictedWithConflict(both)
+        self.assertEqual((both.safety_critical, both.unresolved_safety_warning), (True, True))
+
+    def test_three_way_combinations_are_order_independent(self):
+        clean = claim("c1", "verified")
+        odd_kind = dict(clean, kind="mystery")
+        bad_usage = dict(clean, usage="do_not_state_as_fact")
+        no_flag = without(clean, "safety_critical")
+        for combo in ((clean, odd_kind, bad_usage), (clean, bad_usage, no_flag), (odd_kind, bad_usage, no_flag),
+                      (clean, odd_kind, bad_usage, no_flag)):
+            it = self.merged_every_order(*combo)
+            self.assertRestrictedWithConflict(it)
+            self.assertNeverMorePermissive(it, *combo)
+
+    def test_entries_split_across_both_claim_lists_resolve_the_same(self):
+        clean = claim("c1", "verified")
+        for other in (dict(clean, kind="mystery"), dict(clean, usage="nope"), without(clean, "safety_critical")):
+            it = self.merged_every_order(clean, other, split=True)
+            self.assertRestrictedWithConflict(it)
+
+    def test_conflicts_are_recorded_in_warnings_issues_and_the_digest(self):
+        clean, odd = claim("c1", "verified"), dict(claim("c1", "verified"), kind="mystery")
+        r = research_of(clean, odd)
+        self.assertTrue(any("c1" in w and "restricted" in w for w in r.warnings))
+        self.assertTrue(any(i["kind"] == "research_duplicate_metadata_conflict" and i["severity"] == "medium"
+                            for i in r.issues))
+        m = full_material()
+        d1 = CD.plan(m, research=r).to_dict()
+        d2 = CD.plan(m, research=research_of(odd, clean)).to_dict()
+        self.assertEqual(d1["research_digest"], d2["research_digest"])
+        self.assertEqual(validate_brief_dict(d1, m), [])
+        x = copy.deepcopy(d1)
+        x["research_context"][0]["metadata_conflicts"] = []                  # hide the conflict: caught
+        self.assertTrue(validate_brief_dict(x, m))
+        x = copy.deepcopy(d1)
+        x["research_context"][0].update(metadata_conflicts=[], restricted=False, restriction_reasons=[],
+                                        category="verified_fact", usage=research_of(clean).items[0].usage)
+        self.assertTrue(validate_brief_dict(x, m))
+
+    def test_a_conflicted_claim_is_never_a_hook(self):
+        m = full_material()
+        d = CD.plan(m, research=research_of(claim("c1", "verified"), dict(claim("c1", "verified"), kind="mystery"))
+                    ).to_dict()
+        d["hooks"][0]["relies_on_claim_ids"] = ["c1"]
+        self.assertTrue(validate_brief_dict(d, m))
+
+    def test_text_and_attribution_ties_do_not_depend_on_order(self):
+        a = dict(claim("c1", "verified", text="Same claim text for both entries."), attributed_to="x")
+        b = dict(claim("c1", "verified", text="Same claim text for both entries."), attributed_to="y", usage="no")
+        it = self.merged_every_order(a, b)
+        self.assertRestrictedWithConflict(it)
+        self.assertIn(it.attributed_to, ("x", "y"))
+
+    def test_non_fact_duplicates_cannot_launder_a_warned_fact(self):
+        warned = claim("c1", "verified", unresolved_safety_warning=True)
+        opinion = {"id": "c1", "text": warned["text"], "kind": "opinion", "usage": "label_as_opinion"}
+        it = self.merged_every_order(warned, opinion)
+        self.assertTrue(it.restricted)
+        self.assertIn(it.category.value, ("unverified_fact", "opinion"))
+        self.assertNotIn(it.category.value, ("verified_fact", "partially_supported_fact"))
+        self.assertNotEqual(it.usage, "may_be_stated_as_fact_via_separate_sourced_graphic_or_narration_by_creator_only_if_they_choose")
+
+
+class TestEditorViewDigestAndSchemaCompatibility(unittest.TestCase):
+    def setUp(self):
+        self.m = full_material()
+        self.r = research_of(claim("c1", "verified"), claim("c2", "unverified", safety_critical=True),
+                             dict(claim("c3", "verified"), kind="mystery"))
+        self.b = CD.plan(self.m, research=self.r)
+        self.d = self.b.to_dict()
+        self.v = CD.editor_view(self.b, material=self.m)
+
+    def test_view_carries_the_same_digest_and_validates_with_and_without_the_brief(self):
+        self.assertEqual(self.v["research_digest"], self.d["research_digest"])
+        self.assertEqual(validate_editor_view_dict(self.v, brief=self.b, material=self.m), [])
+        self.assertEqual(validate_editor_view_dict(CD.editor_view(self.b)), [])          # unverified view needs no transcript
+
+    def test_view_tampering_is_caught_even_without_the_brief(self):
+        muts = {
+            "claim text": lambda x: x["research_context"][0].__setitem__("text", "Something else entirely here."),
+            "source ids": lambda x: x["research_context"][0].__setitem__("source_ids", []),
+            "attribution": lambda x: x["research_context"][0].__setitem__("attributed_to", "someone"),
+            "flag": lambda x: x["research_context"][1].__setitem__("safety_critical", False),
+            "restriction": lambda x: x["research_context"][2].__setitem__("restricted", False),
+            "digest": lambda x: x["research_digest"].__setitem__("value", "f" * 64),
+            "digest removed": lambda x: x.pop("research_digest"),
+            "claim dropped": lambda x: x["research_context"].pop(1),
+            "contract": lambda x: x["research_meta"].__setitem__("contract", "research->creative_director/0.2"),
+        }
+        for name, mut in muts.items():
+            x = copy.deepcopy(self.v)
+            mut(x)
+            self.assertTrue(validate_editor_view_dict(x, material=self.m), name)
+            self.assertTrue(validate_editor_view_dict(x, brief=self.b, material=self.m), name)
+
+    def test_brief_tampering_with_text_or_sources_changes_the_digest(self):
+        for mut in (lambda x: x["research_context"][0].__setitem__("text", "Different wording of the claim here."),
+                    lambda x: x["research_context"][0].__setitem__("attributed_to", "x")):
+            x = copy.deepcopy(self.d)
+            mut(x)
+            self.assertTrue(any("digest" in e for e in validate_brief_dict(x, self.m)))
+
+    def test_old_schema_documents_are_rejected_not_half_read(self):
+        old = copy.deepcopy(self.d)
+        old["schema_version"] = "creative_director.story_brief/0.2"
+        del old["research_digest"]
+        for item in old["research_context"]:
+            for k in ("producer_kind", "producer_status", "safety_critical", "unresolved_safety_warning",
+                      "safety_metadata", "producer_usage", "usage_check", "restricted", "restriction_reasons",
+                      "metadata_conflicts"):
+                del item[k]
+        errs = validate_brief_dict(old, self.m)
+        self.assertTrue(any("schema_version" in e or "missing field" in e for e in errs))
+        with self.assertRaises(BriefInvalid):
+            CD.load(json.dumps(old), self.m)
+        oldv = copy.deepcopy(self.v)
+        oldv["contract"] = "creative_director.editor_view/0.2"
+        del oldv["research_digest"]
+        self.assertTrue(validate_editor_view_dict(oldv, material=self.m))
+
+    def test_current_documents_round_trip_through_json(self):
+        loaded = CD.load(CD.to_json(self.b), self.m).brief
+        self.assertEqual(loaded.to_dict(), self.d)
+        view = CD.editor_view(loaded, material=self.m)
+        self.assertEqual(view, self.v)
 
 
 if __name__ == "__main__":

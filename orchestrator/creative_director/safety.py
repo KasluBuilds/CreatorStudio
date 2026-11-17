@@ -403,7 +403,7 @@ class Checker:
         expected = check_producer_usage(kind, status, sc, v["producer_usage"])
         if v["usage_check"] != expected:
             self.err(path + "/usage_check", f"does not match the producer usage rule (expected {expected!r})")
-        reasons = restriction_reasons(kind, status, sc, uw, state, expected)
+        reasons = restriction_reasons(kind, status, sc, uw, state, expected, bool(v["metadata_conflicts"]))
         if tuple(v["restriction_reasons"]) != reasons:
             self.err(path + "/restriction_reasons", "do not match the preserved safety metadata and producer usage")
         if v["restricted"] is not bool(reasons):
