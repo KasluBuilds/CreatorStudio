@@ -1,0 +1,656 @@
+{
+  "schema_version": 1,
+  "authority": "Authoritative for the individual development steps of a task and whether each step is officially finished. Task ownership, leases and paths stay in ACTIVE_TASKS.json; milestones, weights and progress percentages stay in PROJECT_STATUS.json and are deliberately not repeated here.",
+  "protocol": "DEVELOPMENT_STEP_PROTOCOL.md",
+  "step_statuses": {
+    "PLANNED": "Defined, not started. May not start until every earlier step is COMPLETED and ChatGPT (under Lukas's standing instruction) or Lukas has authorized it.",
+    "IN_PROGRESS": "The one step of its task currently being worked on (the limit is per task).",
+    "READY_FOR_REVIEW": "Work stopped. Evidence reported; waiting for ChatGPT's review. Claude does not approve its own step.",
+    "COMPLETED": "Technically approved by ChatGPT with Lukas's confirmation recorded as DIRECT or REPORTED (see the protocol, section 3a). Terminal: never edited afterwards.",
+    "BLOCKED": "Cannot proceed; blocked_reason says why."
+  },
+  "tasks": [
+    {
+      "task_id": "T-GOV-002",
+      "title": "Creator Studio Development Tracker and mandatory step-completion workflow",
+      "steps": [
+        {
+          "id": "S-GOV-002-00",
+          "title": "Step 0: claim pull request",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-GOV-002 is registered as ACTIVE on main through a claim pull request with lease, owned paths, acceptance criteria and test requirements",
+            "No overlap with another task and no unapproved edit to a package owned by someone else",
+            "Governance validation, handoff check and scope check pass; the full suite passes",
+            "The pull request is merged by Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "pull_request",
+              "summary": "PR #4 merged into main with a merge commit (merge commit shown); merged head is 16782f226324b7aa00f174c6b5500bdc7460d26a",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/4",
+              "commit": "27685bac2b0bc58c961e4e3d26b57af38f1bc3b2"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite on the claim PR head, including the narrowly agreed fix to test_leases_exit_codes",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1167 tests: OK (skipped=1); governance validate, handoff --check and scope --base origin/main all OK",
+              "commit": "16782f226324b7aa00f174c6b5500bdc7460d26a"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-12",
+            "source": "REPORTED in the session instruction that started Step 1: Lukas explicitly approved the merge of PR #4 and said to continue; not independently verified by Claude beyond the merged state of PR #4 on GitHub"
+          }
+        },
+        {
+          "id": "S-GOV-002-01",
+          "title": "Step 1: canonical tracker, step protocol and enforcement tests",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "DEVELOPMENT_TRACKER.json records every T-GOV-002 step with id, title, status, acceptance criteria, evidence and completion state, linked to the ACTIVE_TASKS task id",
+            "The tracker repeats no milestone state, weight or percentage and no task owner, lease or owned path, and the validator rejects such keys",
+            "DEVELOPMENT_STEP_PROTOCOL.md defines the one-step-at-a-time workflow, the READY_FOR_REVIEW stop, the report contents, ChatGPT's review and Lukas's explicit continue",
+            "CLAUDE.md and PROJECT_OPERATING_PROTOCOL.md require every session to follow the step protocol",
+            "Tests cover tracker structure, task linkage, step states and transitions, and the completion gate",
+            "The expired agreement AGR-GOV-LEASE-TEST is removed from ACTIVE_TASKS.json; orchestrator/governance/ is untouched; PROJECT_STATUS.json is unchanged"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "First Step 1 head reviewed by ChatGPT; review found that the CLI never called transition_problems()",
+              "commit": "c628bd80a59ecd44b9ee08cb712af7731b77c4b4"
+            },
+            {
+              "type": "test_run",
+              "summary": "After the correction (--against REF added to dashboard/tracker_check.py, CLI-path tests with a throwaway Git repository). Run on the working tree before the correction commit, which cannot cite its own SHA; the branch head is in the stop report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1196 tests: OK (skipped=1); test_development_tracker.py 29 tests OK; tracker_check.py (plain and --against origin/main), governance validate (also --against origin/main), handoff --check and scope --base origin/main all OK"
+            },
+            {
+              "type": "commit",
+              "summary": "Review basis: ChatGPT technical review approved this commit (REPORTED; the review text is not stored in the repository). Technical acceptance criteria reported satisfied. The full-suite figure (1196 passed, 1 skipped) is as reported by Claude Code and was not independently rerun by ChatGPT.",
+              "commit": "871f152f128cb697f453dc4803e1acbc590f6733"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-12",
+            "review_basis_commit": "871f152f128cb697f453dc4803e1acbc590f6733",
+            "source": "REPORTED: ChatGPT technical review approved commit 871f152f128cb697f453dc4803e1acbc590f6733 and Lukas relayed it, instructing that S-GOV-002-01 be marked COMPLETED (chosen by Lukas as the confirmation for this gate). Lukas did NOT independently review or approve the code; this records his instruction to mark the step complete, not a code review by him. Not independently verified by Claude."
+          }
+        },
+        {
+          "id": "S-GOV-002-02",
+          "title": "Step 2: snapshot builder (dashboard/build_snapshot.py)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Python standard library only; reads PROJECT_STATUS.json, ACTIVE_TASKS.json and DEVELOPMENT_TRACKER.json and writes a snapshot file; never modifies project status",
+            "The snapshot records source commit SHA, branch, generation time and working-tree cleanliness",
+            "No secrets, credentials, private local paths or footage in the snapshot",
+            "The snapshot is labelled as a snapshot and is never presented as live GitHub data",
+            "It reuses the progress figures from PROJECT_STATUS.json and does not recalculate them",
+            "Tests cover snapshot generation, cleanliness reporting and the exclusions above"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Step 2 implementation and the four first-round review corrections (snapshot builder, stronger path scrubbing, regression tests, changelog and exit-code documentation fixes), committed while the step was IN_PROGRESS",
+              "commit": "4404ada9f63169170be50ab705316ccaab07ccb4"
+            },
+            {
+              "type": "commit",
+              "summary": "Second review correction: dictionary keys are now scrubbed like values; two keys that become identical after scrubbing are refused (exit 2, keys not echoed) instead of overwritten; regression tests added. Committed while the step was IN_PROGRESS",
+              "commit": "eccac6d16b8f039dcf67af63da76632a8fe2f340"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite run by Claude Code on a clean working tree at the second implementation commit (not independently run by ChatGPT). The earlier run at 4404ada (1223 tests) is superseded.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1228 tests in 183.7s: OK (skipped=1); test_development_tracker.py alone: 61 tests OK",
+              "commit": "eccac6d16b8f039dcf67af63da76632a8fe2f340"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-12",
+            "review_basis_commit": "0c91343b493ffe21eb27bb745598fd7edb2ea344",
+            "source": "REPORTED: Lukas's standing instruction authorizes ChatGPT to make technical acceptance decisions and automatically advance between steps. ChatGPT approved Step 2 after independently reviewing the implementation at 0c91343b493ffe21eb27bb745598fd7edb2ea344. This does not claim Lukas independently reviewed the code. Not independently verified by Claude."
+          }
+        },
+        {
+          "id": "S-GOV-002-03",
+          "title": "Step 3: read-only dashboard page (dashboard/index.html)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Responsive, readable page showing overall implementation and verification progress and milestones grouped by phase",
+            "Shows the current task and its steps with status, acceptance criteria and evidence, plus open decisions, blockers and next actions",
+            "Shows GitHub branch, PR and merge information as recorded in the snapshot",
+            "Shows an explicit completion gate and a terminal-clear status for the current step",
+            "Shows the snapshot commit SHA and generation time and states that it is a snapshot",
+            "Read-only: no write path to project files, no GitHub credentials in browser JavaScript, no new dependencies"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Step 3 implementation: dashboard/index.html (self-contained read-only snapshot viewer) and its tests, committed while the step was IN_PROGRESS",
+              "commit": "afd9f960c63bab9fcdf6bf1696dfffd4d449ce5a"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite run by Claude Code on a clean working tree at the implementation commit (not independently run by ChatGPT). Page logic tests run under Node when installed; the page was not opened in a real browser, only exercised through a fake DOM smoke run that is not part of the repository.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1239 tests in 176.8s: OK (skipped=1); test_development_tracker.py alone: 72 tests OK",
+              "commit": "afd9f960c63bab9fcdf6bf1696dfffd4d449ce5a"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-12",
+            "review_basis_commit": "afd9f960c63bab9fcdf6bf1696dfffd4d449ce5a",
+            "source": "REPORTED: Lukas's standing instruction authorizes ChatGPT to make technical acceptance decisions and automatically advance between steps. ChatGPT approved Step 3 after independently reviewing the implementation at afd9f960c63bab9fcdf6bf1696dfffd4d449ce5a and the final branch state at a423abb6023cbc2b567826d4e32f2ecc93018cca. This does not claim Lukas independently reviewed the code. Not independently verified by Claude."
+          }
+        },
+        {
+          "id": "S-GOV-002-04",
+          "title": "Step 4: closeout (changelog, final verification, lease release)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "CHANGELOG.md entry added; milestone weights and computed progress in PROJECT_STATUS.json unchanged by this task",
+            "Full suite passed at the final implementation head; governance validate, handoff --check and scope check passed at the tested correction head; closeout-only registry and generated-handoff updates are reviewed in the follow-up PR",
+            "The final pull request is opened and merged by Lukas or by ChatGPT under Lukas's explicit delegation; the lease is released in a follow-up pull request that records the merge commit"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Step 4 implementation: protocol contradiction resolved (DEVELOPMENT_STEP_PROTOCOL.md section 3a, PROJECT_OPERATING_PROTOCOL.md, tracker status texts), completion source must begin DIRECT or REPORTED, tests. CLAUDE.md is not part of this commit (Claude's edit was denied in the session); ChatGPT aligned it afterwards in ca6d802db725d2b8457fd81a10ae57ae5641095c and the changelog wording in 93b13349300341b6aa3372a3dee69688b0139e8d",
+              "commit": "fd890481bdc4c62999c65ccf96ae0ce7335ae52c"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite run by Claude Code on a clean working tree at the implementation commit (not independently run by ChatGPT)",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1241 tests in 173.1s: OK (skipped=1)",
+              "commit": "fd890481bdc4c62999c65ccf96ae0ce7335ae52c"
+            },
+            {
+              "type": "test_run",
+              "summary": "Final full-suite rerun by Claude Code on a clean working tree at the head that includes ChatGPT's two direct documentation commits (ca6d802, 93b1334) and the removal of the stale CLAUDE.md note (not independently run by ChatGPT)",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1241 tests in 175.8s: OK (skipped=1)",
+              "commit": "7db8d11e313a7345a1696efc3e165613aadb6f9c"
+            },
+            {
+              "type": "commit",
+              "summary": "Third review corrections: the lukas_confirmed diagnostic in tracker_check.py now says Lukas's standing instruction (REPORTED source) is an allowed confirmation, per protocol section 3a; ACTIVE_TASKS.json T-GOV-002 description and acceptance criterion reworded to match section 3a (lease and ownership untouched); 3 tests added. Committed while the step was IN_PROGRESS",
+              "commit": "751e6e415004fe03c66e55b920a0ef956670cf68"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite run by Claude Code on a clean working tree at the correction commit above (not independently run by ChatGPT); test_development_tracker.py alone: 77 tests OK",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1244 tests in 171.8s: OK (skipped=1)",
+              "commit": "751e6e415004fe03c66e55b920a0ef956670cf68"
+            },
+            {
+              "type": "observation",
+              "summary": "Dashboard checked in the already-installed Chrome (headless, DevTools protocol, nothing installed) against a generated snapshot: all sections rendered at 1280 and 390 px with no horizontal overflow, a malformed file showed an error and hid the page, no page errors, no non-file network requests. Not covered: drag-and-drop, dark mode, other browsers. This does not alter the COMPLETED record of step 3."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Final implementation PR #5 opened and merged by ChatGPT under Lukas's explicit delegation; merge commit recorded below",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/5",
+              "commit": "75b68d83aab5dbab57178f95b43012c7f5051209"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite rerun by Lukas/Claude Code at the exact final implementation head; reported result, not independently executed by ChatGPT",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1244 tests in 193.4s: OK (skipped=1)",
+              "commit": "23953857ddeda5a02f7c991a32d5ea0af464b0f1"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-13",
+            "review_basis_commit": "23953857ddeda5a02f7c991a32d5ea0af464b0f1",
+            "source": "REPORTED: Lukas explicitly delegated technical review, PR opening/merging and lease release to ChatGPT in this session. ChatGPT approved the final implementation head, opened and merged PR #5, and this follow-up PR records the closeout. Lukas did not independently review the code; the full-suite result is reported by Lukas and was not independently run by ChatGPT."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-GOV-003",
+      "title": "Per-task development step limit and stale authority test repair",
+      "steps": [
+        {
+          "id": "S-GOV-003-00",
+          "title": "Step 0: claim and implementation (one-time bootstrap exception)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-GOV-003 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements in the same pull request as the implementation, under the one-time bootstrap exception approved by ChatGPT",
+            "tracker_check.py enforces at most one working step per task, names the task in the error and keeps in-order steps within each task",
+            "The two stale authority tests assert the current delegated-integrator wording and the new per-task tests pass",
+            "governance validate, handoff --check, scope, tracker_check --against origin/main and the full suite pass with zero failures and zero errors",
+            "The pull request is reviewed and merged by ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Branch task/per-task-step-limit created from origin/main bd33aa11f54cd94ce75baf228b32640fd7a351a4 in a fresh worktree. Validation results are in the stop report and pull request; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by Claude Code on the working tree before the commit (the commit cannot cite its own SHA; not independently run by ChatGPT). Known skip: test_symlink_source_refused. test_development_tracker.py alone: 83 tests OK. governance validate, handoff --check, scope --base origin/main and tracker_check --against origin/main all OK.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1250 tests: OK (skipped=1)"
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #9 merged into main by ChatGPT with a merge commit (merge commit shown); reviewed head is c9b1a6010e894fe181cbd77060d4291913249250",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/9",
+              "commit": "67b70dc251a4708957f1952d6032b3a4e1735043"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed implementation head of PR #9 (claim and implementation, one-time bootstrap exception)",
+              "commit": "c9b1a6010e894fe181cbd77060d4291913249250"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-13",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, reviewed and merged PR #9 and instructed this closeout; relayed to Claude in the session and not independently verified beyond the merged state of PR #9 on GitHub. Does not claim Lukas reviewed the code or that ChatGPT re-ran the tests."
+          }
+        },
+        {
+          "id": "S-GOV-003-01",
+          "title": "Step 1: review, merge and closeout by the delegated integrator",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "ChatGPT reviews the pull request and gives written technical approval naming the reviewed commit",
+            "The merge commit is recorded and the T-GOV-003 lease is released by the integrator through a follow-up pull request"
+          ],
+          "evidence": [
+            {
+              "type": "pull_request",
+              "summary": "PR #9 reviewed and merged by ChatGPT (merge commit shown). The closeout is under way: pull request #10 records the PR #9 merge and completes S-GOV-003-00 but is not merged. A final closeout pull request, after PR #10 is merged, completes this step, records PR #10's merge commit and releases the lease and owned paths",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/9",
+              "commit": "67b70dc251a4708957f1952d6032b3a4e1735043"
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #10 reviewed by ChatGPT and merged into main. It records the PR #9 merge and completes S-GOV-003-00. This closeout step is now READY_FOR_REVIEW; a final closeout pull request will record this merge, complete S-GOV-003-01 and release the T-GOV-003 lease and owned paths.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/10",
+              "commit": "cd6412bc4d207adc238b4f400c33870e2f3b1b9f"
+            },
+            {
+              "type": "commit",
+              "summary": "PR #10 reviewed head approved by ChatGPT before merge",
+              "commit": "c05fb31bd19c6fd97463407edfd397857285e4d2"
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #11 reviewed by ChatGPT and merged into main (merge commit shown). It recorded the PR #10 merge and moved this step to READY_FOR_REVIEW. Reviewed head e4dd01cd62c3e382e5fc79bffd1387402323b677.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/11",
+              "commit": "232172e62f3f7c7d1ba04d5a438d03689b9483d2"
+            },
+            {
+              "type": "commit",
+              "summary": "PR #11 reviewed head approved by ChatGPT before merge",
+              "commit": "e4dd01cd62c3e382e5fc79bffd1387402323b677"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-14",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, reviewed and merged PR #11 (reviewed head e4dd01cd62c3e382e5fc79bffd1387402323b677, merge commit 232172e62f3f7c7d1ba04d5a438d03689b9483d2) and instructed this final closeout; relayed to Claude in the session and not independently verified beyond the merged state of PR #11 on GitHub. Does not claim Lukas reviewed the code or that ChatGPT re-ran the tests."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-AST-001",
+      "title": "Make required-use rights checks fail closed",
+      "steps": [
+        {
+          "id": "S-AST-001-00",
+          "title": "Step 0: claim branch",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-AST-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "No overlap with another task and no edit to a package owned by someone else",
+            "Governance validate, handoff check, scope check and tracker check pass",
+            "The claim pull request is opened and merged by ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main bd33aa11f54cd94ce75baf228b32640fd7a351a4 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #13 merged into main (merge commit shown); reviewed head is 9dd04d766c8b037b32ed8811b730861d23639795. Merge confirmed on GitHub by Claude (state MERGED).",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/13",
+              "commit": "12c5964781261fcc49ce6e62030636aad4b64fce"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-14",
+            "source": "REPORTED: the delegated integrator told Claude in this session that claim PR #13 was merged and authorized Step 1; Claude verified only that PR #13 is MERGED on GitHub (merge commit 12c5964). Does not claim Lukas reviewed the claim or that ChatGPT re-ran any command."
+          }
+        },
+        {
+          "id": "S-AST-001-01",
+          "title": "Step 1: required-use fail-closed fix and regression tests",
+          "status": "IN_PROGRESS",
+          "acceptance_criteria": [
+            "Non-empty required_uses with empty allowed_uses returns QUARANTINE (new reason code, no other severity change)",
+            "Explicitly allowed uses still reach PERMITTED when all other checks pass",
+            "A required use missing from a non-empty allowed_uses stays QUARANTINE",
+            "Synthetic regression tests for all three cases are added to orchestrator/tests/test_assets.py",
+            "Only orchestrator/assets/rights.py and orchestrator/tests/test_assets.py change besides the shared registry files; the full suite passes"
+          ],
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "task_id": "T-DNA-001",
+      "title": "Make evidence revocation and restoration safe and replay-consistent",
+      "steps": [
+        {
+          "id": "S-DNA-001-00",
+          "title": "Step 0: claim branch",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-DNA-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "No overlap with another task and no edit to a package owned by someone else",
+            "Governance validate, handoff check, scope check and tracker check pass",
+            "The claim pull request is opened and merged by ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 12c5964 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #15 merged into main (merge commit shown); reviewed head is c559117e46a62b545d9994d6b8e417b6050e7464. Merge confirmed on GitHub by Claude (state MERGED) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/15",
+              "commit": "e164f5ca28b5d5de063edfe8a29685699131b5f8"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-14",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, told Claude in this session that claim PR #15 was technically approved and merged and authorized Step 1; Claude verified only that PR #15 is MERGED on GitHub (merge commit e164f5c, head c559117). Does not claim Lukas reviewed the claim or that ChatGPT re-ran any command."
+          }
+        },
+        {
+          "id": "S-DNA-001-01",
+          "title": "Step 1: revocation/restore event model, regression tests and documentation",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Independent creator_rejected and attribution_revoked state; rejected remains a read-only compatibility property",
+            "Distinct attribution_revoked event (schema v4); evidence_review strict to reject and restore",
+            "Restore never undoes a revocation and is refused for revoked or possible-legacy-revoked evidence; revocation recorded for creator-rejected evidence and idempotent per decision",
+            "Legacy v1-v3 logs replay unchanged with read-only warning flags only",
+            "Synthetic regression tests in test_creator_dna.py; test_speaker_attribution.py passes unmodified; CREATOR_DNA.md updated; the full suite passes",
+            "Only orchestrator/creator_dna/, test_creator_dna.py and CREATOR_DNA.md change besides the shared registry files"
+          ],
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Run by Claude Code on the working tree before the commit (the commit cannot cite its own SHA; not independently run by ChatGPT). Known skip: test_symlink_source_refused. test_creator_dna.py has 17 new tests in class RevocationAndRestore; run against the old store.py and schema.py the same file gave 8 failures and 9 errors, so the new tests exercise the fix. Synthetic data only.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1267 tests: OK (skipped=1)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Compatibility check: test_speaker_attribution.py run unmodified (sync_revocations and the readers of rejected and review_note are unchanged).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_speaker_attribution.py",
+              "result": "Ran 56 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "Changed only orchestrator/creator_dna/store.py, orchestrator/creator_dna/schema.py, orchestrator/tests/test_creator_dna.py, AI_Creator_Studio_Documentation/CREATOR_DNA.md and the shared registry files. speaker_attribution/, cross-package tests and unresolved packages are untouched. Implemented but not VERIFIED on real data; no real footage was used."
+            },
+            {
+              "type": "pull_request",
+              "summary": "PR #20 reviewed by ChatGPT and merged into main (merge commit shown). It delivered the schema v4 revocation and restore model, its regression tests and the CREATOR_DNA.md update, and moved this step to READY_FOR_REVIEW. Reviewed head 30ab9b39fe43c428110c699e577492d574a1d1ca.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/20",
+              "commit": "59b14a6c0215fbeb22321fc790750a4926e3bd19"
+            },
+            {
+              "type": "commit",
+              "summary": "PR #20 reviewed head, approved by ChatGPT before merge",
+              "commit": "30ab9b39fe43c428110c699e577492d574a1d1ca"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, technically approved this step, merged PR #20 (reviewed head 30ab9b39fe43c428110c699e577492d574a1d1ca, merge commit 59b14a6c0215fbeb22321fc790750a4926e3bd19) and explicitly authorized this closeout; relayed to Claude in the session and not independently verified beyond the merged state of PR #20 on GitHub and the checks Claude re-ran on the PR head. Does not claim Lukas reviewed the code or that ChatGPT re-ran any command. Implemented on synthetic data only; not VERIFIED on real data."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-AST-002",
+      "title": "Recover and complete Asset required-use fail-closed implementation",
+      "steps": [
+        {
+          "id": "S-AST-002-00",
+          "title": "Step 0: takeover claim",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-AST-002 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements; T-AST-001 is RELEASED with its lease cleared",
+            "No overlap with another task and no edit to a package owned by someone else; the abandoned owner's branch and worktree are untouched",
+            "Governance validate, handoff check, scope check and tracker check pass",
+            "The claim pull request is opened and merged by ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Takeover claim branch created from origin/main 91151ea8f73b0ce9cc8f39767196ab0e1fc2d828 in a new worktree after Lukas confirmed claude:asset-stream is abandoned; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Takeover claim PR #22 merged into main (merge commit shown); reviewed head is 7c2d35f8ff42d04682a51b427c449689f8cd22ad. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:19:00Z) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/22",
+              "commit": "db2fb3554ede9655b79aa4f7ad6233a0651805c5"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator under Lukas's standing delegation, told Claude in this session that takeover claim PR #22 was technically approved and merged (merge commit db2fb35); this is ChatGPT's delegated technical approval under Lukas's standing instruction, not a claim that Lukas personally reviewed the code. Claude verified only that PR #22 is MERGED on GitHub (merge commit db2fb3554ede9655b79aa4f7ad6233a0651805c5, head 7c2d35f) and that the merge commit is an ancestor of origin/main. Does not claim ChatGPT re-ran any command."
+          }
+        },
+        {
+          "id": "S-AST-002-01",
+          "title": "Step 1: required-use fail-closed fix and regression tests (continue from cc98875)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Non-empty required_uses with empty allowed_uses returns QUARANTINE (new reason code, no other severity change)",
+            "Explicitly allowed uses still reach PERMITTED when all other checks pass",
+            "A required use missing from a non-empty allowed_uses stays QUARANTINE",
+            "Synthetic regression tests for all three cases are added to orchestrator/tests/test_assets.py",
+            "Only orchestrator/assets/rights.py and orchestrator/tests/test_assets.py change besides the shared registry files; the full suite passes"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Re-applied the intended change from the preserved T-AST-001 implementation (branch task/asset-required-uses-fail-closed, cc988755b8137d4e7baf54d71c89542a5dda3f6b) by applying only its rights.py and test_assets.py diff onto origin/main c9c61ab; PR #17 was not merged and the abandoned branch/worktree were not touched. orchestrator/assets/rights.py: non-empty required_uses with empty allowed_uses now quarantines with new reason code USE_NOT_DECLARED; the USE_NOT_ALLOWED path is unchanged. Three synthetic regression tests added to orchestrator/tests/test_assets.py (empty allowed_uses quarantined, explicitly allowed use still permitted, required use missing from non-empty allowed_uses still USE_NOT_ALLOWED). With the fix reverted, test_assets.py fails (1 failure, the empty-allowed_uses test); with it applied, test_assets.py passes (149 tests, 1 skipped) and the full suite passes (1270 tests, skipped=1). Synthetic data only; not verified against real asset records or real footage. Command results are in the stop report; the commit cannot cite its own SHA."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Step-start PR #24 merged into main (merge commit shown); head 398dd1253e41516cba67ccbb9d2b7ed02f7db69f set S-AST-002-01 to IN_PROGRESS. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:29:52Z) and merge commit confirmed to be an ancestor of origin/main.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/24",
+              "commit": "8c0b5c5939aaf298734a7fd8029ebe6b57285194"
+            },
+            {
+              "type": "pull_request",
+              "summary": "Implementation PR #25 merged into main (merge commit shown); reviewed head is 9a48c9faef83f38a8089a380d595f2b0dbb85f88. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T13:30:13Z) and merge commit confirmed to be an ancestor of origin/main; origin/main contains USE_NOT_DECLARED in orchestrator/assets/rights.py.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/25",
+              "commit": "b462219e45f54b97d4264825cdf9276f77be5c63"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator, technically approved Step 1 under Lukas's standing delegation and merged PR #25 (merge commit b462219e45f54b97d4264825cdf9276f77be5c63; reviewed head 9a48c9faef83f38a8089a380d595f2b0dbb85f88) and step-start PR #24, and told Claude in this session. This is ChatGPT's delegated technical approval, not a claim that Lukas personally reviewed the implementation. Claude verified only that both PRs are MERGED on GitHub, that the merge commits are ancestors of origin/main and that rights.py on origin/main contains USE_NOT_DECLARED; Claude did not re-run ChatGPT's review. Implemented and tested on synthetic data only; not VERIFIED on real asset records."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-CRD-001",
+      "title": "Enforce Research contract version and safety-critical signals",
+      "steps": [
+        {
+          "id": "S-CRD-001-00",
+          "title": "Step 0: claim branch",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-CRD-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "No overlap with another task and no edit to a package owned by someone else; no other task's record is edited",
+            "Governance validate, handoff check, scope check and tracker check pass",
+            "The claim pull request is opened and merged by ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main a6a89a2 in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed. Validation results are in the stop report; the branch head cannot be cited inside the commit that creates it."
+            }
+          ]
+        },
+        {
+          "id": "S-CRD-001-01",
+          "title": "Step 1: exact Research contract, safety metadata, research digest, tests and README",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Exact research->creative_director/0.3 contract; invalid versions produce no partial Research context",
+            "Original Research claim status, safety_critical, unresolved_safety_warning and producer usage preserved as typed metadata; missing or malformed safety metadata fails closed",
+            "Unverified safety-critical and warned claims capped below verified; verified safety-critical claims never hooks; producer usage validated against mirrored rules",
+            "Deterministic research digest (integrity consistency only); tampering and unsafe hooks rejected by validation",
+            "Synthetic regression tests in test_creative_director.py; creative_director/README.md written; the full suite passes",
+            "Only orchestrator/creative_director/ and test_creative_director.py change besides the shared registry files"
+          ],
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "task_id": "T-GOV-004",
+      "title": "Parallel wave infrastructure",
+      "steps": [
+        {
+          "id": "S-GOV-004-00",
+          "title": "Step 0: wave tooling, protocol, workflow, hook and Coordinator role (claim, implementation, integration)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Wave manifest validation, scope, submit, verify, close and status exist and are tested against a real git origin",
+            "validate workflow and pre-push hook exist; GitHub plan limits verified",
+            "Protocols and CLAUDE.md describe waves; full suite and all governance checks pass",
+            "Waves are the normal path in the protocols and the Repository Coordinator role has explicit gates and exclusions"
+          ],
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Run by Claude Code on the working tree before the commit, before the CLI wiring test was added (the commit cannot cite its own SHA; not independently run by ChatGPT). Known skip: test_symlink_source_refused. Synthetic data only; git flows run against a throwaway bare origin. The GitHub run on the pull request covers the final head.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1306 tests: OK (skipped=1)"
+            },
+            {
+              "type": "test_run",
+              "summary": "The new module alone, run after the last code change: manifest, scope, report, generated-record, git-flow, CLI wiring and pre-push hook tests.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_waves.py",
+              "result": "Ran 37 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "VERIFIED 2026-11-17 with gh api: branch protection and rulesets answer HTTP 403 (Upgrade to GitHub Pro or make this repository public); GitHub Actions is enabled (allowed_actions all); allow_auto_merge is false."
+            },
+            {
+              "type": "observation",
+              "summary": "Changed only orchestrator/governance/ (new waves.py, cli.py, __init__.py, tasks.py branch pattern), orchestrator/tests/test_waves.py, .github/, .githooks/, .gitattributes, waves/, WAVE_PROTOCOL.md, the two protocols, CLAUDE.md and the shared registry files. No product package and no orchestrator/creative_director/ file changed. Implemented, not VERIFIED on a real wave."
+            },
+            {
+              "type": "observation",
+              "summary": "The validate workflow ran on this pull request (#28). First run failed on four existing ingest tests that compare an 8.3 short temp path with the long form; after setting TEMP and TMP to the runner's long temp directory the second run passed: governance validate, handoff --check, tracker_check, 1306 tests (skipped=49 on the runner against 1 locally) and the secret scan. The wave gate step is untested in CI until a wave branch exists. Linux runners and Actions minutes are UNKNOWN."
+            },
+            {
+              "type": "commit",
+              "summary": "Head on which the gates were run before this closeout commit (validate green on GitHub, full suite 1309 tests, handoff, tracker and secret scan clean).",
+              "commit": "9b248310e721bfc667c6905222fd95ccfa69f28e"
+            },
+            {
+              "type": "test_run",
+              "summary": "GitHub Actions workflow validate on pull request #28 at the commit above (run 44104661239), windows-latest, Python 3.14.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1309 tests: OK (skipped=49)"
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas instructed this session (named Repository Coordinator), in the session on 2026-11-17, to complete the validation and integration of PR #28 and to make the Repository Coordinator the autonomous wave integrator. This records that direct instruction to integrate. It does not claim that Lukas or ChatGPT reviewed the code, which was written by this same session; the gates were mechanical (CI, validators, tests)."
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-GOV-005",
+      "title": "Wave wording follow-up",
+      "steps": [
+        {
+          "id": "S-GOV-005-00",
+          "title": "Step 0: CLAUDE.md lane wording and protection evidence (claim, change and closeout in one pull request)",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "CLAUDE.md distinguishes wave lanes from standalone tasks",
+            "Protection evidence recorded",
+            "All governance checks pass"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "T-GOV-004 merge commit after which protection was configured and read back",
+              "commit": "984593b3e764a1b4f099a95aada6434a25475e7e"
+            },
+            {
+              "type": "observation",
+              "summary": "Only CLAUDE.md, PROJECT_STATUS.json and the registry/tracker/changelog/handoff records change; no product package and no Creative Director file."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "lukas",
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "DIRECT: Lukas directed the Repository Coordinator session on 2026-11-17 to make waves the normal path and remove administrative pull requests. This wording and evidence follow-up implements that direction; it does not claim that Lukas or ChatGPT reviewed the text, and the checks are mechanical (CI, validators, tests)."
+          }
+        }
+      ]
+    }
+  ]
+}

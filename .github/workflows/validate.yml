@@ -48,7 +48,7 @@ jobs:
 
       - name: Development tracker
         shell: bash
-        run: python -B dashboard/tracker_check.py --against origin/main
+        run: python -B dashboard/tracker_check.py --against origin/main --head "origin/${HEAD_REF}"
 
       - name: Wave gate (wave branches only)
         if: startsWith(github.head_ref || github.ref_name, 'wave/')
@@ -61,6 +61,15 @@ jobs:
           else
             python -B -m governance wave verify "$WAVE_ID"
           fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Desktop dashboard tests
+        shell: bash
+        working-directory: dashboard/desktop
+        run: node --test "tests/*.test.js"
 
       - name: Full test suite
         shell: bash
