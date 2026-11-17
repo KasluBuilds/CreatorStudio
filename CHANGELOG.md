@@ -4,6 +4,10 @@ Repository history of CreatorStudio, newest first. Entries cover what changed in
 project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_OPEN_QUESTIONS.md` (section 6). The project had no version control
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
+## Unreleased — task `T-AST-002` Step 0 closeout (branch `task/t-ast-002-step0-closeout`, pending review)
+
+- Administrative only: takeover claim PR #22 was technically approved by ChatGPT (delegated integrator under Lukas's standing instruction; this does not claim Lukas personally reviewed the code) and merged into `main` (merge commit `db2fb3554ede9655b79aa4f7ad6233a0651805c5`; reviewed head `7c2d35f8ff42d04682a51b427c449689f8cd22ad`). `S-AST-002-00` moves to `COMPLETED` with a `REPORTED` completion record dated 2026-11-17. `T-AST-002` stays `ACTIVE`; `S-AST-002-01` stays `PLANNED` and is not started. `T-AST-001` history, PR #17 and the abandoned branch/worktree are untouched. `SESSION_HANDOFF.md` regenerated with the official command.
+
 ## Unreleased — task `T-AST-002` takeover claim (branch `task/asset-required-uses-fail-closed-recovery`, pending review)
 
 - Claim only: Lukas confirmed on 2026-11-17 that `claude:asset-stream` is abandoned (lease expired 2026-11-15). `T-AST-001` is marked `RELEASED` with its lease cleared; the original branch `task/asset-required-uses-fail-closed` (head `cc98875`, PR #17) and its worktree are preserved untouched. `T-AST-002` (owner `claude:asset-recovery`, 24-hour lease, depends on `T-AST-001`) and steps `S-AST-002-00` (claim, `READY_FOR_REVIEW`) and `S-AST-002-01` (implementation, `PLANNED`, not started) are registered; `package_owners.assets` and `AGR-GOV-REGISTRY-01` now name the new owner/task. All `T-AST-001` tracker steps are preserved as history. No source, test, status or milestone change.
