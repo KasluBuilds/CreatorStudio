@@ -4,11 +4,13 @@ The working-step limit (at most one IN_PROGRESS or READY_FOR_REVIEW step) and th
 Standard library only. Read-only: it never writes any project file. The tracker records *steps*; it must not
 duplicate milestone states or percentages (PROJECT_STATUS.json) or task ownership and leases (ACTIVE_TASKS.json).
 Usage from the repository root:
-    python -B dashboard/tracker_check.py [--root DIR] [--against REF]
-Without --against it validates the current file only. With --against REF (for example origin/main) it also reads
-DEVELOPMENT_TRACKER.json as committed at REF (`git show`, read-only) and rejects illegal historical changes: a
-disallowed status transition, an edit to a COMPLETED step, or a removed step. If REF has no tracker file yet, there
-is nothing to compare and that is reported. Exit codes: 0 ok, 1 problems found, 2 files, REF or git unusable.
+    python -B dashboard/tracker_check.py [--root DIR] [--against REF] [--head REF]
+Without --against it validates the current file only. With --against REF (for example origin/main), REF must be
+an ancestor of the selected head (HEAD by default; CI passes the actual PR head with --head). The checker finds the branch fork point shared with REF, then reads every committed
+DEVELOPMENT_TRACKER.json snapshot on the first-parent path from that point to HEAD (`git show`, read-only), in
+order, and compares the working-tree file with HEAD. It rejects every illegal intermediate transition, an edit to a
+COMPLETED step, or a removed step; later commits cannot hide an earlier violation. Exit codes: 0 ok, 1 problems
+found, 2 files, REF or git unusable.
 """
 import json
 import re
@@ -236,16 +238,131 @@ def load_base(root: Path, ref: str) -> Optional[Dict[str, Any]]:
         raise BaseError(f"{spec} is not valid JSON: {exc}")
 
 
+def _branch_side_of_main_merge(old_doc: Dict[str, Any], merged_doc: Dict[str, Any],
+                               main_doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove changes inherited unchanged from the already-validated main parent of a merge.
+
+    The task branch's first-parent history may merge main after several main-side tracker
+    transitions. Those transitions were validated on main; comparing only the branch's
+    previous snapshot with the merge result would collapse them into one apparent jump.
+    Keep branch-side changes, but neutralize steps whose merged value is exactly the
+    second-parent value. The real merged snapshot is still used as the next baseline.
+    """
+    def steps(doc: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        return {step["id"]: step for task in doc.get("tasks", []) for step in task.get("steps", [])
+                if isinstance(step, dict) and isinstance(step.get("id"), str)}
+
+    old_steps, merged_steps, main_steps = steps(old_doc), steps(merged_doc), steps(main_doc)
+    checked = []
+    for sid, merged_step in merged_steps.items():
+        old_step, main_step = old_steps.get(sid), main_steps.get(sid)
+        if main_step is not None and merged_step == main_step and merged_step != old_step:
+            if old_step is not None:
+                checked.append(old_step)
+            # A step newly introduced on main is already covered by main's own history.
+            continue
+        checked.append(merged_step)
+    # A removal inherited from main is likewise already covered by main's own history.
+    for sid, old_step in old_steps.items():
+        if sid not in merged_steps and sid not in main_steps:
+            checked.append(old_step)
+    return {"tasks": [{"steps": checked}]}
+
+
+def transition_history_problems(root: Path, ref: str, current_doc: Dict[str, Any], head_ref: str = "HEAD") -> List[str]:
+    """Check each committed tracker snapshot from the branch fork point through the selected head ref.
+
+    The supplied base ref must be an ancestor of the selected head ref (the branch is up to date). If
+    main was merged into the task branch, the fork point is the nearest first-parent
+    commit that is also an ancestor of the base ref. This avoids comparing an older
+    task-branch snapshot directly with a newer main snapshot and catches intermediate
+    transitions even when a later file would hide them.
+    """
+    def git(*args: str) -> subprocess.CompletedProcess:
+        try:
+            return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
+                                  encoding="utf-8", timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise BaseError(f"git unavailable: {exc}")
+
+    if not ref or ref.startswith("-"):
+        raise BaseError(f"invalid ref {ref!r}")
+    if not head_ref or head_ref.startswith("-"):
+        raise BaseError(f"invalid head ref {head_ref!r}")
+    base = git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+    head = git("rev-parse", "--verify", "--quiet", f"{head_ref}^{{commit}}")
+    if base.returncode != 0 or head.returncode != 0:
+        raise BaseError(f"cannot resolve history from {ref!r} to {head_ref!r}")
+    base_sha, head_sha = base.stdout.strip(), head.stdout.strip()
+    if git("merge-base", "--is-ancestor", base_sha, head_sha).returncode != 0:
+        raise BaseError(f"{ref!r} is not an ancestor of {head_ref!r}; update the branch before checking")
+
+    first_parent = git("rev-list", "--first-parent", head_sha)
+    if first_parent.returncode != 0:
+        raise BaseError(f"cannot read first-parent history from {head_ref!r}")
+    fork_base = None
+    for candidate in first_parent.stdout.split():
+        ancestry = git("merge-base", "--is-ancestor", candidate, base_sha)
+        if ancestry.returncode == 0:
+            fork_base = candidate
+            break
+        if ancestry.returncode != 1:
+            raise BaseError(f"cannot determine branch fork point for {ref!r}")
+    if fork_base is None:
+        raise BaseError(f"cannot find a first-parent fork point shared with {ref!r}")
+
+    previous = load_base(root, fork_base)
+    commits = git("rev-list", "--first-parent", "--reverse", f"{fork_base}..{head_sha}")
+    if commits.returncode != 0:
+        raise BaseError(f"cannot read first-parent history from {fork_base} to {head_ref!r}")
+
+    problems: List[str] = []
+    for sha in commits.stdout.split():
+        spec = f"{sha}:DEVELOPMENT_TRACKER.json"
+        exists = git("cat-file", "-e", spec)
+        if exists.returncode != 0:
+            if previous is not None:
+                raise BaseError(f"{sha}: DEVELOPMENT_TRACKER.json disappeared from history")
+            continue
+        shown = git("show", spec)
+        if shown.returncode != 0:
+            raise BaseError(f"cannot read {spec}")
+        try:
+            snapshot = json.loads(shown.stdout)
+        except ValueError as exc:
+            raise BaseError(f"{spec} is not valid JSON: {exc}")
+        if previous is not None:
+            transition_snapshot = snapshot
+            parents = git("rev-list", "--parents", "-n", "1", sha)
+            if parents.returncode != 0:
+                raise BaseError(f"cannot read parents for {sha}")
+            parent_ids = parents.stdout.split()[1:]
+            if len(parent_ids) >= 2 and git("merge-base", "--is-ancestor", parent_ids[1], base_sha).returncode == 0:
+                main_snapshot = load_base(root, parent_ids[1])
+                if main_snapshot is not None:
+                    transition_snapshot = _branch_side_of_main_merge(previous, snapshot, main_snapshot)
+            problems.extend(transition_problems(previous, transition_snapshot))
+        previous = snapshot
+
+    # Also compare the working-tree file with the selected head's snapshot. This keeps local --against checks
+    # useful before a commit; CI passes the PR head ref while checking out GitHub's synthetic merge tree.
+    if previous is not None and previous != current_doc:
+        problems.extend(transition_problems(previous, current_doc))
+    return sorted(set(problems))
+
 def main(argv: List[str]) -> int:
     root = Path(__file__).resolve().parents[1]
     against = None
+    head_ref = "HEAD"
     try:
         if "--root" in argv:
             root = Path(argv[argv.index("--root") + 1])
         if "--against" in argv:
             against = argv[argv.index("--against") + 1]
+        if "--head" in argv:
+            head_ref = argv[argv.index("--head") + 1]
     except IndexError:
-        print("ERROR: --root and --against need a value", file=sys.stderr)
+        print("ERROR: --root, --against and --head need a value", file=sys.stderr)
         return 2
     try:
         doc, at = load(root)
@@ -260,11 +377,16 @@ def main(argv: List[str]) -> int:
         except BaseError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
+        try:
+            history_problems = transition_history_problems(root, against, doc, head_ref)
+        except BaseError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+        problems = sorted(set(problems + history_problems))
         if base is None:
-            note = f" (no tracker at {against}: nothing to compare)"
+            note = f" (no tracker at {against}; branch history checked from its fork point)"
         else:
-            problems = sorted(set(problems + transition_problems(base, doc)))
-            note = f" (transitions checked against {against})"
+            note = f" (transitions checked against {against} across first-parent history of {head_ref})"
     for p in problems:
         print("PROBLEM:", p)
     if not problems:
