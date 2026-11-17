@@ -87,6 +87,7 @@ Status record dated **2026-11-09**. Baseline commit **`93a9a829e073`** on `main`
 | Task | Owner | Branch | Status | Lease expires | Owns |
 |---|---|---|---|---|---|
 | T-CRD-001 Enforce Research contract version and safety-critical signals | claude:creative-director-stream | `task/t-crd-001-claim` | ACTIVE | 2026-11-18T13:39:25+00:00 | orchestrator/creative_director/, orchestrator/tests/test_creative_director.py, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
+| T-DNA-002 Learning-ready Creator DNA core (M-DNA-02a): attribution verification, consent, analyzers, review loop | claude:creator-dna-stream | `task/t-dna-002-claim` | ACTIVE | 2026-11-18T15:46:03+00:00 | orchestrator/creator_dna/, orchestrator/tests/test_creator_dna.py, orchestrator/tests/test_creator_dna_learning.py, AI_Creator_Studio_Documentation/CREATOR_DNA.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md, orchestrator/tests/test_speaker_attribution.py, orchestrator/tests/test_integration_phase2_phase3.py, orchestrator/tests/_dna_lenient.py |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 

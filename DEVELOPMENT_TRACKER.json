@@ -651,6 +651,38 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-DNA-002",
+      "title": "Learning-ready Creator DNA core (M-DNA-02a): attribution verification, consent, analyzers, review loop",
+      "steps": [
+        {
+          "id": "S-DNA-002-00",
+          "title": "Step 0: claim branch",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-DNA-002 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "No overlap with another active task beyond AGR-GOV-REGISTRY-01 paths; no other task's record is edited except the shared agreement member list",
+            "Governance validate, handoff check, scope check and tracker check pass",
+            "The claim pull request is opened and merged by the Repository Coordinator, ChatGPT or Lukas, not by Claude"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 18e970e in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md changed."
+            }
+          ]
+        },
+        {
+          "id": "S-DNA-002-01",
+          "title": "Step 1: verifier, consent, analyzers, independence, review loop, tests and documentation",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "See the task's acceptance criteria in ACTIVE_TASKS.json"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }

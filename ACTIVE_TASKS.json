@@ -105,13 +105,25 @@
         "T-AST-002",
         "T-DNA-001",
         "T-CRD-001",
-        "T-GOV-004"
+        "T-GOV-004",
+        "T-DNA-002"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
         "DEVELOPMENT_TRACKER.json",
         "CHANGELOG.md",
         "SESSION_HANDOFF.md"
+      ]
+    },
+    "AGR-DNA-VERIFIER-01": {
+      "description": "PROPOSED by claude:creator-dna-stream; takes effect when the Repository Coordinator or Lukas merges this claim. T-DNA-002 makes DNAStore refuse footage evidence unless an injected attribution verifier verified the stamp (no insecure default). Three test files owned by UNRESOLVED packages build a DNAStore without a verifier and with hand-built or upstream stamps, so they break by design. T-DNA-002 may edit them ONLY to give the DNAStore constructor an explicit test-only verifier (or use a test-only fixture); no assertion is removed or weakened and no production code of media_analysis, speaker_attribution or creator_state is touched. tests/test_creative_director.py has the same one-constructor issue (line ~903) but belongs to active T-CRD-001 and is NOT covered here: it needs a follow-up after T-CRD-001 merges or T-CRD-001 joining this agreement.",
+      "task_ids": [
+        "T-DNA-002"
+      ],
+      "paths": [
+        "orchestrator/tests/test_speaker_attribution.py",
+        "orchestrator/tests/test_integration_phase2_phase3.py",
+        "orchestrator/tests/_dna_lenient.py"
       ]
     }
   },
@@ -425,6 +437,61 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Opened, delivered and closed in one small pull request as part of the Phase 3 direction Lukas gave the Repository Coordinator on 2026-11-17 (waves are the normal path, remove administrative pull requests). Touches no product package and no Creative Director file. Completion is recorded as DIRECT from that instruction; it is not a code review."
+    },
+    {
+      "id": "T-DNA-002",
+      "title": "Learning-ready Creator DNA core (M-DNA-02a): attribution verification, consent, analyzers, review loop",
+      "description": "In orchestrator/creator_dna/: (1) AttributionVerifier protocol with verified/stale/unknown/invalid outcomes injected into DNAStore, fail closed, audit_attributions(); (2) schema v5 purpose-scoped consent, withdrawal and quarantine events; (3) deterministic SentenceRhythm, PauseProfile and EnergyRange analyzers; (4) optional session provenance for evidence independence; (5) review_queue, apply_decisions, diff_exports; (6) tests, CREATOR_DNA.md and status records. Synthetic data only; no real footage; MVI_0879.MOV is never evidence; media_analysis, speaker_attribution and creator_state code is not touched.",
+      "owner": "claude:creator-dna-stream",
+      "branch": "task/t-dna-002-claim",
+      "worktree": "../CreatorStudio-worktrees/t-dna-002",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DNA-001"
+      ],
+      "lease": {
+        "acquired": "2026-11-17T15:46:03+00:00",
+        "expires": "2026-11-18T15:46:03+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01",
+        "AGR-DNA-VERIFIER-01"
+      ],
+      "owned_paths": [
+        "orchestrator/creator_dna/",
+        "orchestrator/tests/test_creator_dna.py",
+        "orchestrator/tests/test_creator_dna_learning.py",
+        "AI_Creator_Studio_Documentation/CREATOR_DNA.md",
+        "PROJECT_STATUS.json",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md",
+        "orchestrator/tests/test_speaker_attribution.py",
+        "orchestrator/tests/test_integration_phase2_phase3.py",
+        "orchestrator/tests/_dna_lenient.py"
+      ],
+      "acceptance_criteria": [
+        "DNAStore refuses footage-derived evidence unless an injected verifier returns VERIFIED for the stamp; missing, unavailable, unknown, stale and invalid outcomes all refuse; there is no insecure default and the test fixture is test-only",
+        "audit_attributions(verifier) revokes stale or invalid evidence through idempotent, replay-consistent attribution_revoked events",
+        "Schema v5 consent record, withdrawal and quarantine_all; consent is purpose-scoped and project-scoped; withdrawal stops ingestion and excludes existing footage evidence from confidence and scope; v1-v4 logs replay unchanged and older readers refuse v5 events",
+        "SentenceRhythmAnalyzer, PauseProfileAnalyzer and EnergyRangeAnalyzer are deterministic, validate inputs, never invent measurements and never label humor or emotion",
+        "Optional session provenance: evidence from one session counts as one independent witness; a stable trait needs three sessions when session ids exist; behaviour without session ids is unchanged",
+        "review_queue, apply_decisions (dry run, all-or-nothing) and diff_exports are deterministic and tested with golden outputs",
+        "At least 60 new tests; existing Creator DNA tests are not weakened; the full suite passes; CREATOR_DNA.md and status records are reconciled and state that nothing is real-input verified",
+        "No change to media_analysis, speaker_attribution, creator_state or creative_director code; the only edits to test files owned by others are those allowed by AGR-DNA-VERIFIER-01"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creator_dna.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_creator_dna_learning.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests",
+        "cd orchestrator && python -B -m governance validate",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main"
+      ],
+      "integration_notes": "Synthetic data only; no real footage; MVI_0879.MOV is a friend's narration and is never Creator DNA evidence. Claim, implementation and closeout are one milestone. Owned paths are claimed now; the implementation is built on the task worktree and is not pushed until this claim is merged. creator_dna package ownership is REPORTED, not confirmed by Lukas. Shared registry files are covered by AGR-GOV-REGISTRY-01 (T-DNA-002 added to its members)."
     }
   ]
 }
