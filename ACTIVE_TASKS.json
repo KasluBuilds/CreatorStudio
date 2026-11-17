@@ -434,30 +434,14 @@
       "owner": "claude:governance-session",
       "branch": "task/t-dsh-001-desktop-dashboard",
       "worktree": "../CreatorStudio-worktrees/t-dsh-001-desktop",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-17T15:39:00+00:00",
-        "expires": "2026-11-18T15:39:00+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
       ],
-      "owned_paths": [
-        "AGENT_REGISTRY.json",
-        "dashboard/desktop/",
-        "orchestrator/governance/",
-        "orchestrator/tests/test_agent_registry.py",
-        "orchestrator/tests/test_dashboard_app.py",
-        ".github/",
-        ".gitignore",
-        "PROJECT_OPERATING_PROTOCOL.md",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "A packaged Windows .exe fetches the canonical records from public GitHub on open and on Refresh, shows the last successful sync time and source commit, warns when offline or stale, keeps a usable last-known snapshot, needs no login or token and is read-only",
         "The start page shows canonical implementation and verification progress (never recalculated), a clickable global metric opening the global roadmap, the current major milestone, the current wave and active agents, blockers, upcoming milestones and the filming gate",
@@ -476,7 +460,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Directed by Lukas on 2026-11-17 (Repository Coordinator session): complete implementation, testing, self-review and integration. Claim and implementation share one pull request, as for T-GOV-004/005. Does not touch the active first wave (w01: assets, research, creator_dna) or Creative Director code or its branch; the only shared files edited are the four registry files (AGR-GOV-REGISTRY-01) and .github/validate.yml (one added step). The executable is built from merged main and published as GitHub Release dashboard-v1.0.0 with SHA256SUMS.txt after the merge."
+      "integration_notes": "Completed 2026-11-17 in this single pull request (claim, implementation and closeout), directed by Lukas to the Repository Coordinator session; gates were run on head 32e96d57d8c0bd12dfed4f036e128fafadcc3241 before the closeout commit. The executable is built from merged main and published as Release dashboard-v1.0.0 with SHA256SUMS.txt after the merge. Does not touch wave w01, Creative Director or any product package."
     }
   ]
 }
