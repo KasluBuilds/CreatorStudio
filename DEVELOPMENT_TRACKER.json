@@ -556,7 +556,7 @@
         {
           "id": "S-CRD-001-01",
           "title": "Step 1: exact Research contract, safety metadata, research digest, tests and README",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Exact research->creative_director/0.3 contract; invalid versions produce no partial Research context",
             "Original Research claim status, safety_critical, unresolved_safety_warning and producer usage preserved as typed metadata; missing or malformed safety metadata fails closed",
@@ -596,6 +596,10 @@
             {
               "type": "observation",
               "summary": "Reviewer rework opened: require complete supporting-source review metadata; source_supports now fails closed for missing or unrecognized review_label and verification_level. Re-run the full validation gate before returning to READY_FOR_REVIEW."
+            },
+            {
+              "type": "observation",
+              "summary": "Reviewer rework complete: verified facts now require complete recognized supporting-source review metadata, and malformed duplicate source stances are handled safely as unrecognized input. Regression coverage added for missing/null/unknown provenance fields and malformed duplicate stances. History-aware tracker validation also covers actual PR head refs, synthetic merge checkouts and main-side changes inherited through merge commits. Final CI on this head is pending."
             }
           ]
         }
