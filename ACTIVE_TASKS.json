@@ -1278,27 +1278,15 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/dev-supervisor-launch-env",
       "worktree": "../CreatorStudio-worktrees/dev-supervisor-launch-env",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-18T12:53:44+00:00",
-        "expires": "2026-11-19T12:53:44+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01",
         "AGR-DEV-FIXES-01"
       ],
-      "owned_paths": [
-        "orchestrator/dev_supervisor/launch.py",
-        "orchestrator/dev_supervisor/lifecycle.py",
-        "orchestrator/dev_supervisor/provider_env.py",
-        "orchestrator/tests/test_dev_provider_env.py",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "main contains provider_env.child_env and launch/lifecycle use it",
         "dev_supervisor tests and the full suite pass",
@@ -1312,7 +1300,7 @@
         "cd orchestrator && python -B -m governance scope --base origin/main",
         "python -B dashboard/tracker_check.py --against origin/main"
       ],
-      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges."
+      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges. Completed 2026-11-19: merged to main by the Repository Coordinator through dev_supervisor.integrate (PR #60, merge commit 7feb86b81bf3; all 8 section-18 gates PASS, independent review bound to the diff hash)."
     },
     {
       "id": "T-DEV-011",
@@ -1321,32 +1309,17 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/dev-supervisor-transcript-env",
       "worktree": "../CreatorStudio-worktrees/w03-dev-supervisor-coordinator",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-010"
       ],
-      "lease": {
-        "acquired": "2026-11-18T12:53:44+00:00",
-        "expires": "2026-11-19T12:53:44+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01",
         "AGR-DEV-FIXES-01"
       ],
-      "owned_paths": [
-        "orchestrator/dev_supervisor/cli.py",
-        "orchestrator/dev_supervisor/provider_env.py",
-        "orchestrator/dev_supervisor/telemetry.py",
-        "orchestrator/tests/test_dev_cli.py",
-        "orchestrator/tests/test_dev_provider_env.py",
-        "orchestrator/tests/test_dev_telemetry.py",
-        "DEVELOPMENT_OPERATING_SYSTEM.md",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "A supervisor-launched Main writes its transcript and session record (OBSERVED)",
         "compact-check reports a numeric ratio for claude-opus-5-5",
@@ -1361,7 +1334,7 @@
         "cd orchestrator && python -B -m governance scope --base origin/main",
         "python -B dashboard/tracker_check.py --against origin/main"
       ],
-      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges."
+      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges. Completed 2026-11-19: merged to main by the Repository Coordinator through dev_supervisor.integrate (PR #59, merge commit cd475b3aa8c1; all 8 section-18 gates PASS, independent review bound to the diff hash)."
     },
     {
       "id": "T-DEV-012",
