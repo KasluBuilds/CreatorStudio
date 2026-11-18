@@ -2644,7 +2644,7 @@
         {
           "id": "S-DEV-023-00",
           "title": "Step 0: claim",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-DEV-023 is registered as ACTIVE with owned paths and acceptance criteria; no other task's record is edited",
             "Governance validate, handoff check and tracker check pass"
@@ -2653,13 +2653,24 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change. Replaces closed PR #79, which the merge gate refused for editing T-DEV-011 from a foreign branch."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #81 merged to main as 13202fc1b15a by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff e2ae95cfe87db503); claim PR #80 merged earlier"
             }
-          ]
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
         },
         {
           "id": "S-DEV-023-01",
           "title": "Step 1: implementation on task/t-dev-023-acceptance-window",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "Simulation scaled to the configured window",
             "test_dev_acceptance passes at 200K and 1M",

@@ -1489,24 +1489,14 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/t-dev-023-acceptance-window",
       "worktree": "../CreatorStudio-worktrees/t-dev-023-acceptance-window",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-18T12:53:44+00:00",
-        "expires": "2026-11-19T12:53:44+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
       ],
-      "owned_paths": [
-        "orchestrator/dev_supervisor/acceptance.py",
-        "orchestrator/tests/test_dev_acceptance.py",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "Pressure simulation token counts are derived from telemetry.PressureConfig().window_for(MAIN_MODEL), falling back to 200000",
         "test_dev_acceptance passes with both 200K and 1M windows for the simulated model",
@@ -1520,7 +1510,7 @@
         "cd orchestrator && python -B -m governance scope --base origin/main",
         "python -B dashboard/tracker_check.py --against origin/main"
       ],
-      "integration_notes": "Claimed by Main (Repository Coordinator, package owner of orchestrator/dev_supervisor/). Integrated under PROJECT_OPERATING_PROTOCOL.md section 18 gates."
+      "integration_notes": "Claimed by Main (Repository Coordinator, package owner of orchestrator/dev_supervisor/). Integrated under PROJECT_OPERATING_PROTOCOL.md section 18 gates. Completed 2026-11-19: merged to main by the Repository Coordinator through dev_supervisor.integrate (PR #81, merge commit 13202fc1b15a; all 8 section-18 gates PASS, independent review bound to the diff hash)."
     }
   ]
 }
