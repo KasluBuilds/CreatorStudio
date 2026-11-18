@@ -143,8 +143,12 @@ const missingSection = (id, title, reason) => ({ id, title, rows: [{ name: title
 function operationSections(raw, nowMs, thr) {
   const out = [];
   const op = raw.operation;
-  if (!op || typeof op !== 'object' || Array.isArray(op)) {
-    const why = 'the snapshot has no operation section (written by an older supervisor, or the section could not be built)';
+  // A section the supervisor wrote as "not computed" (all lists empty, idle reason UNAVAILABLE, no fingerprint) is missing, not an empty success.
+  const notComputed = op && typeof op === 'object' && !Array.isArray(op) && !arr(op.actionable).length && !arr(op.others_waiting).length && !arr(op.blocked).length
+    && !op.fingerprint && op.idle_reason && op.idle_reason.label === 'UNAVAILABLE';
+  if (!op || typeof op !== 'object' || Array.isArray(op) || notComputed) {
+    const why = notComputed ? `the supervisor did not compute the operation picture: ${text(op.idle_reason.reason) || 'no reason given'}`
+      : 'the snapshot has no operation section (written by an older supervisor, or the section could not be built)';
     out.push(missingSection('operation_actionable', 'Next actions for Main', why),
       missingSection('operation_waiting', 'Waiting on others', why), missingSection('operation_blocked', 'Blocked', why),
       missingSection('operation_idle', 'Idle reason and warnings', why));
