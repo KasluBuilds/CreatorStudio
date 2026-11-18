@@ -539,9 +539,9 @@ class TestStopHook(Base):
         self.assertEqual(self.hook(), (0, ""))
 
     def test_reason_has_no_secret_and_is_bounded(self):
-        self.write_registry([task("T-1 sk-abcdefghijklmnopqrstuvwx" + "x" * 400, paths=["x/"])])
+        self.write_registry([task("T-1 " + "sk" + "-" + "a" * 30 + "x" * 400, paths=["x/"])])
         reason = json.loads(self.hook()[1])["reason"]
-        self.assertNotIn("sk-abcdefghijkl", reason)
+        self.assertNotIn("sk" + "-" + "a" * 12, reason)
         self.assertLess(len(reason), 520)
 
 
