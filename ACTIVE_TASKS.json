@@ -1449,6 +1449,66 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Authorized DIRECTLY by Lukas in session 2026-11-18 (issue #44 expansion to full development autonomy). Governance-machinery change: merged only with that direct word."
+    },
+    {
+      "id": "T-DEV-021",
+      "title": "Autonomous merge gate with serialization lock (issue #44, full-autonomy policy)",
+      "description": "Wave w07-autonomous-integration, lane L1: Autonomous merge gate with serialization lock (issue #44, full-autonomy policy).",
+      "owner": "claude:repository-coordinator",
+      "branch": "lane/w07-autonomous-integration/L1",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "New module dev_supervisor/integrate.py, CLI `python -B -m dev_supervisor.integrate <pr> [--yes] [--repo <root>] [--base main]`: evaluates EVERY gate and prints a gate table; with --yes and all gates PASS it merges; dry run by default",
+        "Gates: (1) PR open, not draft, base main, head branch prefix task/, wave/ or chatgpt/; (2) required check 'validate' SUCCESS on the exact current head SHA and no failing or pending required check; (3) GitHub mergeStateStatus CLEAN (up to date, no conflicts); (4) scope: every changed file lies inside the owned_paths of the ACTIVE/UNDER_REVIEW task registered for the head branch in ACTIVE_TASKS.json on origin/main, or for a wave/ branch inside the union of its lanes' owned paths plus waves/<id>/, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, CHANGELOG.md, SESSION_HANDOFF.md written by wave close; a registry-only PR (only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md) passes scope as a record; (5) review: a PR comment whose first line is a valid dev-review v1 marker with verdict APPROVE whose diff_sha256 equals the hash recomputed now, posted by a reviewer that is not recorded as the author (author identity = the PR's head commits' Co-Authored-By/author lines and the task owner; the reviewer id must differ) — a newer CHANGES_REQUESTED for the same hash blocks; wave PRs may instead rely on wave close evidence only if a review marker exists for the wave diff; (6) secret scan of added lines (reuse orchestrator/governance's scanner read-only if importable, else an equivalent pattern list); (7) no tracked launcher/credential/media file added. Review report format (posted as a PR comment by a reviewer worker): first line exactly '<!-- dev-review v1 pr=<n> diff_sha256=<16 hex> verdict=<APPROVE|CHANGES_REQUESTED> reviewer=<reviewer id> -->'; diff hash = first 16 hex of sha256 of `git diff --binary $(git merge-base <base> <head>) <head>`; the body lists BLOCKING and NON-BLOCKING findings and exact test result lines",
+        "Serialization: an exclusive integration lock file in the supervisor state directory (atomic create, holder pid/time, stale after a timeout) so two merges never run at once; the lock is held from final gate evaluation through merge and read-back",
+        "Merge: `gh pr merge <n> --merge --match-head-commit <evaluated head>`; then read back `gh pr view <n> --json state,mergeCommit` and fail unless MERGED; post one PR comment with the gate table and result (marker '<!-- dev-integrate v1 pr=<n> head=<sha> result=<MERGED|REFUSED> -->'); append a supervisor event",
+        "Never force, never admin-bypass, never retries a failed merge more than once, never merges when any gate is FAIL or UNKNOWN",
+        "At least 40 offline tests with fake gh/git runners covering every gate pass/fail, lock contention and stale lock, head moved between evaluation and merge (match-head-commit failure), read-back failure; one OBSERVED live DRY RUN against a real open PR (gate table only)",
+        "Synthetic data only; no network in unit tests (gh and git are injected runners with fakes); no secrets/tokens printed, stored or committed; no absolute user paths in tracked files",
+        "Live observations summarised as numbers/identifiers, labelled OBSERVED with the exact command; anything not observed is NOT TESTED; nothing VERIFIED without command output",
+        "Do NOT edit any existing module (cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py, repair.py, acceptance.py, text_worker.py are claimed or merged); import read-only",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) stays green"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_integrate.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L1 of wave w07-autonomous-integration; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b0d346d9eb662d7a6602cb32af08a13bc58b4742, lane head c187addd7524ca75b06be20abbc516f6a12b811f). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-022",
+      "title": "Independent review packets and review-report validation (issue #44, full-autonomy policy)",
+      "description": "Wave w07-autonomous-integration, lane L2: Independent review packets and review-report validation (issue #44, full-autonomy policy).",
+      "owner": "claude:repository-coordinator",
+      "branch": "lane/w07-autonomous-integration/L2",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "New module dev_supervisor/review.py, CLI `python -B -m dev_supervisor.review packet <pr> --out <dir>` and `python -B -m dev_supervisor.review check <pr>`",
+        "packet: fetches the PR (gh), computes the merge base and diff hash, writes diff.patch, files.txt, the registered task's acceptance criteria and owned paths, and a reviewer prompt (reviewer-prompt.md) instructing an independent reviewer worker to inspect correctness, tests, regressions, security, architecture and conventions, run the tests, classify BLOCKING/NON-BLOCKING findings and post exactly one comment in the dev-review v1 format; Review report format (posted as a PR comment by a reviewer worker): first line exactly '<!-- dev-review v1 pr=<n> diff_sha256=<16 hex> verdict=<APPROVE|CHANGES_REQUESTED> reviewer=<reviewer id> -->'; diff hash = first 16 hex of sha256 of `git diff --binary $(git merge-base <base> <head>) <head>`; the body lists BLOCKING and NON-BLOCKING findings and exact test result lines",
+        "check: lists review markers on the PR, validates format, recomputes the diff hash, and reports CURRENT_APPROVED / STALE (hash changed: re-review needed) / CHANGES_REQUESTED / MISSING / INVALID; exposes a function used by integrate.py later (pure, injectable runners)",
+        "At least 30 offline tests (marker parsing edge cases, forged or malformed markers, stale hash, multiple reviews latest-wins, author-equals-reviewer rejection); one OBSERVED live `check` against a real PR that has a review comment",
+        "Synthetic data only; no network in unit tests (gh and git are injected runners with fakes); no secrets/tokens printed, stored or committed; no absolute user paths in tracked files",
+        "Live observations summarised as numbers/identifiers, labelled OBSERVED with the exact command; anything not observed is NOT TESTED; nothing VERIFIED without command output",
+        "Do NOT edit any existing module (cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py, repair.py, acceptance.py, text_worker.py are claimed or merged); import read-only",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) stays green"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_review.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L2 of wave w07-autonomous-integration; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b0d346d9eb662d7a6602cb32af08a13bc58b4742, lane head 94e2e785f47f80d4e0f4d430def1fbc32a3f3fe0). No claim, step-start, lease or closeout pull request was used."
     }
   ]
 }
