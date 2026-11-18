@@ -3,6 +3,7 @@
 Run from orchestrator/:  python -B -I -m unittest discover -s tests -p test_dev_telemetry.py -v
 """
 import json
+import os
 import socket
 import sys
 import tempfile
@@ -478,6 +479,82 @@ class UsageProviderTests(Base):
 
     def test_base_provider_not_implemented_is_unavailable(self):
         self.assertEqual(tl.account_usage(tl.UsageProvider())["usage"].label, Label.UNAVAILABLE)
+
+
+# Shape observed from a real `claude -p --output-format stream-json --verbose` run on 2026-11-18 (values changed).
+RLE = {"type": "rate_limit_event",
+       "rate_limit_info": {"status": "allowed", "resetsAt": 1795006200, "rateLimitType": "five_hour",
+                           "overageStatus": "rejected", "isUsingOverage": False,
+                           "unifiedWindows": {"five_hour": {"utilization": 0.17, "resetsAt": 1795006200,
+                                                            "status": "allowed"},
+                                              "seven_day": {"utilization": 0.4, "resetsAt": 1795302000,
+                                                            "status": "allowed"}}},
+       "uuid": "u", "session_id": "s"}
+
+
+class RateLimitEventTests(Base):
+    def log(self, worker, lines, run=0, mtime=None):
+        d = self.dir / "logs" / worker
+        d.mkdir(parents=True, exist_ok=True)
+        f = d / ("run-%d.stream.jsonl" % run)
+        f.write_text("".join((l if isinstance(l, str) else json.dumps(l)) + "\n" for l in lines), encoding="utf-8")
+        if mtime is not None:
+            os.utime(f, (mtime, mtime))
+        return f
+
+    def test_parse_observed_percentages_and_resets(self):
+        u = tl.parse_rate_limit_event(RLE, "src", "2026-11-18T12:00:00+00:00")
+        self.assertEqual(u["five_hour_used_percentage"].value, 17.0)
+        self.assertEqual(u["weekly_used_percentage"].value, 40.0)
+        self.assertEqual(u["five_hour_resets_at"].value, "2026-11-18T12:50:00+00:00")
+        self.assertEqual(u["weekly_status"].value, "allowed")
+        self.assertEqual(u["status"].value, "allowed")
+        for v in u.values():
+            self.assertEqual(v.label, Label.OBSERVED)
+            self.assertEqual(v.timestamp, "2026-11-18T12:00:00+00:00")
+        self.assertNotIn("uuid", json.dumps({k: v.to_dict() for k, v in u.items()}))
+
+    def test_parse_rejects_malformed(self):
+        for bad in (None, [], {"type": "assistant"}, {"type": "rate_limit_event"},
+                    {"type": "rate_limit_event", "rate_limit_info": {"status": "allowed"}},
+                    {"type": "rate_limit_event", "rate_limit_info": {"unifiedWindows": {
+                        "five_hour": {"utilization": True, "resetsAt": "x"}}}}):
+            self.assertIsNone(tl.parse_rate_limit_event(bad), bad)
+
+    def test_provider_no_logs_unavailable(self):
+        r = tl.account_usage(tl.RateLimitEventProvider(self.dir / "logs"))
+        self.assertEqual(r["usage"].label, Label.UNAVAILABLE)
+        self.assertIn("no rate_limit_event", r["usage"].reason)
+
+    def test_provider_reads_newest_event_of_newest_log(self):
+        older = dict(RLE, rate_limit_info=dict(RLE["rate_limit_info"], unifiedWindows={
+            "five_hour": {"utilization": 0.9, "resetsAt": 1795006200}}))
+        self.log("w-old", [RLE], mtime=1_000_000_000)
+        newer = dict(RLE, rate_limit_info=dict(RLE["rate_limit_info"], unifiedWindows={
+            "five_hour": {"utilization": 0.25, "resetsAt": 1795006200}}))
+        f = self.log("w-new", [{"type": "system"}, older, "not json", newer, {"type": "result"}], mtime=1_800_000_000)
+        r = tl.account_usage(tl.RateLimitEventProvider(self.dir / "logs"))
+        u = r["usage"]
+        self.assertEqual(r["provider"], "rate_limit_event")
+        self.assertEqual(u["five_hour_used_percentage"].value, 25.0)
+        self.assertIn("w-new", u["five_hour_used_percentage"].source)
+        self.assertEqual(u["five_hour_used_percentage"].timestamp,
+                         datetime.fromtimestamp(1_800_000_000, tz=timezone.utc).isoformat())
+
+    def test_provider_skips_logs_without_event(self):
+        self.log("w-a", [RLE], mtime=1_000_000_000)
+        self.log("w-b", [{"type": "result"}], mtime=1_800_000_000)
+        u = tl.account_usage(tl.RateLimitEventProvider(self.dir / "logs"))["usage"]
+        self.assertEqual(u["weekly_used_percentage"].value, 40.0)
+        self.assertIn("w-a", u["weekly_used_percentage"].source)
+
+    def test_snapshot_shows_observed_usage(self):
+        self.log("w", [RLE])
+        (self.dir / "sessions").mkdir(exist_ok=True)
+        s = tl.snapshot(self.dir / "sessions", None, usage_provider=tl.RateLimitEventProvider(self.dir / "logs"),
+                        pid_alive=lambda p: True, now=NOW)
+        self.assertEqual(s["account_usage"]["provider"], "rate_limit_event")
+        self.assertEqual(s["account_usage"]["usage"]["weekly_used_percentage"]["value"], 40.0)
 
 
 class SnapshotTests(Base):

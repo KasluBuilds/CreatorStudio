@@ -113,7 +113,7 @@ Context pressure and account usage are different quantities and are tracked sepa
 
 - Allocation is by task criticality, capability, remaining quota, context pressure, deadline and concurrency, not fixed percentages: `python -B -m dev_supervisor route ...` prints an explained decision. Main gets the strongest model; routine implementation, mechanical tests and search go to cheaper routes; failed validation or repeated failure escalates.
 - OBSERVED benchmark (one run, one machine, one moment; `orchestrator/dev_supervisor/OMNIROUTE_BENCHMARK.md`): 2 of 7 routes answered (a Gemini lite route 5 of 5 tasks, a Gemini flash preview route 4 of 5); other Gemini routes returned not_found, rate_limited, timeout or upstream_error; both Groq routes returned auth_error (cause not investigated). Not tested: long contexts, concurrency, multi-turn tool use, authenticated requests, Claude Code itself through OmniRoute.
-- Account usage and reset windows are UNAVAILABLE: no source was found. The headless worker stream carries a `rate_limit_event`; no code parses it yet. Reading it is a PROPOSED lead, shape not inspected. A statusline payload ingestor exists but has not been fed a real Claude Code payload.
+- Account usage and reset windows come from the `rate_limit_event` that Claude Code writes into every headless worker's stream-json log (`<STATE_DIR>/logs/<worker>/run-<n>.stream.jsonl`). `RateLimitEventProvider` reads the newest one: 5-hour and 7-day utilization (as a percentage), reset times and status, labelled OBSERVED and timestamped with the log's last write time. `status`, `snapshot` and `handoff` use it. Interactive Main writes no stream-json, so the figure is only as fresh as the last worker run; with no worker run yet it is UNAVAILABLE with that reason. The statusline payload ingestor still exists but has not been fed a real Claude Code payload.
 - A fresh session does not replenish usage. When the account is exhausted the options are to wait for the reset, switch the launcher to OmniRoute (a human action), or stop. The supervisor records provider switches; it does not hide them.
 - Provider and model identity are recorded per worker; actual token usage is reported only where the provider exposes it.
 
@@ -166,8 +166,8 @@ Labels: IMPLEMENTED (code exists), TESTED (offline tests pass), OBSERVED (seen o
 |---|---|---|
 | Evidence model and telemetry (sessions, context pressure) | IMPLEMENTED, TESTED (offline), OBSERVED | 90 offline tests; one live read: 2 sessions, 1 pressure computed, 1 UNAVAILABLE (model not in window table) |
 | Context windows and thresholds | PROPOSED | Configuration defaults; real per-model windows unknown |
-| Account usage and reset windows | NOT TESTED | UNAVAILABLE: no source found; statusline ingestor never fed a real payload |
-| Parsing `rate_limit_event` from the worker stream | PROPOSED | Event seen in one headless run; shape not inspected |
+| Account usage and reset windows (`rate_limit_event`) | IMPLEMENTED, TESTED (offline), OBSERVED | Shape inspected in a real `claude -p --output-format stream-json --verbose` run on 2026-11-18; the provider read a real log end to end (5-hour 21%, 7-day 41%, OBSERVED). Freshness is limited to the last worker run. Not yet seen through the running supervisor loop |
+| Statusline usage ingestor | IMPLEMENTED, NOT TESTED | never fed a real payload |
 | Crash-safe state store and worker registry | IMPLEMENTED, TESTED (offline) | 88 offline tests (lifecycle) |
 | Worker lifecycle (assign, spawn, monitor, restart, stop, recover) | IMPLEMENTED, TESTED (offline) | fake launcher and clock; no real worker run by the lane |
 | Headless worker command | OBSERVED | One run: exit 0, 8.5 s, init/assistant/rate_limit_event/result events; fails without `--verbose` |
