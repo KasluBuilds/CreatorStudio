@@ -23,7 +23,9 @@ SCHEMA_VERSION = 1
 
 # Documented defaults. Windows are configuration, not facts about any account; unknown model -> UNAVAILABLE.
 DEFAULT_CONTEXT_WINDOWS = {
+    "claude-opus-5-5": 200_000,
     "claude-sonnet-5-5": 200_000,
+    "claude-haiku-5-5": 200_000,
     "claude-opus-4-5": 200_000,
     "claude-sonnet-4-5": 200_000,
     "claude-haiku-4-5": 200_000,

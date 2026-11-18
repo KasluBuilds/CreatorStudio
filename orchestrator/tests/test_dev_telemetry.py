@@ -414,6 +414,10 @@ class PressureTests(Base):
         t = tl.DEFAULT_THRESHOLDS
         self.assertTrue(0 < t["warn"] < t["compact"] < t["replace"] <= 1)
         self.assertIn("claude-sonnet-5-5", tl.DEFAULT_CONTEXT_WINDOWS)
+        # The Main model (``--model opus`` resolves to claude-opus-5-5) must have a window, or a launched Main's
+        # context pressure is UNAVAILABLE (observed on Main 46f52067 after the #58 transcript fix).
+        for m in ("claude-opus-5-5", "claude-haiku-5-5"):
+            self.assertIn(m, tl.DEFAULT_CONTEXT_WINDOWS)
 
     def test_default_config_not_shared(self):
         a, b = tl.PressureConfig(), tl.PressureConfig()
