@@ -38,6 +38,9 @@ Two launcher scripts exist in the project root and are **git-ignored because the
 - `pro.ps1` — direct Anthropic login (Claude Pro).
 - `backup.ps1` — OmniRoute fallback gateway (local, `http://localhost:20128` — REPORTED).
 
+- OmniRoute local gateway start (OBSERVED 2026-11-18, OmniRoute 3.8.49): `omniroute serve --daemon --no-open`; health needs a key (an unauthenticated `/api/health` returns HTTP 401). Keys stay in OmniRoute's own machine-local env file and are never printed or copied here.
+- Headless Claude Code worker flags (OBSERVED once, Claude Code 2.1.316): `claude -p --output-format stream-json --verbose --model <alias> --session-id <uuid>` with the prompt on stdin exits 0 and emits init, assistant, rate_limit_event and result events; without `--verbose` stream-json exits 1; `--append-system-prompt-file` is accepted although `claude --help` does not list it.
+
 Do not add a third launcher, and never copy launcher contents into the repository. A new machine must recreate
 them by hand. The environment variables they set are Anthropic-style (`ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`,
 `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`); the values are secrets and stay local.

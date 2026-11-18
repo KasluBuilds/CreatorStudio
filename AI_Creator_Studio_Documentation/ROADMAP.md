@@ -163,6 +163,16 @@ Offline library foundations exist and are not wired into the pipeline, with no l
 | Phase 7 | M-SFE-01 |
 | Phase 8 | M-HRD-01 |
 
+## Development infrastructure (issue #44, outside the product phases)
+
+The autonomous development supervisor (wave w03-dev-supervisor, tasks T-DEV-001 to T-DEV-009) is infrastructure that builds this repository; it is not a product phase and does not change the product milestones.
+
+- IMPLEMENTED and TESTED offline: telemetry and evidence labels, state store and worker lifecycle, verified handoff, compaction and session replacement, routing and OmniRoute client, read-only Resolve discovery, GitHub event log, Orbit snapshot and dashboard view, supervisor CLI.
+- OBSERVED once: a real headless worker launch; the OmniRoute benchmark (2 of 7 Gemini/Groq routes answered).
+- NOT TESTED: interactive Main launch, `start --yes`, a real Main replacement and heartbeat, the Orbit Electron window, Claude Code running through OmniRoute.
+- PROPOSED: reading the worker stream's `rate_limit_event` as an account-usage source.
+- OPEN: Groq routes in OmniRoute return authentication errors; the intended Resolve project identity is not configured on this machine.
+
 ## Priority rule
 
 Do not build sophisticated autonomous editing before the underlying Resolve operations, frame timing, project safety and export validation are reliable. A small, trustworthy end-to-end pipeline is more valuable than many untested agents.
