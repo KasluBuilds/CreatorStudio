@@ -23,9 +23,11 @@ SCHEMA_VERSION = 1
 
 # Documented defaults. Windows are configuration, not facts about any account; unknown model -> UNAVAILABLE.
 DEFAULT_CONTEXT_WINDOWS = {
-    "claude-opus-5-5": 200_000,
-    "claude-sonnet-5-5": 200_000,
-    "claude-haiku-5-5": 200_000,
+    # Claude 5 family: 1M context. Observed locally: opus-5-5 at 419,585 and sonnet-5-5 at 898,255 tokens (issue #58).
+    "claude-fable-5-1": 1_000_000,
+    "claude-opus-5-5": 1_000_000,
+    "claude-sonnet-5-5": 1_000_000,
+    "claude-haiku-5-5": 1_000_000,
     "claude-opus-4-5": 200_000,
     "claude-sonnet-4-5": 200_000,
     "claude-haiku-4-5": 200_000,
@@ -234,6 +236,10 @@ def context_pressure(transcript_path, config: Optional[PressureConfig] = None) -
     if win is None:
         why = "no model id" if not u["model"] else "model not in configured window table"
         r = unavailable("pressure unavailable: " + why, src, ts)
+        return {"tokens": tokens, "model": model, "window": r, "ratio": r, "level": r}
+    if u["total"] > win:
+        # A session cannot hold more than its window: the configured window is wrong. Never turn that into REPLACE.
+        r = unavailable("pressure unavailable: observed tokens exceed configured window %d (window table wrong)" % win, src, ts)
         return {"tokens": tokens, "model": model, "window": r, "ratio": r, "level": r}
     ratio = u["total"] / win
     return {"tokens": tokens, "model": model, "window": inferred(win, "config", ts),
