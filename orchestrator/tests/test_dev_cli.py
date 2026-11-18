@@ -732,6 +732,23 @@ class DoctorTests(Offline):
         self.assertEqual(checks["worktrees"]["status"], "FAIL")
         self.assertIn("L2", checks["worktrees"]["detail"])
 
+    def test_parent_session_markers_warn_without_values(self):
+        env = Env(self)
+        env.svc.env = dict(env.svc.env or {}, CLAUDECODE="1", CLAUDE_CODE_MESSAGING_TOKEN="secret-value-xyz")
+        code, out = env.cli("doctor", "--json")
+        checks = {c["name"]: c for c in json.loads(out)["checks"]}
+        self.assertEqual(checks["parent_session"]["status"], "WARN")
+        self.assertIn("CLAUDECODE", checks["parent_session"]["detail"])
+        self.assertNotIn("secret-value-xyz", out)
+
+    def test_no_parent_session_ok(self):
+        env = Env(self)
+        env.svc.env = {k: v for k, v in (env.svc.env or {}).items() if k.upper() not in
+                       ("CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION")}
+        code, out = env.cli("doctor", "--json")
+        checks = {c["name"]: c for c in json.loads(out)["checks"]}
+        self.assertEqual(checks["parent_session"]["status"], "OK")
+
 
 # ------------------------------------------------------------------ end-to-end with fakes (mandatory)
 

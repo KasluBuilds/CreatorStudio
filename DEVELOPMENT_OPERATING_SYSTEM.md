@@ -90,7 +90,7 @@ How sessions are run:
 
 Context pressure and account usage are different quantities and are tracked separately.
 
-- Context pressure: computed from the token usage recorded in the session transcript against a configurable window per model, with configurable warn, compact and replace thresholds (defaults 0.6 / 0.8 / 0.92 are configuration, not facts about any account). The real per-model windows are unknown; an unlisted model reports UNAVAILABLE rather than a guess.
+- Context pressure: computed from the token usage recorded in the session transcript against a configurable window per model, with configurable warn, compact and replace thresholds (defaults 0.6 / 0.8 / 0.92 are configuration, not facts about any account). Default windows: 1,000,000 tokens for the Claude 5 family (`claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`), matching the claude-api reference (REPORTED) and local transcripts that exceeded 200K (OBSERVED: opus-5-5 419,585, sonnet-5-5 898,255 tokens); 200,000 for the 4.5 models. An unlisted model reports UNAVAILABLE rather than a guess, and a token count above the configured window is UNAVAILABLE (window table wrong), never a replacement decision.
 - Handoff: a labelled document (objective, decisions, plan, task graph, worker identities and status, branches, worktrees, commits, pull requests, tests and evidence, blockers, next actions, resource state), written as JSON and Markdown with a SHA-256 hash. It refuses secret-like or transcript-like text. `handoff --verify` re-reads it, recomputes the hash and confirms every branch, worktree, commit and PR through checkers; any failure or missing checker means NOT_SAFE. Only a SAFE result can authorise replacement.
 - The supervisor cannot type into Main. Compaction of Main therefore means: Main writes a handoff, the supervisor verifies it by read-back, then replaces the session. Replacement marks the old session RETIRING, launches the new one pointing at the handoff, waits (bounded) for a heartbeat, moves authority, re-verifies, and only then retires the old session; it rolls back on failure and stops after repeated failed replacements until a human resets.
 - No session is cleared or replaced before a verified handoff exists. Each decision and its reason is recorded.
@@ -165,13 +165,13 @@ Labels: IMPLEMENTED (code exists), TESTED (offline tests pass), OBSERVED (seen o
 | Capability | Status | Evidence |
 |---|---|---|
 | Evidence model and telemetry (sessions, context pressure) | IMPLEMENTED, TESTED (offline), OBSERVED | 90 offline tests; one live read: 2 sessions, 1 pressure computed, 1 UNAVAILABLE (model not in window table) |
-| Context windows and thresholds | PROPOSED | Configuration defaults; real per-model windows unknown |
+| Context windows and thresholds | IMPLEMENTED, TESTED (offline), OBSERVED | 5-family windows 1M; live `compact-check` on a supervisor-launched Main reported 6.4% [INFERRED] on 2026-11-18 (issue #58); thresholds remain configuration |
 | Account usage and reset windows | NOT TESTED | UNAVAILABLE: no source found; statusline ingestor never fed a real payload |
 | Parsing `rate_limit_event` from the worker stream | PROPOSED | Event seen in one headless run; shape not inspected |
 | Crash-safe state store and worker registry | IMPLEMENTED, TESTED (offline) | 88 offline tests (lifecycle) |
 | Worker lifecycle (assign, spawn, monitor, restart, stop, recover) | IMPLEMENTED, TESTED (offline) | fake launcher and clock; no real worker run by the lane |
 | Headless worker command | OBSERVED | One run: exit 0, 8.5 s, init/assistant/rate_limit_event/result events; fails without `--verbose` |
-| Interactive Main launch in a new console window | IMPLEMENTED, NOT TESTED | argument construction tested; no live launch |
+| Interactive Main launch in a new console window | IMPLEMENTED, OBSERVED | 2026-11-18: a Main launched by `replace` with parent-session markers stripped wrote its transcript and session record (issue #58); model `claude-opus-5-5` on Claude Pro |
 | `start --yes` supervisor loop | IMPLEMENTED, NOT TESTED | not run live |
 | Handoff build, write and verify | IMPLEMENTED, TESTED (offline) | 66 offline tests; live git and PR checkers NOT TESTED |
 | Compaction decision | IMPLEMENTED, TESTED (offline) | decision and refusal rules only |
