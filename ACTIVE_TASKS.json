@@ -1271,13 +1271,15 @@
       "owned_paths": [
         "PROJECT_OPERATING_PROTOCOL.md",
         "CLAUDE.md",
+        "DEVELOPMENT_STEP_PROTOCOL.md",
+        "WAVE_PROTOCOL.md",
         "ACTIVE_TASKS.json",
         "DEVELOPMENT_TRACKER.json",
         "SESSION_HANDOFF.md",
         "CHANGELOG.md"
       ],
       "acceptance_criteria": [
-        "Sections 18 and 19 state the new merge authority and every gate exactly; reserved actions (branch protection, real footage, credentials, real Resolve mutation, paid API, VERIFIED milestones) stay with Lukas",
+        "Sections 18 and 19 state the new merge authority and every gate exactly; reserved actions (branch protection, real footage, credentials, real Resolve mutation, paid API, VERIFIED milestones) stay with Lukas; WAVE_PROTOCOL.md (sections 11 D3 and 12) and DEVELOPMENT_STEP_PROTOCOL.md (role table) are consistent with the new section 18",
         "CLAUDE.md governance lines match; no other rule is weakened",
         "CHANGELOG.md entry; governance validate, handoff check and tracker check pass",
         "An independent reviewer worker reviews the policy diff before merge"
