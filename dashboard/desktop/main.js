@@ -1,9 +1,11 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, Notification, net, session, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Notification, net, session, nativeTheme, dialog } = require('electron');
 const path = require('path');
 const { Controller, AUTO_REFRESH_MS } = require('./src/controller');
 const { isAllowedLink } = require('./src/links');
 const theme = require('./src/theme');
+const orbit = require('./src/orbit');
+const orbitFile = require('./src/orbit-file');
 
 const args = process.argv.slice(1);
 const flag = (n) => args.includes(n);
@@ -17,10 +19,11 @@ let win = null;
 let controller = null;
 let timer = null;
 let themeMode = theme.DEFAULT_MODE;
+let orbitPath = null;                  // the snapshot file Orbit reads (read-only): chosen by the user or --orbit=<file>
 
 /** The state sent to the page: the controller's state plus the appearance choice (presentation only). */
 function withTheme(state) {
-  return { ...state, theme: themeMode, resolvedTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light' };
+  return { ...state, theme: themeMode, resolvedTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light', orbit: orbit.fromLoad(orbitFile.load(orbitPath)) };
 }
 
 function send(state) {
@@ -36,7 +39,7 @@ function makeFetch() {
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1440, height: 940, minWidth: 980, minHeight: 640, backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0f1d' : '#f3f6fc', title: 'Creator Studio Dashboard', show: true,
+    width: 1440, height: 940, minWidth: 980, minHeight: 640, backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0f1d' : '#f3f6fc', title: 'Orbit · Creator Studio Dashboard', show: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true,
       webSecurity: true, spellcheck: false, devTools: !app.isPackaged || SELFTEST },
   });
@@ -60,6 +63,7 @@ async function start() {
   controller.appVersion = app.getVersion();
   controller.init();
   themeMode = theme.load(app.getPath('userData'));
+  orbitPath = opt('--orbit') ? path.resolve(opt('--orbit')) : orbitFile.loadSetting(app.getPath('userData'));
   theme.apply(nativeTheme, themeMode);               // before the window exists, so the first paint is already themed
   nativeTheme.on('updated', () => send(controller.getState()));     // Windows switched light/dark while in System mode
 
@@ -72,6 +76,13 @@ async function start() {
     const state = withTheme(controller.getState());
     send(controller.getState());
     return state;
+  });
+  ipcMain.handle('orbit:reload', () => { send(controller.getState()); return withTheme(controller.getState()); });
+  ipcMain.handle('orbit:select', async () => {          // the user picks a file; it is only ever read
+    const r = await dialog.showOpenDialog(win, { title: 'Choose the Orbit snapshot file', properties: ['openFile'], filters: [{ name: 'Orbit snapshot (JSON)', extensions: ['json'] }] });
+    if (!r.canceled && r.filePaths[0]) { orbitPath = r.filePaths[0]; orbitFile.saveSetting(app.getPath('userData'), orbitPath); }
+    send(controller.getState());
+    return withTheme(controller.getState());
   });
   ipcMain.handle('link:open', async (_e, url) => { if (isAllowedLink(url)) { await shell.openExternal(url); return true; } return false; });
 
