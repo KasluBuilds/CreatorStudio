@@ -124,7 +124,7 @@
   },
   "integration_agreements": {
     "AGR-GOV-REGISTRY-01": {
-      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-002, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time. Extended to T-RSR-001 (Research security remediation, Assignment 6) by its claim pull request on the same terms, with Lukas's and ChatGPT's authorization relayed in session 2026-11-17. Extended to T-RSV-002 (safe Resolve execution layer) by its claim pull request on the same terms, under Lukas's direct assignment in session 2026-11-17.",
+      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-002, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time. Extended to T-RSR-001 (Research security remediation, Assignment 6) by its claim pull request on the same terms, with Lukas's and ChatGPT's authorization relayed in session 2026-11-17. Extended to T-RSV-002 (safe Resolve execution layer) by its claim pull request on the same terms, under Lukas's direct assignment in session 2026-11-17. Extended to T-GOV-008 (autonomous integration policy) by its claim pull request on the same terms, under Lukas's direct authorization in session 2026-11-18.",
       "task_ids": [
         "T-AST-002",
         "T-DNA-001",
@@ -135,7 +135,8 @@
         "T-GOV-006",
         "T-GOV-007",
         "T-RSR-001",
-        "T-RSV-002"
+        "T-RSV-002",
+        "T-GOV-008"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -1249,6 +1250,45 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Completed 2026-11-18 as lane L3 of wave w06-acceptance-text-workers; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head f79e9011ad4ffa2e28f279bef0e495ea6424530a, lane head 6c0c4beb218f06be766f4940fc9f4c709b4ebebb). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-GOV-008",
+      "title": "Autonomous PR integration policy: Main may merge its own and worker PRs under mechanical gates (issue #44)",
+      "description": "Rewrite PROJECT_OPERATING_PROTOCOL.md sections 18 and 19 and the CLAUDE.md governance lines so Main (Repository Coordinator) may merge its own and worker pull requests into main when every gate passes: CI green on the exact head, up to date and conflict-free, changed files inside the registered task's owned paths, a recorded independent review bound to the diff hash with verdict APPROVE, secret scan clean, serialized integration, merge commit with --match-head-commit and read-back. GitHub branch protection is unchanged. Authorized DIRECTLY by Lukas in session on 2026-11-18.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/t-gov-008-autonomous-integration",
+      "worktree": "../CreatorStudio-worktrees/t-gov-008-autonomous-integration",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-18T14:52:49+00:00",
+        "expires": "2026-11-19T14:52:49+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "PROJECT_OPERATING_PROTOCOL.md",
+        "CLAUDE.md",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "Sections 18 and 19 state the new merge authority and every gate exactly; reserved actions (branch protection, real footage, credentials, real Resolve mutation, paid API, VERIFIED milestones) stay with Lukas",
+        "CLAUDE.md governance lines match; no other rule is weakened",
+        "CHANGELOG.md entry; governance validate, handoff check and tracker check pass",
+        "An independent reviewer worker reviews the policy diff before merge"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -m governance validate --against origin/main",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "python -B dashboard/tracker_check.py --against origin/main",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Authorized DIRECTLY by Lukas in session 2026-11-18 (issue #44 expansion to full development autonomy). Governance-machinery change: merged only with that direct word."
     }
   ]
 }
