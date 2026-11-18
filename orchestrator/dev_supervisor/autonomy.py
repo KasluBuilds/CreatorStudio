@@ -54,6 +54,7 @@ EXIT_OK, EXIT_FAIL, EXIT_USAGE, EXIT_TIMEOUT = 0, 1, 2, 3
 AUTONOMY_DOC = "autonomy"
 ENV_MAX_BLOCKS = "CREATORSTUDIO_AUTONOMY_MAX_BLOCKS"
 DEFAULT_MAX_BLOCKS = 3
+DEFAULT_OWNER = "claude:repository-coordinator"
 DEFAULT_MAX_RESTARTS = 3          # mirrors lifecycle.SupervisorPolicy defaults
 DEFAULT_IDENTICAL_LIMIT = 3
 WATCHED_EVENT_PREFIXES = ("worker_", "main_", "replacement")
@@ -119,8 +120,11 @@ def real_git_runner(root: Path, timeout: float = 20.0) -> GitRunner:
 
 # ------------------------------------------------------------------ repository records
 
-def _task_items(root: Path, running_tasks: set, warnings: List[str]) -> Tuple[List[dict], List[dict], int]:
-    """(items, blocked, in_progress_count) from ACTIVE_TASKS.json and DEVELOPMENT_TRACKER.json."""
+def _task_items(root: Path, running_tasks: set, warnings: List[str], owner: str = DEFAULT_OWNER,
+                others: Optional[List[dict]] = None) -> Tuple[List[dict], List[dict], int]:
+    """(items, blocked, in_progress_count) from ACTIVE_TASKS.json and DEVELOPMENT_TRACKER.json.
+
+    Steps of tasks owned by someone other than ``owner`` are informational only (appended to ``others``)."""
     items: List[dict] = []
     blocked: List[dict] = []
     in_progress = 0
@@ -180,6 +184,12 @@ def _task_items(root: Path, running_tasks: set, warnings: List[str]) -> Tuple[Li
         if cur is None:
             continue
         sid, st = cur.get("id", "?"), cur.get("status")
+        if st in ("READY_FOR_REVIEW", "PLANNED") and rt.get("owner") != owner:
+            if others is not None:
+                others.append({"kind": "others_waiting_review" if st == "READY_FOR_REVIEW" else "others_waiting_start",
+                               "id": f"{st.lower()}:{tid}:{sid}", "task_id": tid, "owner": rt.get("owner"),
+                               "reason": f"step {sid} of {tid} is {st}; owned by another stream, not Main's to act on"})
+            continue
         if st == "READY_FOR_REVIEW":
             items.append({"kind": "review_step", "id": f"review_step:{tid}:{sid}", "task_id": tid,
                           "reason": f"step {sid} of {tid} is READY_FOR_REVIEW and waits for review",
@@ -198,8 +208,26 @@ def _task_items(root: Path, running_tasks: set, warnings: List[str]) -> Tuple[Li
     return items, blocked, in_progress
 
 
+def _done_task_ids(root: Path) -> set:
+    try:
+        reg = _load_json(root / "ACTIVE_TASKS.json")
+        return {t["id"] for t in reg.get("tasks", []) if isinstance(t, dict) and t.get("status") in DONE_STATUSES}
+    except (OSError, ValueError, AttributeError, KeyError, TypeError):
+        return set()
+
+
+def wave_closed(manifest: Dict[str, Any], done_ids: set) -> bool:
+    """A wave is closed when ``wave close`` has written its lanes' tasks as COMPLETED/RELEASED into ACTIVE_TASKS.json
+    (that is what governance.waves.closeout_records does), or when the manifest itself records a closed state."""
+    if str(manifest.get("status", "")).upper() == "CLOSED" or manifest.get("closed"):
+        return True
+    tids = [l.get("task_id") for l in manifest.get("lanes", []) if isinstance(l, dict)]
+    return bool(tids) and all(t in done_ids for t in tids)
+
+
 def _wave_items(root: Path, git: GitRunner, warnings: List[str]) -> List[dict]:
     items: List[dict] = []
+    done_ids = _done_task_ids(root)
     waves_dir = root / "waves"
     try:
         manifests = sorted(waves_dir.glob("*/wave.json"))
@@ -215,6 +243,8 @@ def _wave_items(root: Path, git: GitRunner, warnings: List[str]) -> List[dict]:
             continue
         if not re.fullmatch(r"[A-Za-z0-9._-]+", wid):
             continue
+        if wave_closed(m, done_ids):
+            continue  # closed wave: never a verify item, even if its branch is not an ancestor of main
         ref = f"refs/remotes/origin/wave/{wid}"
         rc, _ = git(["rev-parse", "--verify", "--quiet", ref])
         if rc != 0:
@@ -293,12 +323,14 @@ def _worker_items(store: Optional[StateStore], warnings: List[str]) -> Tuple[Lis
     return items, blocked, running_tasks, running
 
 
-def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunner] = None) -> Dict[str, Any]:
+def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunner] = None,
+                  owner: str = DEFAULT_OWNER) -> Dict[str, Any]:
     """The actionable picture for Main. Never raises; problems become ``warnings``."""
     warnings: List[str] = []
     git = git or real_git_runner(root)
     items: List[dict] = []
     blocked: List[dict] = []
+    others: List[dict] = []
     running = in_progress = 0
     running_tasks: set = set()
     try:
@@ -308,7 +340,7 @@ def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunn
     except Exception as e:  # noqa: BLE001 - tolerant by contract
         warnings.append(f"worker items failed ({e.__class__.__name__})")
     try:
-        titems, tblocked, in_progress = _task_items(root, running_tasks, warnings)
+        titems, tblocked, in_progress = _task_items(root, running_tasks, warnings, owner, others)
         items += titems
         blocked += tblocked
     except Exception as e:  # noqa: BLE001
@@ -336,9 +368,10 @@ def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunn
         idle = "; ".join(parts) or "no registered work: nothing is planned or waiting"
     ids = [i["id"] for i in items]
     return {"evidence": Label.OBSERVED.value, "counts": {"items": len(items), "blocked": len(blocked),
-                                                          "running_workers": running, "warnings": len(warnings)},
+                                                          "running_workers": running, "warnings": len(warnings),
+                                                          "others_waiting": len(others)},
             "fingerprint": fingerprint(ids), "items": items, "blocked": blocked, "idle_reason": idle,
-            "warnings": warnings}
+            "others_waiting_review": others, "warnings": warnings}
 
 
 # ------------------------------------------------------------------ state helpers
@@ -394,7 +427,7 @@ def _max_blocks(args: argparse.Namespace, env: Optional[Dict[str, str]]) -> int:
 
 def cmd_next(a: argparse.Namespace, out: TextIO, env, clock, git) -> int:
     cfg, root, store = _resolve(a, env, clock)
-    res = compute_items(root, store, git)
+    res = compute_items(root, store, git, a.owner)
     res["generated_at"] = utc_iso(clock())
     if a.json:
         out.write(json.dumps(res, indent=2, sort_keys=True) + "\n")
@@ -405,6 +438,8 @@ def cmd_next(a: argparse.Namespace, out: TextIO, env, clock, git) -> int:
         out.write(f"[{i['priority']:>2}] {i['kind']} {i['id']}\n     {i['reason']}\n     inspect: {i['inspect']}\n")
     for b in res["blocked"]:
         out.write(f"blocked {b['task_id']}: {b['blocker']}\n")
+    for o in res["others_waiting_review"]:
+        out.write(f"info (not actionable) {o['task_id']}: {o['reason']}\n")
     for w in res["warnings"]:
         out.write(f"warning: {w}\n")
     return EXIT_OK
@@ -439,7 +474,7 @@ def cmd_wait(a: argparse.Namespace, out: TextIO, env, clock, git, sleep: Callabl
                 cur = {}
         except (OSError, ValueError):
             cur = {}
-    base = compute_items(root, store, git)
+    base = compute_items(root, store, git, a.owner)
     known_fp = cur.get("fingerprint") if "fingerprint" in cur else base["fingerprint"]
     known_ids = cur.get("ids") if isinstance(cur.get("ids"), list) else [i["id"] for i in base["items"]]
     since = cur.get("event_count") if isinstance(cur.get("event_count"), int) else None
@@ -449,7 +484,7 @@ def cmd_wait(a: argparse.Namespace, out: TextIO, env, clock, git, sleep: Callabl
     poll = max(0.05, float(a.poll))
     first = True
     while True:
-        res = base if first else compute_items(root, store, git)
+        res = base if first else compute_items(root, store, git, a.owner)
         first = False
         new, total = _new_events(store, since)
         fp_changed = res["fingerprint"] != known_fp
@@ -489,14 +524,14 @@ def _one_line(item: dict, total: int) -> str:
 
 
 def decide_stop(payload: Any, store: Optional[StateStore], root: Path, git: Optional[GitRunner],
-                max_blocks: int) -> Optional[str]:
+                max_blocks: int, owner: str = DEFAULT_OWNER) -> Optional[str]:
     """Return the block reason, or None to allow the stop. May raise (the caller fails open)."""
     if not isinstance(payload, dict) or store is None or not store.directory.is_dir():
         return None
     sid = payload.get("session_id")
     if not isinstance(sid, str) or not sid or authoritative_main(store) != sid:
         return None
-    res = compute_items(root, store, git)
+    res = compute_items(root, store, git, owner)
     state = store.read(AUTONOMY_DOC, default=None) or {}
     if not isinstance(state, dict):
         state = {}
@@ -528,7 +563,7 @@ def cmd_stop_hook(a: argparse.Namespace, out: TextIO, env, clock, git, stdin: Te
         except ValueError:
             return EXIT_OK
         cfg, root, store = _resolve(a, env, clock)
-        reason = decide_stop(payload, store, root, git, _max_blocks(a, env))
+        reason = decide_stop(payload, store, root, git, _max_blocks(a, env), a.owner)
         if reason:
             out.write(json.dumps({"decision": "block", "reason": reason}) + "\n")
     except Exception as e:  # noqa: BLE001 - fail open on every error
@@ -582,6 +617,8 @@ def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--config", help="machine-local supervisor config file")
     common.add_argument("--repo", help="repository checkout holding the registries (default: configured/this one)")
+    common.add_argument("--owner", default=DEFAULT_OWNER,
+                        help="task owner whose step reviews are Main's to act on (default %(default)s)")
     common.add_argument("--state-dir", dest="state_dir", help="override the supervisor state directory")
     sub = p.add_subparsers(dest="command", required=True)
     n = sub.add_parser("next", parents=[common], help="list actionable items for Main")

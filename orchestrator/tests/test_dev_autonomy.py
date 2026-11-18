@@ -34,8 +34,8 @@ class Clock:
         self.t += s
 
 
-def task(tid, status="PLANNED", deps=(), paths=()):
-    return {"id": tid, "status": status, "depends_on": list(deps), "owned_paths": list(paths)}
+def task(tid, status="PLANNED", deps=(), paths=(), owner="claude:repository-coordinator"):
+    return {"id": tid, "status": status, "depends_on": list(deps), "owned_paths": list(paths), "owner": owner}
 
 
 class FakeGit:
@@ -84,10 +84,11 @@ class Base(unittest.TestCase):
     def write_tracker(self, tasks):
         (self.repo / "DEVELOPMENT_TRACKER.json").write_text(json.dumps({"tasks": tasks}), encoding="utf-8")
 
-    def write_wave(self, wid, lanes):
+    def write_wave(self, wid, lanes, extra=None):
         d = self.repo / "waves" / wid
         d.mkdir(parents=True, exist_ok=True)
-        (d / "wave.json").write_text(json.dumps({"wave_id": wid, "lanes": [{"id": l} for l in lanes]}),
+        doc = {"wave_id": wid, "lanes": [{"id": l, "task_id": "T-" + l} for l in lanes], **(extra or {})}
+        (d / "wave.json").write_text(json.dumps(doc),
                                      encoding="utf-8")
 
     def items(self, git=None):
@@ -381,6 +382,66 @@ class TestWaves(Base):
             raise OSError("boom")
         res = au.compute_items(self.repo, None, boom)
         self.assertTrue(res["warnings"])
+
+
+class TestOwnerAndClosedWaves(Base):
+    def steps(self, st):
+        return [{"id": "S-0", "status": st}]
+
+    def test_other_owner_review_step_not_actionable_and_listed_separately(self):
+        self.write_registry([task("T-1", "ACTIVE", owner="claude:someone-else")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("READY_FOR_REVIEW")}])
+        res = self.items()
+        self.assertEqual(res["items"], [])
+        self.assertEqual(res["fingerprint"], "")
+        self.assertEqual(res["others_waiting_review"][0]["task_id"], "T-1")
+        self.assertEqual(res["counts"]["others_waiting"], 1)
+
+    def test_other_owner_step_does_not_change_fingerprint(self):
+        self.write_registry([task("T-2", paths=["z/"])])
+        before = self.items()["fingerprint"]
+        self.write_registry([task("T-2", paths=["z/"]), task("T-1", "ACTIVE", owner="claude:other")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("READY_FOR_REVIEW")}])
+        self.assertEqual(self.items()["fingerprint"], before)
+
+    def test_other_owner_planned_step_not_actionable(self):
+        self.write_registry([task("T-1", "ACTIVE", owner="claude:other")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("PLANNED")}])
+        self.assertEqual(self.items()["items"], [])
+
+    def test_owner_flag_changes_who_is_actionable(self):
+        self.write_registry([task("T-1", "ACTIVE", owner="claude:other")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("READY_FOR_REVIEW")}])
+        res = au.compute_items(self.repo, None, FakeGit(), owner="claude:other")
+        self.assertEqual(self.kinds(res), [("review_step", "review_step:T-1:S-0")])
+        rc, out = self.run_cli(["next", "--json", "--owner", "claude:other"])
+        self.assertEqual(json.loads(out)["counts"]["items"], 1)
+
+    def test_stop_hook_never_blocks_for_other_owner_step(self):
+        self.mkstore()
+        self.set_main()
+        self.write_registry([task("T-1", "ACTIVE", owner="claude:other")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("READY_FOR_REVIEW")}])
+        rc, out = self.run_cli(["stop-hook"], stdin=json.dumps({"session_id": MAIN_SID}))
+        self.assertEqual((rc, out), (0, ""))
+
+    def test_wave_with_completed_tasks_skipped_despite_non_ancestor_branch(self):
+        self.write_registry([task("T-L1", "COMPLETED"), task("T-L2", "RELEASED")])
+        self.write_wave("w9", ["L1", "L2"])
+        git = FakeGit({"w9": {"merged": False, "files": ["waves/w9/lanes/L1/report.json"]}})
+        self.assertEqual(self.items(git)["items"], [])
+
+    def test_wave_with_only_some_tasks_completed_still_listed(self):
+        self.write_registry([task("T-L1", "COMPLETED"), task("T-L2", "ACTIVE")])
+        self.write_wave("w9", ["L1", "L2"])
+        git = FakeGit({"w9": {"merged": False, "files": ["waves/w9/lanes/L1/report.json"]}})
+        self.assertEqual(len(self.items(git)["items"]), 1)
+
+    def test_manifest_closed_state_skips_wave(self):
+        self.write_registry([])
+        self.write_wave("w9", ["L1"], {"status": "CLOSED"})
+        git = FakeGit({"w9": {"merged": False, "files": ["waves/w9/lanes/L1/report.json"]}})
+        self.assertEqual(self.items(git)["items"], [])
 
 
 class TestOrdering(Base):

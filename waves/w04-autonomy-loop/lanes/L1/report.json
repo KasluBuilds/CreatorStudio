@@ -1,29 +1,28 @@
 {
   "lane": "L1",
   "status": "DONE",
-  "summary": "Added orchestrator/dev_supervisor/autonomy.py (stdlib only) with next, wait, stop-hook and main-settings, plus 89 offline tests. IMPLEMENTED and TESTED offline with synthetic registries, a fake git runner and a fake clock: eligibility (PLANNED, dependencies COMPLETED/RELEASED, owned-path overlap with ACTIVE/UNDER_REVIEW tasks ignoring shared_files), tracker steps, worker results and failures with retry eligibility, submitted-but-unmerged waves, idle reasons, wait change/timeout, Stop hook block/allow/loop-bound/fail-open/other-session, settings shape. OBSERVED once: next --json against this checkout and the real machine-local state returned 3 items (2 review_step, 1 verify_wave), 0 blocked, 0 warnings, state directory unchanged. NOT TESTED: a real Claude Code session invoking the hook, wait run as a real background command, hook run through claude --settings. Wiring main-settings into launch.py is PROPOSED (later task). Known limit: a wave merged by squash is not an ancestor of origin/main, so it can be listed as verify_wave until its remote branch is deleted.",
+  "summary": "Added orchestrator/dev_supervisor/autonomy.py (stdlib only) with next, wait, stop-hook and main-settings, plus 89 offline tests. IMPLEMENTED and TESTED offline with synthetic registries, a fake git runner and a fake clock: eligibility (PLANNED, dependencies COMPLETED/RELEASED, owned-path overlap with ACTIVE/UNDER_REVIEW tasks ignoring shared_files), tracker steps, worker results and failures with retry eligibility, submitted-but-unmerged waves, idle reasons, wait change/timeout, Stop hook block/allow/loop-bound/fail-open/other-session, settings shape. OBSERVED once: next --json against this checkout and the real machine-local state returned 3 items (2 review_step, 1 verify_wave), 0 blocked, 0 warnings, state directory unchanged. NOT TESTED: a real Claude Code session invoking the hook, wait run as a real background command, hook run through claude --settings. Wiring main-settings into launch.py is PROPOSED (later task). Known limit: a wave merged by squash is not an ancestor of origin/main, so it can be listed as verify_wave until its remote branch is deleted. Fix round 2 (Main's live findings): review_step and start_step items are actionable only for tasks owned by --owner (default claude:repository-coordinator); other owners' steps are listed in others_waiting_review, outside the fingerprint, and never make stop-hook block. A wave is closed (never verify_wave) when all its lanes' task ids are COMPLETED/RELEASED in ACTIVE_TASKS.json (what governance wave close writes, per closeout_records) or its manifest records a closed state; ancestry is no longer the only signal.",
   "commands": [
     {
       "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_autonomy.py",
-      "result": "Ran 89 tests: OK"
+      "result": "Ran 97 tests: OK"
     },
     {
       "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
-      "result": "Ran 629 tests: OK"
+      "result": "Ran 641 tests: OK"
     },
     {
-      "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests (before the fix round, same module code otherwise)",
       "result": "Ran 2163 tests in 369s: OK (skipped=2)"
     },
     {
       "command": "cd orchestrator && python -B -m dev_supervisor.autonomy next --json --repo <this worktree>",
-      "result": "OBSERVED: items 3 (review_step T-RSR-001, review_step T-RSV-002, verify_wave w03-dev-supervisor lanes L1-L9), blocked 0, running_workers 0, warnings 0; state directory listing unchanged"
+      "result": "OBSERVED: items 1 (verify_wave w04-autonomy-loop L1,L2), others_waiting 2 (T-RSR-001, T-RSV-002), blocked 0, warnings 0; w03 no longer listed"
     }
   ],
   "unresolved": [
     "Wiring the Stop hook settings file into launch.py (claude --settings) is a later task (PROPOSED).",
-    "Desktop node tests were not run by this lane (no dashboard files touched).",
-    "Squash-merged waves can show as verify_wave while their remote wave branch exists."
+    "Desktop node tests and a full-suite re-run after the fix round were not run by this lane."
   ],
   "changelog": "Added the autonomy loop for Main: dev_supervisor.autonomy next/wait/stop-hook/main-settings (T-DEV-013, issue #63)."
 }
