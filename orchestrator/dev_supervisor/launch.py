@@ -16,7 +16,7 @@ workers stay headless (``claude -p`` through the L2 ``ClaudeCliLauncher``).
 - On Windows the terminal is a new console window opened with ``CREATE_NEW_CONSOLE`` (``subprocess.Popen`` with an
   argument list, ``shell=False``; no ``cmd /c start`` and no ``wt`` string parsing). The working directory is the
   repository root. A ``.cmd``/``.bat`` claude shim is refused (cmd.exe would re-parse the arguments).
-- The Claude Pro versus OmniRoute choice is NOT made here: the child inherits the environment of the terminal the user
+- The child environment comes from ``provider_env.child_env`` (default Claude Pro: gateway overrides removed). Earlier text: the Pro versus OmniRoute choice was NOT made here: the child inherits the environment of the terminal the user
   opened with the launcher of their choice. This module never reads, copies or edits any launcher or ``.mcp.json``.
 
 Limits (stated, not hidden):
@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
+from . import provider_env
 from .config import DANGEROUS_MODES, PERMISSION_MODES, Config
 from .evidence import Evidence, observed, unavailable
 from .lifecycle import LaunchHandle, LaunchSpec, LifecycleError, NotOwnedError
@@ -187,7 +188,8 @@ class NewConsoleTerminal:
             raise LaunchError("argv must be a non-empty list of strings")
         exe = self.resolve(argv[0])
         flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x10)
-        return self._popen([exe] + list(argv[1:]), cwd=cwd, shell=False, close_fds=True, creationflags=flags)
+        return self._popen([exe] + list(argv[1:]), cwd=cwd, shell=False, close_fds=True, creationflags=flags,
+                           env=provider_env.child_env())
 
 
 # ------------------------------------------------------------------ the interactive Main launcher
