@@ -1,0 +1,13 @@
+{
+  "lane": "L3",
+  "status": "DONE",
+  "summary": "IMPLEMENTED dev_supervisor/repair.py (python -B -m dev_supervisor.repair [--yes] [--allow-while-running]): finds role main / authoritative / ACTIVE|RETIRING records that are not main.json's session and whose process is not alive (record pid or session-file pid, injectable probe), proposes authoritative=false + status RETIRED_STALE with a reason/time note. Dry run reads without any store recovery or cleanup, so it writes nothing. --yes writes the sessions document once through StateStore (backup kept), appends a state_repaired event, refuses when a live process holds the supervisor lock unless --allow-while-running (never edits main.json or the lock), never deletes records. TESTED: 38 offline tests. OBSERVED: one live dry run (see commands). NOT TESTED: --yes against real state (Main decides); behaviour with a real live second Main process. A record with no pid evidence at all is treated as 'no process found' and proposed for retirement; a probe that raises is treated as alive.",
+  "commands": [
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_repair.py", "result": "Ran 38 tests: OK"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"", "result": "Ran 686 tests: OK"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests", "result": "Ran 2220 tests in 394.808s: OK (skipped=2)"},
+    {"command": "cd orchestrator && python -B -m dev_supervisor.repair   (OBSERVED, real default state dir, dry run)", "result": "current Main 46f52067 [RUNNING] KEEP; authoritative records 46f52067, bb87f796; RETIRE bb87f796 ACTIVE (updated 2026-11-18T08:01:39+00:00): no pid recorded and no session file names this session; no process found. File listing (16 files, mtimes, sizes) identical before and after."}
+  ],
+  "unresolved": ["--yes on the real state is Main's decision after verification."],
+  "changelog": "Supervisor state repair tool (dev_supervisor.repair) retires stale authoritative Main records safely, dry run by default (T-DEV-017)."
+}

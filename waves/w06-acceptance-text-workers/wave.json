@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "wave_id": "w06-acceptance-text-workers",
+  "title": "Autonomy acceptance harness, OmniRoute text-only workers, Orbit polish (issue #44)",
+  "integration_branch": "wave/w06-acceptance-text-workers",
+  "base_commit": "1ae8179b4c3fd67b06e8af98ed9b082a008bef4e",
+  "created": "2026-11-18",
+  "inactivity_hours": 48,
+  "lanes": [
+    {
+      "id": "L1",
+      "task_id": "T-DEV-018",
+      "title": "End-to-end autonomy acceptance harness (issue #44, mission part 11)",
+      "owner": "claude:repository-coordinator",
+      "branch": "lane/w06-acceptance-text-workers/L1",
+      "owned_paths": [
+        "orchestrator/dev_supervisor/acceptance.py",
+        "orchestrator/tests/test_dev_acceptance.py"
+      ],
+      "test_modules": [
+        "test_dev_acceptance.py"
+      ],
+      "acceptance_criteria": [
+        "New module dev_supervisor/acceptance.py with CLI `python -B -m dev_supervisor.acceptance --out <report.json> [--real-worker] [--keep]` that runs a scripted scenario in an ISOLATED temp state directory and a temp git repository (never the real supervisor state, never this repository's registry): (1) a synthetic ACTIVE_TASKS.json/DEVELOPMENT_TRACKER.json with two eligible tasks and one blocked task; (2) autonomy next selects the first eligible task; (3) a worker is assigned and spawned through the existing lifecycle (ConfiguredSupervisor / WorkerSupervisor) with a fake launcher by default, or with --real-worker a REAL bounded `claude -p --model haiku` run (child env without parent-session markers and without ANTHROPIC_* overrides, prompt: write one file in its temp worktree) whose exit and output file are checked; (4) the result is recorded REPORTED, independently verified by the harness (file content check), marked VERIFIED; (5) the task is marked COMPLETED in the synthetic registry and autonomy next selects the second task without any human input; (6) a context threshold is SIMULATED with a synthetic transcript above the compact threshold, compaction decides, a handoff is built, written and verified (handoff module, injected checkers), and replacement runs with a fake Main launcher and a simulated heartbeat; (7) the replacement Main's view (autonomy next) still shows the second task and not the completed first one (no duplication); (8) the stop-hook blocks the new Main while work remains and allows after it is told",
+        "The report lists every step with outcome PASS/FAIL and a mode label REAL, SIMULATED or MOCKED, plus timings; exit 0 only if all steps pass; nothing is labelled REAL unless a real process ran",
+        "At least 25 offline tests (default mocked mode, failure injection per step, report shape, isolation: the real state dir and repo registry are never touched); one OBSERVED live run in default mode and one with --real-worker (counts and step outcomes only)",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+        "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "depends_on": [],
+      "authorizations": []
+    },
+    {
+      "id": "L2",
+      "task_id": "T-DEV-019",
+      "title": "OmniRoute text-only workers on free routes (issue #44, mission part 5)",
+      "owner": "claude:repository-coordinator",
+      "branch": "lane/w06-acceptance-text-workers/L2",
+      "owned_paths": [
+        "orchestrator/dev_supervisor/text_worker.py",
+        "orchestrator/tests/test_dev_text_worker.py"
+      ],
+      "test_modules": [
+        "test_dev_text_worker.py"
+      ],
+      "acceptance_criteria": [
+        "New module dev_supervisor/text_worker.py with CLI `python -B -m dev_supervisor.text_worker --task <task.json> --out <result.json> [--routes r1,r2] [--benchmark <results.json>]`: runs one bounded TEXT-ONLY task (kinds: summarise, classify, extract_json, review_notes) through the existing dev_supervisor.omniroute client against the local gateway; route order from a benchmark results file when given (pass rate, then latency), else a configured default list; bounded retries and fallback to the next route on rate_limited/timeout/not_found/auth_error; a deterministic output checker per kind (length bounds, label in allowed set, valid JSON with required keys); the result JSON records route, attempts, latencies, failure classes, checker verdict, and labels the output REPORTED until a checker passes (then CHECKED) — never VERIFIED",
+        "Refuses non-local base URLs unless explicitly allowed; never uses a paid route; no tool use (Claude Code through OmniRoute currently fails tool calls with a Gemini thought_signature error, OBSERVED 2026-11-18: record that limitation in the module docstring)",
+        "At least 30 offline tests with a fake transport (fallback order, retry bounds, each checker, refusal of remote URLs, no key in output); one OBSERVED live run of each task kind on the free gemini/gemini-3.1-flash-lite route (route, pass/fail, latency only)",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+        "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "depends_on": [],
+      "authorizations": []
+    },
+    {
+      "id": "L3",
+      "task_id": "T-DEV-020",
+      "title": "Orbit polish: styles for operation sections and dated long resets",
+      "owner": "claude:dev-orbit",
+      "branch": "lane/w06-acceptance-text-workers/L3",
+      "owned_paths": [
+        "dashboard/desktop/",
+        "orchestrator/tests/test_dev_orbit_view.py"
+      ],
+      "test_modules": [
+        "test_dev_orbit_view.py"
+      ],
+      "acceptance_criteria": [
+        "dashboard/desktop styles give the operation sections (classes added by the previous wave, e.g. orbit-act) readable list styling consistent with the existing theme in light and dark mode; no new dependencies",
+        "Account-usage reset rows show the date when the reset is more than 24 h away (e.g. 'Sat 21 Nov 23:00 UTC (in 3 d 9 h)'), deterministic from nowMs; existing behaviour for nearer resets unchanged",
+        "Node tests for both; Orbit stays read-only; no renames of released artifacts",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+        "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "depends_on": [],
+      "authorizations": []
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "lane": "L2",
+  "status": "DONE",
+  "summary": "Orbit (dashboard/desktop) now renders operation (Next actions for Main, Waiting on others, Blocked, idle reason, warnings, fingerprint), supervisor health, handoff and per-worker context pressure. A registered-only (ASSIGNED) worker is labelled 'registered only, not active'; a blocked task (worker BLOCKED or listed in operation.blocked) is labelled 'BLOCKED, not running'. Missing or not-computed sections render as UNAVAILABLE with a reason. Every value keeps its quality badge. Implemented and unit-tested with synthetic data, including a snapshot built by L1's snapshot.py and rendered through orbit.js. The Electron window itself is NOT TESTED; nothing OBSERVED live.",
+  "commands": [
+    {"command": "cd dashboard/desktop && node --test \"tests/*.test.js\"", "result": "tests 106, pass 106, fail 0"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"", "result": "OK (includes test_dev_orbit_view.py, 6 tests)"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests (before merging L1)", "result": "Ran 2182 tests: OK (skipped=2)"}
+  ],
+  "unresolved": ["Electron window rendering of the new sections: NOT TESTED (no GUI run).", "styles.css has no dedicated styling for the new orbit-act classes (they render as plain lists)."],
+  "changelog": "Orbit shows operation, supervisor health, handoff and per-worker context pressure; registered-only workers are never shown active and blocked tasks never as running (T-DEV-016)."
+}

@@ -40,6 +40,11 @@ test('orbit: a purely live snapshot reports live', () => {
   const v = orbit.evaluate(r, sec(5));
   assert.equal(v.state, 'cached');                          // the unavailable account usage keeps it from claiming "live"
   r.account_usage = { provider: 'p', usage: { five_hour_used_percentage: { label: 'OBSERVED', value: 1, timestamp: r.generated_at, source: 't', freshness: 'live' } } };
+  assert.equal(orbit.evaluate(r, sec(5)).state, 'cached');  // changed in w05: the new operation/health/handoff sections are absent, so they are unavailable
+  const lv = { label: 'OBSERVED', value: 'x', timestamp: r.generated_at, source: 't', freshness: 'live' };
+  r.operation = { actionable: [], others_waiting: [], blocked: [], idle_reason: lv, warnings: [], fingerprint: 'f' };
+  r.supervisor_health = { lock_alive: lv, last_tick_at: lv, last_event_kind: lv };
+  r.handoff = { latest_id: lv, verified: lv, created_at: lv };
   assert.equal(orbit.evaluate(r, sec(5)).state, 'live');
 });
 
@@ -102,7 +107,7 @@ test('orbit: account usage is shown only when OBSERVED; REPORTED or INFERRED val
   r.account_usage = { provider: 'p', usage: { five_hour_used_percentage: mk('OBSERVED') } };
   const ok = section(orbit.evaluate(r, sec(1)), 'account').rows[0];
   assert.equal(ok.label, 'OBSERVED');
-  assert.equal(ok.text, '42');
+  assert.equal(ok.text, '42%');                          // intentional: known key now renders as a percentage
   // the real Python-built fixture carries a REPORTED statusline payload and must not leak its number
   const fx = section(orbit.evaluate(raw(), sec(1)), 'account').rows[0];
   assert.equal(fx.label, 'UNAVAILABLE');
@@ -221,4 +226,124 @@ test('orbit UI: live, cached, stale and offline states each render a distinct, l
   assert.ok(!full.includes('42'));
   assert.match(full, /Cached/);
   assert.match(full, /Live/);
+});
+
+// ---- readable account-usage rows, provenance and data-quality badges
+const EV = (value, ts, label = 'OBSERVED', src = 'rate_limit_event:worker-x/run.jsonl') => ({ label, value, timestamp: ts, source: src, freshness: 'live' });
+const usageSnap = (usage, provider = 'rate_limit_event') => { const r = raw(); r.account_usage = { provider, usage }; return r; };
+const NOW = Date.parse('2026-11-18T11:47:00+00:00');
+const iso = (ms) => new Date(ms).toISOString();
+const urow = (v, name) => section(v, 'account').rows.find((r) => r.name === name);
+
+test('orbit usage: known rate_limit_event keys render in plain language with a reset phrase relative to now', () => {
+  const ts = iso(NOW - 60000);
+  const r = usageSnap({
+    five_hour_used_percentage: EV(21.0, ts), five_hour_resets_at: EV('2026-11-18T12:50:00Z', ts), five_hour_status: EV('allowed', ts),
+    weekly_used_percentage: EV(8.5, ts), weekly_resets_at: EV('2026-11-21T14:47:00Z', ts), weekly_status: EV('allowed', ts), status: EV('allowed', ts),
+  });
+  const v = orbit.evaluate(r, NOW);
+  assert.equal(urow(v, '5-hour window: used').text, '21%');
+  assert.equal(urow(v, '5-hour window: resets').text, '12:50 UTC (in 1 h 3 min)');
+  assert.equal(urow(v, '7-day window: used').text, '8.5%');
+  assert.equal(urow(v, '7-day window: resets').text, 'Sat 21 Nov 14:47 UTC (in 3 d 3 h)');   // changed in w06: more than 24 h away, so the date is shown
+  assert.equal(urow(v, '5-hour window: status').text, 'allowed');
+  assert.equal(urow(v, 'rate-limit status').text, 'allowed');
+  assert.equal(urow(v, '5-hour window: used').quality, 'live');
+  assert.deepEqual(orbit.evaluate(r, NOW), v);                       // deterministic for a fixed now
+});
+
+test('orbit usage: a reset time in the past says the window already reset; near resets are phrased in minutes', () => {
+  const ts = iso(NOW - 60000);
+  const v = orbit.evaluate(usageSnap({ five_hour_resets_at: EV('2026-11-18T10:00:00Z', ts), weekly_resets_at: EV('2026-11-18T11:55:00Z', ts) }), NOW);
+  assert.equal(urow(v, '5-hour window: resets').text, '10:00 UTC (window already reset)');
+  assert.equal(urow(v, '7-day window: resets').text, '11:55 UTC (in 8 min)');
+  assert.equal(orbit.relativeReset(NOW + 20000, NOW), 'in under 1 min');
+  assert.equal(orbit.relativeReset(NOW + 3600000, NOW), 'in 1 h');
+  assert.equal(orbit.relativeReset(NOW, NOW), 'window already reset');
+});
+
+test('orbit usage: a reset more than 24 h after now shows the UTC weekday, day, month and time with the relative phrase', () => {
+  const ts = iso(NOW - 60000);
+  const v = orbit.evaluate(usageSnap({ weekly_resets_at: EV('2026-11-21T23:00:00Z', ts), five_hour_resets_at: EV('2026-11-21T23:00:00Z', ts) }), NOW);
+  assert.equal(urow(v, '7-day window: resets').text, 'Sat 21 Nov 23:00 UTC (in 3 d 11 h)');
+  assert.equal(urow(v, '5-hour window: resets').text, 'Sat 21 Nov 23:00 UTC (in 3 d 11 h)');
+  // a month boundary, and the date stays deterministic for a fixed now
+  assert.equal(orbit.resetText(Date.parse('2026-12-01T00:30:00Z'), NOW), 'Tue 1 Dec 00:30 UTC (in 12 d 12 h)');
+  assert.equal(orbit.resetText(Date.parse('2026-12-01T00:30:00Z'), NOW), orbit.resetText(Date.parse('2026-12-01T00:30:00Z'), NOW));
+  // one minute past 24 h is dated; exactly 24 h is still within the clock form
+  assert.equal(orbit.resetText(NOW + 24 * 3600000 + 60000, NOW), 'Thu 19 Nov 11:48 UTC (in 1 d)');
+});
+
+test('orbit usage: exactly 24 h and just under are NOT dated; past resets keep the clock form', () => {
+  assert.equal(orbit.resetText(NOW + 24 * 3600000, NOW), '11:47 UTC (in 1 d)');          // boundary: within 24 h
+  assert.equal(orbit.resetText(NOW + 24 * 3600000 - 60000, NOW), '11:46 UTC (in 23 h 59 min)');
+  assert.equal(orbit.resetText(Date.parse('2026-11-15T09:00:00Z'), NOW), '09:00 UTC (window already reset)');   // past: unchanged
+  assert.equal(orbit.resetText(NOW, NOW), '11:47 UTC (window already reset)');
+});
+
+test('orbit usage: unparseable values fall back to the plain value; unknown keys stay generic', () => {
+  const ts = iso(NOW - 1000);
+  const v = orbit.evaluate(usageSnap({ five_hour_resets_at: EV('soon', ts), weekly_used_percentage: EV('n/a', ts), some_new_key: EV(7, ts) }), NOW);
+  assert.equal(urow(v, '5-hour window: resets').text, 'soon');
+  assert.equal(urow(v, '7-day window: used').text, 'n/a');
+  const unk = urow(v, 'some new key');
+  assert.equal(unk.text, '7');
+  assert.equal(unk.quality, 'live');
+});
+
+test('orbit usage: stale and cached values are badged by their own timestamp, never live', () => {
+  const v = orbit.evaluate(usageSnap({ five_hour_used_percentage: EV(30, iso(NOW - 3 * 3600 * 1000)), weekly_used_percentage: EV(5, iso(NOW - 300 * 1000)) }), NOW);
+  assert.equal(urow(v, '5-hour window: used').quality, 'stale');
+  assert.equal(urow(v, '5-hour window: used').freshness, 'stale');
+  assert.equal(urow(v, '7-day window: used').quality, 'cached');
+});
+
+test('orbit usage: provenance note names the source in plain words with its age and hides worker/file identifiers', () => {
+  const v = orbit.evaluate(usageSnap({ five_hour_used_percentage: EV(21, iso(NOW - 180000)) }), NOW);
+  const note = section(v, 'account').note;
+  assert.match(note, /from the last worker run's rate_limit_event/);
+  assert.match(note, /observed 3 min ago/);
+  assert.ok(!note.includes('worker-x') && !note.includes('run.jsonl'));
+  const none = orbit.evaluate(usageSnap({ label: 'UNAVAILABLE', value: null, reason: 'no source', timestamp: iso(NOW), source: 's', freshness: 'offline' }, 'none'), NOW);
+  assert.match(section(none, 'account').note, /No usage value is available/);
+});
+
+test('orbit usage: REPORTED/INFERRED usage is unavailable without leaking the number; INFERRED elsewhere is estimated', () => {
+  const ts = iso(NOW - 1000);
+  const v = orbit.evaluate(usageSnap({ five_hour_used_percentage: EV(77.7, ts, 'INFERRED'), weekly_used_percentage: EV(66.6, ts, 'REPORTED') }), NOW);
+  for (const n of ['5-hour window: used', '7-day window: used']) {
+    const x = urow(v, n);
+    assert.equal(x.quality, 'unavailable');
+    assert.equal(x.value, null);
+    assert.ok(x.reason.length > 0);
+    assert.ok(!/77|66/.test(JSON.stringify(x)));
+  }
+  assert.ok(!/77\.7|66\.6/.test(JSON.stringify(section(v, 'account'))));
+  const r2 = raw(); r2.branch = EV('lane/x', ts, 'INFERRED', 'git');
+  const est = row(orbit.evaluate(r2, NOW), 'git', 'branch');
+  assert.equal(est.quality, 'estimated');
+  assert.equal(est.label, 'INFERRED');
+  const old = raw(); old.branch = EV('lane/x', iso(NOW - 7200000), 'INFERRED', 'git');
+  assert.equal(row(orbit.evaluate(old, NOW), 'git', 'branch').quality, 'stale');          // old estimates are stale first
+});
+
+test('orbit usage: every row carries one valid quality badge', () => {
+  const v = orbit.evaluate(raw(), sec(10));
+  for (const s of v.sections) for (const r of s.rows) assert.ok(orbit.QUALITY.includes(r.quality), `${s.id}/${r.name}`);
+  assert.equal(row(v, 'git', 'pull request').quality, 'unavailable');
+});
+
+test('orbit usage UI: renders plain-language rows, the provenance note and a quality badge per row', () => {
+  const ts = iso(NOW - 60000);
+  const v = orbit.evaluate(usageSnap({ five_hour_used_percentage: EV(21, ts), five_hour_resets_at: EV('2026-11-18T12:50:00Z', ts),
+    weekly_used_percentage: EV(9, iso(NOW - 3 * 3600000)), weekly_resets_at: EV('2026-11-18T10:00:00Z', ts) }), NOW);
+  const r = renderWithFakeDom(v);
+  assert.match(r.text, /5-hour window: used/);
+  assert.match(r.text, /21%/);
+  assert.match(r.text, /12:50 UTC \(in 1 h 3 min\)/);
+  assert.match(r.text, /window already reset/);
+  assert.match(r.text, /from the last worker run's rate_limit_event/);
+  assert.match(r.text, /Stale/);
+  const cells = []; const walk = (n) => { if (n.attrs && n.attrs['data-quality']) cells.push(n.attrs['data-quality']); (n.children || []).forEach(walk); }; walk(r.root);
+  assert.ok(cells.includes('live') && cells.includes('stale') && cells.includes('unavailable'));
 });

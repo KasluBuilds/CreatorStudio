@@ -282,19 +282,24 @@
   // ------------------------------------------------------------ Orbit (operation / supervisor), read-only
   const FRESH = { live: ['Live', 'done'], cached: ['Cached', 'active'], stale: ['Stale', 'ready'], offline: ['Unavailable', 'blocked'], invalid: ['Invalid', 'blocked'], unconfigured: ['No file', 'upcoming'] };
   const freshPill = (f) => pill(FRESH[f][0], FRESH[f][1]);
+  const QUALITY_PILL = { live: ['Live', 'done'], cached: ['Cached', 'active'], stale: ['Stale', 'ready'], estimated: ['Estimated', 'type'], unavailable: ['Unavailable', 'blocked'] };
+  const qualityPill = (q) => (QUALITY_PILL[q] ? pill(QUALITY_PILL[q][0], QUALITY_PILL[q][1]) : null);
 
   function orbitRow(r) {
     const val = r.label === 'UNAVAILABLE' ? h('span', { class: 'muted' }, `UNAVAILABLE: ${r.reason}`) : h('span', null, r.text);
     return h('tr', { class: `orbit-row orbit-${r.freshness}` }, h('th', { scope: 'row' }, r.name), h('td', null, val),
-      h('td', null, h('span', { class: 'muted' }, r.label)), h('td', null, freshPill(r.freshness), ' ', h('span', { class: 'muted' }, r.ageText)));
+      h('td', null, h('span', { class: 'muted' }, r.label)), h('td', { 'data-quality': r.quality }, qualityPill(r.quality) || freshPill(r.freshness), ' ', h('span', { class: 'muted' }, r.ageText)));
   }
 
   function orbitSection(s) {
     const body = [];
     if (s.rows.length) body.push(h('table', { class: 'orbit-table' }, h('tbody', null, s.rows.map(orbitRow))));
     if (s.items.length) {
-      body.push(h('ul', { class: 'plain' }, s.items.map((i) => h('li', null, i.text,
-        i.status ? h('span', null, ' ', freshPill(i.status.freshness), ' ', h('span', { class: 'muted' }, `${i.status.label === 'UNAVAILABLE' ? 'status unavailable' : i.status.text} · ${i.status.ageText}`)) : null))));
+      body.push(h('ul', { class: 'plain' }, s.items.map((i) => h('li', { class: i.activity ? `orbit-act orbit-act-${i.activity.kind}` : null }, i.text,
+        i.status ? h('span', null, ' ', freshPill(i.status.freshness), ' ', h('span', { class: 'muted' }, `${i.status.label === 'UNAVAILABLE' ? 'status unavailable' : i.status.text} · ${i.status.ageText}`)) : null,
+        i.activity ? h('div', { class: 'muted orbit-activity' }, `activity: ${i.activity.text}`) : null,
+        i.inspect ? h('div', { class: 'muted' }, `inspect: ${i.inspect}`) : null,
+        i.context ? h('div', { class: 'muted orbit-context' }, ...i.context.map((c) => h('span', { 'data-quality': c.quality }, `${c.name}: ${c.label === 'UNAVAILABLE' ? `UNAVAILABLE (${c.reason})` : c.text} `, qualityPill(c.quality) || freshPill(c.freshness), '  '))) : null))));
     }
     if (!s.rows.length && !s.items.length) body.push(empty(s.empty || 'Nothing recorded.'));
     if (s.note) body.push(h('p', { class: 'muted' }, s.note));
