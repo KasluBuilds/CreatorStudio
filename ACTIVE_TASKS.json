@@ -88,6 +88,22 @@
       ],
       "owner": "claude:resolve-stream",
       "owner_status": "ASSIGNED - Lukas assigned T-RSV-002 (safe Resolve execution layer, M-RSV-02) directly in session on 2026-11-17"
+    },
+    "dev_supervisor": {
+      "paths": [
+        "orchestrator/dev_supervisor/",
+        "orchestrator/tests/test_dev_telemetry.py",
+        "orchestrator/tests/test_dev_lifecycle.py",
+        "orchestrator/tests/test_dev_handoff.py",
+        "orchestrator/tests/test_dev_routing.py",
+        "orchestrator/tests/test_dev_resolve_discovery.py",
+        "orchestrator/tests/test_dev_github_log.py",
+        "orchestrator/tests/test_dev_snapshot.py",
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/tests/test_dev_docs.py"
+      ],
+      "owner": "claude:repository-coordinator",
+      "owner_status": "ASSIGNED - Lukas authorized issue #44 (autonomous development supervisor) on 2026-11-18; built by wave w03-dev-supervisor; development-time infrastructure, not a video-production agent"
     }
   },
   "shared_files": {
