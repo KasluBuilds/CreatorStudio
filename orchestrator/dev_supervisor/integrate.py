@@ -7,14 +7,16 @@ no event, no merge). With ``--yes`` and every gate PASS it takes the exclusive i
 under the lock, merges with ``gh pr merge <n> --merge --match-head-commit <evaluated head>`` (never ``--admin``, never
 ``--force``), reads the result back and records the outcome as one PR comment plus one supervisor event.
 
-Gates: 1 pr_state, 2 checks, 3 merge_state, 4 scope, 5 review, 6 secrets, 7 forbidden_files. A gate is PASS, FAIL or
+Gates: 1 pr_state, 2 checks, 3 merge_state, 4 scope, 5 review, 6 secrets, 7 forbidden_files, 8 reserved. A gate is PASS, FAIL or
 UNKNOWN; anything but PASS blocks the merge.
 
 gh and git are injected runners (``gh(args, input) -> (rc, text)``, ``git(args) -> (rc, bytes)``) so unit tests never
 touch the network. Standard library only; the governance package is imported read-only.
 
-The review-marker parser and diff hash below are a minimal local version (PROPOSED: replace by dev_supervisor.review
-once lane L2 of wave w07 is merged).
+The review-marker parser and diff hash come from dev_supervisor.review (lane L2). The review VERDICT logic stays here
+because it differs on purpose: only OWNER/MEMBER/COLLABORATOR comments count, the author set is richer than the PR
+author login (commit authors, Co-Authored-By lines, task owners), and ANY reviewer's current CHANGES_REQUESTED blocks
+(review.review_status lets the latest valid review win, so a later APPROVE would hide a standing objection).
 """
 from __future__ import annotations
 
@@ -31,6 +33,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
+from dev_supervisor import review as _review
+
 __all__ = ["Gate", "Result", "IntegrationLock", "LockHeld", "evaluate", "integrate", "parse_review_marker",
            "diff_hash", "render_table", "real_gh_runner", "real_git_runner", "main"]
 
@@ -41,13 +45,16 @@ REGISTRY_FILES = ("ACTIVE_TASKS.json", "DEVELOPMENT_TRACKER.json", "SESSION_HAND
 LOCK_NAME = "integration.lock"
 DEFAULT_LOCK_TIMEOUT = 900.0
 
-_REVIEW_RE = re.compile(r"^<!-- dev-review v1 pr=(\d+) diff_sha256=([0-9a-f]{16}) "
-                        r"verdict=(APPROVE|CHANGES_REQUESTED) reviewer=([A-Za-z0-9:._@-]{1,80}) -->$")
 _COAUTHOR_RE = re.compile(r"(?im)^co-authored-by:\s*(.+?)\s*<([^>]*)>")
 _TRUSTED_ASSOC = ("OWNER", "MEMBER", "COLLABORATOR")
 _PENDING = ("QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED", "EXPECTED")
 _BAD = ("FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE")
 _FORBIDDEN_NAMES = ("pro.ps1", "backup.ps1", ".mcp.json")
+_RESERVED_FILES = ("PROJECT_OPERATING_PROTOCOL.md", "DEVELOPMENT_STEP_PROTOCOL.md", "WAVE_PROTOCOL.md", "CLAUDE.md",
+                   "dashboard/tracker_check.py")
+_RESERVED_DIRS = (".github/", ".githooks/", "orchestrator/governance/")
+_LUKAS_WORD_RE = re.compile(r"^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/(issues|pull)/\d+[^\s]*$")
+_TID_RE = re.compile(r"T-[A-Z0-9]+-\d{3}")
 _FORBIDDEN_DIRS = ("incoming/", "projects/")
 _CRED_NAME_RE = re.compile(r"(?i)(^|/)(\.env(\..*)?|id_rsa.*|id_ed25519.*|.*\.(pem|key|p12|pfx|keystore)|"
                            r"credentials?(\..*)?|secrets?(\..*)?|.*token.*\.(txt|json))$")
@@ -74,6 +81,7 @@ class Result:
     outcome: str = "DRY_RUN"        # DRY_RUN | MERGED | REFUSED | LOCKED | ERROR
     note: str = ""
     diff_sha: str = ""
+    override: str = ""
 
     @property
     def all_pass(self) -> bool:
@@ -99,11 +107,11 @@ def _clean(text: Any, limit: int = 220) -> str:
 # ------------------------------------------------------------------ review marker and diff hash (minimal, local)
 
 def parse_review_marker(first_line: str) -> Optional[Dict[str, Any]]:
-    """Strict parse of the first line of a review comment; None if it is not exactly a dev-review v1 marker."""
-    m = _REVIEW_RE.match((first_line or "").strip("\r\n "))
-    if not m:
+    """Strict parse of the first line of a review comment (delegates to review.parse_marker); None if not a marker."""
+    m = _review.parse_marker(first_line or "")
+    if m is None:
         return None
-    return {"pr": int(m.group(1)), "diff_sha256": m.group(2), "verdict": m.group(3), "reviewer": m.group(4)}
+    return {"pr": m.pr, "diff_sha256": m.diff_sha256, "verdict": m.verdict, "reviewer": m.reviewer}
 
 
 def diff_hash(git: Callable[[Sequence[str]], Tuple[int, bytes]], base: str, head: str) -> Optional[str]:
@@ -115,7 +123,7 @@ def diff_hash(git: Callable[[Sequence[str]], Tuple[int, bytes]], base: str, head
     rc, data = git(["diff", "--binary", sha, head])
     if rc != 0:
         return None
-    return hashlib.sha256(data).hexdigest()[:16]
+    return _review.diff_hash(data)
 
 
 # ------------------------------------------------------------------ runners
@@ -147,61 +155,139 @@ class LockHeld(Exception):
     pass
 
 
+def _default_pid_alive(pid: int) -> bool:
+    """True if a process with this pid exists (conservative: unknown means alive)."""
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+            k = ctypes.windll.kernel32
+            h = k.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+            if not h:
+                return k.GetLastError() == 5        # access denied: it exists
+            code = ctypes.c_ulong()
+            ok = k.GetExitCodeProcess(h, ctypes.byref(code))
+            k.CloseHandle(h)
+            return (not ok) or code.value == 259    # STILL_ACTIVE
+        except Exception:
+            return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
 class IntegrationLock:
-    """Exclusive lock file (atomic O_EXCL create) holding pid/time/token. Stale after `timeout` seconds
-    (or when `pid_alive` says the holder is gone). Known limit: two processes that both judge the SAME stale lock stale
-    at the same instant can race on the takeover; the O_EXCL create still lets only one of them hold it."""
+    """Exclusive lock file: O_EXCL create (holder pid, time, token), verified by reading the token back.
+
+    Staleness: the file mtime is the heartbeat (refreshed with `heartbeat()`). A readable lock whose holder pid is
+    ALIVE is never stale; one whose pid is DEAD is stale. A lock with no readable holder (empty or torn: another
+    process has just created it and not written yet) is held while its mtime is younger than `timeout`.
+    Takeover renames the stale file to a unique name (atomic, one winner), checks that what was renamed is what was
+    judged stale (otherwise a live lock is put back), then creates the new lock with O_EXCL."""
 
     def __init__(self, directory: os.PathLike, timeout: float = DEFAULT_LOCK_TIMEOUT,
                  clock: Callable[[], float] = time.time, pid_alive: Optional[Callable[[int], bool]] = None):
         self.path = Path(directory) / LOCK_NAME
-        self.timeout, self.clock, self.pid_alive = timeout, clock, pid_alive
+        self.timeout, self.clock = timeout, clock
+        self.pid_alive = pid_alive or _default_pid_alive
         self.token = ""
 
-    def _read(self) -> Optional[Dict[str, Any]]:
+    def _raw(self) -> Optional[str]:
         try:
-            d = json.loads(self.path.read_text(encoding="utf-8"))
-            return d if isinstance(d, dict) else {}
+            return self.path.read_text(encoding="utf-8")
         except FileNotFoundError:
             return None
         except (OSError, ValueError):
+            return ""
+
+    @staticmethod
+    def _parse(raw: str) -> Dict[str, Any]:
+        try:
+            d = json.loads(raw)
+            return d if isinstance(d, dict) else {}
+        except ValueError:
             return {}
 
-    def _stale(self, d: Dict[str, Any]) -> bool:
-        t = d.get("time")
-        if not isinstance(t, (int, float)) or self.clock() - t > self.timeout:
-            return True
-        pid = d.get("pid")
-        return bool(self.pid_alive and isinstance(pid, int) and not self.pid_alive(pid))
+    def _age(self) -> float:
+        try:
+            return self.clock() - os.path.getmtime(str(self.path))
+        except OSError:
+            return 0.0
+
+    def _stale(self, raw: str) -> bool:
+        pid = self._parse(raw).get("pid")
+        if isinstance(pid, int) and not isinstance(pid, bool):
+            return not self.pid_alive(pid)
+        return self._age() > self.timeout
 
     def acquire(self, pr: int = 0) -> None:
         os.makedirs(str(self.path.parent), exist_ok=True)
-        for _ in range(2):
+        for _ in range(25):
             token = uuid.uuid4().hex
             try:
                 fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             except FileExistsError:
-                d = self._read()
-                if d is None:
+                raw = self._raw()
+                if raw is None:
                     continue
-                if not self._stale(d):
-                    raise LockHeld(f"integration lock held by pid {d.get('pid')} since {d.get('time')}")
+                if not self._stale(raw):
+                    d = self._parse(raw)
+                    raise LockHeld(f"integration lock held (pid {d.get('pid', '?')})")
+                aside = self.path.with_name(f"{LOCK_NAME}.stale.{os.getpid()}.{time.time_ns()}")
                 try:
-                    os.unlink(str(self.path))
+                    os.replace(str(self.path), str(aside))
                 except FileNotFoundError:
+                    continue
+                except PermissionError:          # Windows: another process has it open (reading or taking over)
+                    time.sleep(0.01)
+                    continue
+                try:
+                    moved = aside.read_text(encoding="utf-8")
+                except (OSError, ValueError):
+                    moved = ""
+                if moved != raw:                     # we moved somebody's fresh lock: put it back, stay out
+                    try:
+                        os.link(str(aside), str(self.path))
+                    except OSError:
+                        pass
+                    try:
+                        os.unlink(str(aside))
+                    except OSError:
+                        pass
+                    raise LockHeld("integration lock was taken by another process during takeover")
+                try:
+                    os.unlink(str(aside))
+                except OSError:
                     pass
                 continue
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump({"pid": os.getpid(), "time": self.clock(), "pr": pr, "token": token}, f)
                 f.flush()
                 os.fsync(f.fileno())
+            if self._parse(self._raw() or "").get("token") != token:
+                raise LockHeld("integration lock not confirmed after create")
             self.token = token
+            self.heartbeat()
             return
         raise LockHeld("could not take the integration lock")
 
+    def heartbeat(self) -> None:
+        """Refresh the lock mtime; raises LockHeld if this process no longer owns the lock."""
+        if not self.token or self._parse(self._raw() or "").get("token") != self.token:
+            raise LockHeld("integration lock lost")
+        now = self.clock()
+        try:
+            os.utime(str(self.path), (now, now))
+        except OSError:
+            pass
+
     def release(self) -> None:
-        d = self._read()
-        if self.token and d and d.get("token") == self.token:
+        if self.token and self._parse(self._raw() or "").get("token") == self.token:
             try:
                 os.unlink(str(self.path))
             except OSError:
@@ -259,6 +345,8 @@ class _Ctx:
     git_error: str = ""
     diff_sha: str = ""
     head_oid: str = ""
+    mb: str = ""
+    reg_cache: Dict[Any, Tuple[str, str]] = field(default_factory=dict)
 
 
 def _collect_git(git: Callable, pr: Dict[str, Any], base: str, ctx: _Ctx) -> None:
@@ -277,6 +365,7 @@ def _collect_git(git: Callable, pr: Dict[str, Any], base: str, ctx: _Ctx) -> Non
     if rc != 0 or not mbs:
         ctx.git_error = "no merge-base"
         return
+    ctx.mb = mbs
     ctx.diff_sha = diff_hash(git, f"origin/{base}", f"origin/{head}") or ""
     if not ctx.diff_sha:
         ctx.git_error = "diff hash failed"
@@ -357,11 +446,112 @@ def _gate_merge_state(c: _Ctx) -> Gate:
     return Gate(3, "merge_state", FAIL, s)
 
 
-def _wave_scope(c: _Ctx, git: Callable, head: str) -> Tuple[List[str], List[str], str]:
-    """(allowed path prefixes, lane owners, error) for a wave/<id> branch from its manifest (base first, then head)."""
+def _strip_ids(o: Any, ids: set) -> Any:
+    if isinstance(o, list):
+        return [_strip_ids(x, ids) for x in o if not (isinstance(x, str) and x in ids)]
+    if isinstance(o, dict):
+        return {k: _strip_ids(v, ids) for k, v in o.items()}
+    return o
+
+
+def _tids(o: Any) -> set:
+    return set(_TID_RE.findall(json.dumps(o)))
+
+
+def registry_problems(base_active: Dict[str, Any], head_active: Dict[str, Any], base_track: Dict[str, Any],
+                      head_track: Dict[str, Any], branch: str, wave_ids: Sequence[str] = ()) -> List[str]:
+    """Structural comparison of the registries before/after a PR. Empty list = the PR only adds or updates the
+    author's OWN task, step and agreement records (protocol section 18 gate 3). Pure."""
+    probs: List[str] = []
+    bt = {t.get("id"): t for t in base_active.get("tasks", []) if isinstance(t, dict)}
+    ht = {t.get("id"): t for t in head_active.get("tasks", []) if isinstance(t, dict)}
+    btr = {t.get("task_id"): t for t in base_track.get("tasks", []) if isinstance(t, dict)}
+    htr = {t.get("task_id"): t for t in head_track.get("tasks", []) if isinstance(t, dict)}
+    added = (set(ht) - set(bt)) | (set(htr) - set(btr))
+    mine = {i for i, t in bt.items() if t.get("branch") == branch} | set(wave_ids)
+    own = mine | added
+    for k in (set(base_active) | set(head_active)) - {"tasks", "integration_agreements", "updated"}:
+        if base_active.get(k) != head_active.get(k):
+            probs.append(f"ACTIVE_TASKS.json {k} changed")
+    for i in sorted(set(bt) - set(ht)):
+        probs.append(f"task {i} removed from ACTIVE_TASKS.json")
+    for i in sorted(set(bt) & set(ht)):
+        if bt[i] != ht[i] and (i not in mine or bt[i].get("branch") != ht[i].get("branch")):
+            probs.append(f"record of task {i} changed but it is not this PR's own task")
+    ba, ha = base_active.get("integration_agreements") or {}, head_active.get("integration_agreements") or {}
+    if not isinstance(ba, dict) or not isinstance(ha, dict):
+        probs.append("integration_agreements has an unexpected shape")
+    else:
+        for a_id in sorted(set(ba) - set(ha)):
+            probs.append(f"agreement {a_id} removed")
+        for a_id in sorted(ha):
+            if a_id not in ba:
+                if not _tids(ha[a_id]) <= own:
+                    probs.append(f"new agreement {a_id} lists tasks that are not this PR's own")
+            elif ba[a_id] != ha[a_id]:
+                x, y = ba[a_id], ha[a_id]
+                same = (isinstance(x, dict) and isinstance(y, dict)
+                        and _strip_ids({k: v for k, v in x.items() if k != "description"}, own)
+                        == _strip_ids({k: v for k, v in y.items() if k != "description"}, own)
+                        and str(y.get("description", "")).startswith(str(x.get("description", ""))))
+                ok = same and _tids(x) <= _tids(y) and (_tids(y) - _tids(x)) <= own
+                if not ok:
+                    probs.append(f"existing agreement {a_id} changed beyond adding this PR's own task ids")
+    for k in (set(base_track) | set(head_track)) - {"tasks"}:
+        if base_track.get(k) != head_track.get(k):
+            probs.append(f"DEVELOPMENT_TRACKER.json {k} changed")
+    for i in sorted(set(btr) - set(htr)):
+        probs.append(f"task {i} removed from DEVELOPMENT_TRACKER.json")
+    for i in sorted(set(btr) & set(htr)):
+        if btr[i] != htr[i] and i not in own:
+            probs.append(f"tracker record of task {i} changed but it is not this PR's own task")
+    return probs
+
+
+def _registry_check(c: _Ctx, git: Callable, wave_ids: Sequence[str] = ()) -> Tuple[str, str]:
+    """(PASS|FAIL|UNKNOWN, detail): do the registry/handoff/changelog changes only record the author's own work?"""
+    key = tuple(wave_ids)
+    if key in c.reg_cache:
+        return c.reg_cache[key]
+    head = c.pr.get("headRefName", "")
+
+    def load(ref: str, name: str) -> Any:
+        rc, out = git(["show", f"{ref}:{name}"])
+        if rc != 0:
+            raise ValueError(f"{name} not readable at {ref[:12]}")
+        d = json.loads(out.decode("utf-8"))
+        if not isinstance(d, dict):
+            raise ValueError(f"{name} is not an object")
+        return d
+
+    try:
+        probs = registry_problems(load(c.mb, "ACTIVE_TASKS.json"), load(f"origin/{head}", "ACTIVE_TASKS.json"),
+                                  load(c.mb, "DEVELOPMENT_TRACKER.json"),
+                                  load(f"origin/{head}", "DEVELOPMENT_TRACKER.json"), head, wave_ids)
+        if "CHANGELOG.md" in c.files:
+            rc, out = git(["diff", "-U0", "--no-renames", c.mb, f"origin/{head}", "--", "CHANGELOG.md"])
+            if rc != 0:
+                raise ValueError("CHANGELOG.md diff failed")
+            if any(l.startswith("-") and not l.startswith("---") for l in out.decode("utf-8", "replace").splitlines()):
+                probs.append("CHANGELOG.md has removed or edited lines (append-only)")
+        res = (FAIL, "; ".join(probs[:3])) if probs else (PASS, "only the author's own task/step/agreement records")
+    except Exception as e:
+        res = (UNKNOWN, _clean(f"registry not comparable: {e}"))
+    c.reg_cache[key] = res
+    return res
+
+
+def _wave_scope(c: _Ctx, git: Callable, head: str) -> Tuple[List[str], List[str], List[str], str]:
+    """(allowed paths, lane owners, lane task ids, error). The manifest comes from the base branch or from the FIRST
+    commit of the wave branch after the merge-base (`wave init`); NEVER from the PR head."""
     wid = head[len("wave/"):]
     doc = None
-    for ref in (f"origin/{c.base}", f"origin/{head}"):
+    refs = [f"origin/{c.base}"]
+    rc, out = git(["log", "--reverse", "--format=%H", f"{c.mb}..origin/{head}"])
+    first = out.decode("utf-8", "replace").split() if rc == 0 else []
+    if first:
+        refs.append(first[0])
+    for ref in refs:
         rc, out = git(["show", f"{ref}:waves/{wid}/wave.json"])
         if rc == 0:
             try:
@@ -370,33 +560,47 @@ def _wave_scope(c: _Ctx, git: Callable, head: str) -> Tuple[List[str], List[str]
             except ValueError:
                 pass
     if not isinstance(doc, dict) or not isinstance(doc.get("lanes"), list):
-        return [], [], f"wave manifest for {wid} not readable"
-    allowed = [f"waves/{wid}/", *REGISTRY_FILES]
-    owners = []
+        return [], [], [], f"wave manifest for {wid} not readable from base or the wave's first commit"
+    allowed = [f"waves/{wid}/"]
+    owners, tids = [], []
     for lane in doc["lanes"]:
         if isinstance(lane, dict):
             allowed.extend(p for p in lane.get("owned_paths", []) if isinstance(p, str))
             if lane.get("owner"):
                 owners.append(str(lane["owner"]))
-    return allowed, owners, ""
+            if lane.get("task_id"):
+                tids.append(str(lane["task_id"]))
+    return allowed, owners, tids, ""
+
+
+def _reg_only(c: _Ctx) -> bool:
+    return bool(c.files) and all(f in REGISTRY_FILES for f in c.files)
 
 
 def _gate_scope(c: _Ctx, git: Callable, owners_out: List[str]) -> Gate:
     if not c.files:
         return Gate(4, "scope", FAIL, "no changed files")
-    if all(f in REGISTRY_FILES for f in c.files):
-        return Gate(4, "scope", PASS, "registry-only PR, passes as a record")
     head = c.pr.get("headRefName", "")
     from governance import tasks
+    regs = [f for f in c.files if f in REGISTRY_FILES]
     if head.startswith("wave/"):
-        allowed, owners, err = _wave_scope(c, git, head)
+        allowed, owners, tids, err = _wave_scope(c, git, head)
         if err:
             return Gate(4, "scope", UNKNOWN, err)
         owners_out.extend(owners)
-        out = [f for f in c.files if not any(tasks.covers(a, f) for a in allowed)]
-        return Gate(4, "scope", FAIL if out else PASS,
-                    (f"{len(out)} file(s) outside wave lanes' owned paths: " + ", ".join(out[:5])) if out
-                    else f"{len(c.files)} file(s) inside the wave's lane paths")
+        out = [f for f in c.files if f not in REGISTRY_FILES and not any(tasks.covers(a, f) for a in allowed)]
+        if out:
+            return Gate(4, "scope", FAIL, f"{len(out)} file(s) outside wave lanes' owned paths: " + ", ".join(out[:5]))
+        if regs:
+            st, detail = _registry_check(c, git, tids)
+            if st != PASS:
+                return Gate(4, "scope", st, "wave registry change: " + detail)
+        return Gate(4, "scope", PASS, f"{len(c.files)} file(s) inside the wave's lane paths and own records")
+    if _reg_only(c):
+        st, detail = _registry_check(c, git)
+        if st == PASS:
+            return Gate(4, "scope", PASS, "registry-only record: " + detail)
+        return Gate(4, "scope", st, "registry-only PR but " + detail)
     if c.registry is None:
         return Gate(4, "scope", UNKNOWN, f"ACTIVE_TASKS.json on origin/{c.base} not readable")
     probs = tasks.scope_problems(c.registry, head, c.files)
@@ -421,10 +625,13 @@ def _author_ids(pr: Dict[str, Any], owners: List[str]) -> set:
     return ids
 
 
-def _gate_review(c: _Ctx, comments: Optional[List[Dict[str, Any]]], owners: List[str], n: int) -> Gate:
-    if (c.files and all(f in REGISTRY_FILES for f in c.files)
-            and not str(c.pr.get("headRefName", "")).startswith("wave/")):
-        return Gate(5, "review", PASS, "registry-only record: no code review required (protocol section 18 gate 4)")
+def _gate_review(c: _Ctx, git: Callable, comments: Optional[List[Dict[str, Any]]], owners: List[str], n: int) -> Gate:
+    if _reg_only(c) and not str(c.pr.get("headRefName", "")).startswith("wave/"):
+        st, detail = _registry_check(c, git)
+        if st == PASS:
+            return Gate(5, "review", PASS, "registry-only record: no code review required (protocol section 18 gate 4)")
+        if st == UNKNOWN:
+            return Gate(5, "review", UNKNOWN, detail)
     if comments is None:
         return Gate(5, "review", UNKNOWN, "comments not readable")
     if not c.diff_sha:
@@ -482,14 +689,29 @@ def _gate_forbidden(c: _Ctx) -> Gate:
                 ("launcher/credential/media file(s): " + ", ".join(bad[:5])) if bad else "none added or modified")
 
 
-def evaluate(pr: int, gh: Callable, git: Callable, base: str = "main") -> Tuple[List[Gate], Dict[str, Any]]:
+def _gate_reserved(c: _Ctx, override: str) -> Gate:
+    hit = []
+    for f in c.files:
+        low = f.lower()
+        if (f in _RESERVED_FILES or low.startswith(_RESERVED_DIRS) or low.rsplit("/", 1)[-1] in _FORBIDDEN_NAMES):
+            hit.append(f)
+    if not hit:
+        return Gate(8, "reserved", PASS, "no governance, CI, hook or launcher path changed")
+    if override:
+        return Gate(8, "reserved", PASS, f"{len(hit)} reserved path(s) changed; lukas-direct-word: {override}")
+    return Gate(8, "reserved", FAIL, f"{len(hit)} reserved path(s): " + ", ".join(hit[:4]) +
+                " (needs --lukas-direct-word <comment URL>)")
+
+
+def evaluate(pr: int, gh: Callable, git: Callable, base: str = "main",
+             lukas_word: str = "") -> Tuple[List[Gate], Dict[str, Any]]:
     """Evaluate all seven gates. Never raises: any failure turns the affected gate into UNKNOWN."""
     info: Dict[str, Any] = {"head": "", "diff_sha": "", "comments": None}
     try:
         view = _pr_view(gh, pr)
     except Exception as e:
         return [Gate(i, nm, UNKNOWN, _clean(f"cannot read PR: {e}")) for i, nm in enumerate(
-            ("pr_state", "checks", "merge_state", "scope", "review", "secrets", "forbidden_files"), 1)], info
+            ("pr_state", "checks", "merge_state", "scope", "review", "secrets", "forbidden_files", "reserved"), 1)], info
     ctx = _Ctx(pr=view, base=base)
     info["head"] = str(view.get("headRefOid") or "")
     gates: List[Gate] = []
@@ -510,7 +732,8 @@ def evaluate(pr: int, gh: Callable, git: Callable, base: str = "main") -> Tuple[
     info["diff_sha"] = ctx.diff_sha
     owners: List[str] = []
     if ctx.git_error:
-        for num, name in ((4, "scope"), (5, "review"), (6, "secrets"), (7, "forbidden_files")):
+        for num, name in ((4, "scope"), (5, "review"), (6, "secrets"), (7, "forbidden_files"),
+                          (8, "reserved")):
             gates.append(Gate(num, name, UNKNOWN, ctx.git_error))
         return gates, info
     gates.append(safe(4, "scope", lambda: _gate_scope(ctx, git, owners)))
@@ -519,9 +742,10 @@ def evaluate(pr: int, gh: Callable, git: Callable, base: str = "main") -> Tuple[
     except Exception:
         comments = None
     info["comments"] = comments
-    gates.append(safe(5, "review", lambda: _gate_review(ctx, comments, owners, pr)))
+    gates.append(safe(5, "review", lambda: _gate_review(ctx, git, comments, owners, pr)))
     gates.append(safe(6, "secrets", lambda: _gate_secrets(ctx)))
     gates.append(safe(7, "forbidden_files", lambda: _gate_forbidden(ctx)))
+    gates.append(safe(8, "reserved", lambda: _gate_reserved(ctx, lukas_word)))
     return gates, info
 
 
@@ -543,7 +767,9 @@ def _post_comment(gh: Callable, res: Result, comments: Optional[List[Dict[str, A
             and not res.note.startswith("merge"):
         return False  # identical refusal already recorded for this head
     body = "\n".join([marker, f"**dev-integrate** PR #{res.pr}: **{result}**" +
-                      (f" ({_clean(res.note)})" if res.note else ""), "", render_table(res.gates)])
+                      (f" ({_clean(res.note)})" if res.note else ""),
+                      *([f"lukas-direct-word: {_clean(res.override)}"] if res.override else []), "",
+                      render_table(res.gates)])
     rc, _ = gh(["pr", "comment", str(res.pr), "--body-file", "-"], body)
     return rc == 0
 
@@ -556,9 +782,12 @@ def _record_event(store: Any, res: Result) -> None:
 
 def integrate(pr: int, *, yes: bool = False, base: str = "main", gh: Callable, git: Callable,
               state_dir: Optional[os.PathLike] = None, lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
-              clock: Callable[[], float] = time.time) -> Result:
-    gates, info = evaluate(pr, gh, git, base)
-    res = Result(pr=pr, head=info["head"], gates=gates, diff_sha=info["diff_sha"])
+              clock: Callable[[], float] = time.time, lukas_word: str = "",
+              pid_alive: Optional[Callable[[int], bool]] = None) -> Result:
+    if lukas_word and not _LUKAS_WORD_RE.match(lukas_word):
+        raise ValueError("--lukas-direct-word must be a GitHub issue or pull request comment URL")
+    gates, info = evaluate(pr, gh, git, base, lukas_word)
+    res = Result(pr=pr, head=info["head"], gates=gates, diff_sha=info["diff_sha"], override=lukas_word)
     if not yes:
         res.note = "dry run: nothing changed"
         return res
@@ -569,7 +798,7 @@ def integrate(pr: int, *, yes: bool = False, base: str = "main", gh: Callable, g
         _safe(lambda: _post_comment(gh, res, info["comments"]))
         _record_event(store, res)
         return res
-    lock = IntegrationLock(store.directory, lock_timeout, clock)
+    lock = IntegrationLock(store.directory, lock_timeout, clock, pid_alive)
     try:
         lock.acquire(pr)
     except LockHeld as e:
@@ -577,14 +806,21 @@ def integrate(pr: int, *, yes: bool = False, base: str = "main", gh: Callable, g
         return res
     try:
         # final gate evaluation under the lock
-        gates, info = evaluate(pr, gh, git, base)
+        gates, info = evaluate(pr, gh, git, base, lukas_word)
         res.gates, res.diff_sha = gates, info["diff_sha"]
+        try:
+            lock.heartbeat()
+        except LockHeld:
+            res.outcome, res.note = "REFUSED", "integration lock lost before merge"
+            _safe(lambda: _post_comment(gh, res, info["comments"]))
+            _record_event(store, res)
+            return res
         if not res.all_pass or info["head"] != res.head:
             res.outcome = "REFUSED"
             res.note = "head moved before merge" if info["head"] != res.head else "gates changed before merge"
             res.head = info["head"] or res.head
         else:
-            _merge(pr, res, gh, base)
+            _merge(pr, res, gh, base, lock.heartbeat)
         _safe(lambda: _post_comment(gh, res, info["comments"]))
         _record_event(store, res)
         return res
@@ -613,13 +849,15 @@ def _read_back(gh: Callable, pr: int) -> Tuple[bool, str]:
     return False, f"state after merge is {d.get('state')}"
 
 
-def _merge(pr: int, res: Result, gh: Callable, base: str) -> None:
+def _merge(pr: int, res: Result, gh: Callable, base: str, heartbeat: Callable[[], None] = lambda: None) -> None:
     """Merge once; at most ONE retry, and only after confirming the PR is not merged and the head is unchanged."""
     cmd = ["pr", "merge", str(pr), "--merge", "--match-head-commit", res.head]
     err = ""
     for attempt in range(2):
+        heartbeat()
         rc, out = gh(cmd, None)
         if rc == 0:
+            _safe(heartbeat)
             ok, detail = _read_back(gh, pr)
             res.outcome = "MERGED" if ok else "REFUSED"
             res.note = f"merge commit {detail}" if ok else f"merge unconfirmed: {detail}"
@@ -649,13 +887,20 @@ def main(argv: Optional[Sequence[str]] = None, *, gh: Optional[Callable] = None,
     ap.add_argument("--repo", default=".", help="repository root (default: current directory)")
     ap.add_argument("--base", default="main")
     ap.add_argument("--state-dir", default=None)
+    ap.add_argument("--lukas-direct-word", default="", metavar="URL",
+                    help="URL of the issue/PR comment where Lukas directly authorised a reserved-path change "
+                         "(recorded, not verified)")
     a = ap.parse_args(argv)
+    if a.lukas_direct_word and not _LUKAS_WORD_RE.match(a.lukas_direct_word):
+        ap.error("--lukas-direct-word must be a GitHub issue or pull request comment URL")
     out = out or sys.stdout
     root = Path(a.repo)
     res = integrate(a.pr, yes=a.yes, base=a.base, gh=gh or real_gh_runner(root), git=git or real_git_runner(root),
-                    state_dir=a.state_dir)
+                    state_dir=a.state_dir, lukas_word=a.lukas_direct_word)
     print(f"PR #{res.pr} head {res.head[:12] or '?'} diff {res.diff_sha or '?'}", file=out)
     print(render_table(res.gates), file=out)
+    if res.override:
+        print(f"lukas-direct-word: {_clean(res.override)}", file=out)
     print(f"result: {res.outcome}" + (f" ({_clean(res.note)})" if res.note else ""), file=out)
     return res.exit_code
 
