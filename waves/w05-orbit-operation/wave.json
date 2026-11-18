@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "wave_id": "w05-orbit-operation",
+  "title": "Orbit operation picture, per-worker context, supervisor health/handoff, and state repair (issue #44)",
+  "integration_branch": "wave/w05-orbit-operation",
+  "base_commit": "4a1c12587425a1d44f689e254c8d79f82ac65112",
+  "created": "2026-11-18",
+  "inactivity_hours": 48,
+  "lanes": [
+    {
+      "id": "L1",
+      "task_id": "T-DEV-015",
+      "title": "Snapshot: operation picture (next items, idle reason), per-worker context, supervisor health, handoff state",
+      "owner": "claude:repository-coordinator",
+      "branch": "lane/w05-orbit-operation/L1",
+      "owned_paths": [
+        "orchestrator/dev_supervisor/snapshot.py",
+        "orchestrator/tests/test_dev_snapshot.py"
+      ],
+      "test_modules": [
+        "test_dev_snapshot.py"
+      ],
+      "acceptance_criteria": [
+        "snapshot.build_snapshot keeps its current signature working and accepts optional inputs for the new sections; Snapshot additions (top-level keys, every value an evidence dict {label, value, timestamp, source, freshness} or a list of plain records): 'operation': {'actionable': [{id, kind, priority, summary, inspect}], 'others_waiting': [...same], 'blocked': [{id, kind, summary}], 'idle_reason': evidence, 'warnings': [str], 'fingerprint': str}; 'supervisor_health': {'lock_alive': evidence, 'last_tick_at': evidence, 'last_event_kind': evidence}; 'handoff': {'latest_id': evidence, 'verified': evidence, 'created_at': evidence}; each worker record gains 'context_pressure': {'tokens','window','ratio','level'} evidences (UNAVAILABLE with reason when its transcript is not found).",
+        "The operation section comes from dev_supervisor.autonomy (read-only import of its next computation); per-worker context pressure uses telemetry.find_transcript/context_pressure for each worker's session id and cwd (worktree)",
+        "Supervisor health from the state store lock and the events log (last tick or last event time); handoff state from the newest handoff file in the state directory and its verify status if recorded",
+        "New entry point `python -B -m dev_supervisor.snapshot --out <file> [--repo <root>]` builds the FULL snapshot (telemetry, registry, events, operation, health, handoff, account usage via telemetry.RateLimitEventProvider if that class exists, else UNAVAILABLE) and writes it atomically; read-only otherwise",
+        "At least 25 new offline tests; one OBSERVED live run of the entry point against the real state (counts only)",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py or autonomy.py (claimed by open tasks or a merged lane); import them read-only",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "depends_on": [],
+      "authorizations": []
+    },
+    {
+      "id": "L2",
+      "task_id": "T-DEV-016",
+      "title": "Orbit: operation, queued work, idle reason, worker context, supervisor health and handoff views",
+      "owner": "claude:dev-orbit",
+      "branch": "lane/w05-orbit-operation/L2",
+      "owned_paths": [
+        "dashboard/desktop/",
+        "orchestrator/tests/test_dev_orbit_view.py"
+      ],
+      "test_modules": [
+        "test_dev_orbit_view.py"
+      ],
+      "acceptance_criteria": [
+        "Orbit renders the new snapshot sections (Snapshot additions (top-level keys, every value an evidence dict {label, value, timestamp, source, freshness} or a list of plain records): 'operation': {'actionable': [{id, kind, priority, summary, inspect}], 'others_waiting': [...same], 'blocked': [{id, kind, summary}], 'idle_reason': evidence, 'warnings': [str], 'fingerprint': str}; 'supervisor_health': {'lock_alive': evidence, 'last_tick_at': evidence, 'last_event_kind': evidence}; 'handoff': {'latest_id': evidence, 'verified': evidence, 'created_at': evidence}; each worker record gains 'context_pressure': {'tokens','window','ratio','level'} evidences (UNAVAILABLE with reason when its transcript is not found).): 'Next actions for Main' (actionable, ordered), 'Waiting on others' (informational), 'Blocked', an explicit idle reason line, warnings, per-worker context pressure, supervisor health and handoff state; a missing section renders as unavailable with a reason, never as an empty success",
+        "A worker that is only registered (status ASSIGNED) is never shown as active; a blocked task is never shown as running",
+        "Every value keeps its data-quality badge (live/cached/stale/estimated/unavailable); Orbit stays read-only; no renames of released artifacts",
+        "Node tests with fixtures for each section and the missing-section case; test_dev_orbit_view.py extended to render the Python-built fixture from L1 after merging origin/wave/w05-orbit-operation",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py or autonomy.py (claimed by open tasks or a merged lane); import them read-only",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "depends_on": [
+        "L1"
+      ],
+      "authorizations": []
+    },
+    {
+      "id": "L3",
+      "task_id": "T-DEV-017",
+      "title": "Supervisor state repair: retire stale authoritative Main records",
+      "owner": "claude:repository-coordinator",
+      "branch": "lane/w05-orbit-operation/L3",
+      "owned_paths": [
+        "orchestrator/dev_supervisor/repair.py",
+        "orchestrator/tests/test_dev_repair.py"
+      ],
+      "test_modules": [
+        "test_dev_repair.py"
+      ],
+      "acceptance_criteria": [
+        "New module dev_supervisor/repair.py with CLI `python -B -m dev_supervisor.repair [--yes]`: finds sessions-document records with role main, authoritative true, status ACTIVE/RETIRING that are NOT main.json's RUNNING session and whose process is not alive (pid from the record or ~/.claude/sessions files via telemetry.read_sessions, liveness probe injectable) and proposes retiring them (authoritative false, status RETIRED_STALE, note with reason and time)",
+        "Dry run by default prints the plan; --yes applies it through StateStore atomic writes (backup kept), appends a 'state_repaired' event, and refuses when the supervisor lock is held by a live process unless --allow-while-running is given (then it only edits the sessions document, never main.json); never touches a session that is alive or is main.json's session; never deletes records",
+        "At least 20 offline tests (stale vs alive vs current, lock held, corrupt document, idempotent re-run); one OBSERVED live DRY RUN against the real state (ids shortened to 8 chars); do not run --yes on the real state (Main decides)",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py or autonomy.py (claimed by open tasks or a merged lane); import them read-only",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "depends_on": [],
+      "authorizations": []
+    }
+  ]
+}

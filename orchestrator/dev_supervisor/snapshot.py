@@ -11,6 +11,9 @@ Every value is a field `{label, value, timestamp, source, freshness, age_seconds
   (UNAVAILABLE: no source answered). Stale and offline are first-class: a missing source is never an empty success.
 - Account usage is exposed only when every usage field is labelled OBSERVED. Anything else (including a REPORTED
   statusline payload) becomes UNAVAILABLE with the reason.
+Operation picture (T-DEV-015): `operation` (what Main should do next, from autonomy.compute_items), `supervisor_health`
+(lock, last tick/event), `handoff` (newest handoff and its recorded verification) and a per-worker `context_pressure`.
+`python -B -m dev_supervisor.snapshot --out FILE` builds the full snapshot from the real state, read-only.
 No prompts, transcript text or file contents are ever included: only identifiers, counts, labels and timestamps.
 Stdlib only. No network.
 """
@@ -22,6 +25,7 @@ import os
 import sys
 import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from .evidence import Evidence, Label, now_iso, parse_ts, unavailable
@@ -239,10 +243,16 @@ def build_snapshot(telemetry: Optional[Mapping] = None, registry=None, events: O
                    *, main_session_id: Optional[str] = None, branch_pr: Optional[Mapping] = None,
                    checkpoint: Optional[Evidence] = None, now: Optional[datetime] = None,
                    live_after_seconds: float = LIVE_AFTER_SECONDS,
-                   stale_after_seconds: float = STALE_AFTER_SECONDS) -> Dict[str, Any]:
+                   stale_after_seconds: float = STALE_AFTER_SECONDS, operation: Optional[Mapping] = None,
+                   health: Optional[Mapping] = None, handoff: Optional[Mapping] = None,
+                   worker_context: Optional[Mapping[str, Mapping]] = None) -> Dict[str, Any]:
     """Build the Orbit snapshot. Pure: reads its arguments only. `telemetry` is the dict from
     `dev_supervisor.telemetry.snapshot()`; `registry` a `WorkerRegistry`; `events` the supervisor event list;
-    `branch_pr` an optional {"branch": Evidence, "pr": Evidence} supplied by a caller that really observed them."""
+    `branch_pr` an optional {"branch": Evidence, "pr": Evidence} supplied by a caller that really observed them.
+    New optional inputs (a missing one yields an explicit UNAVAILABLE section, never an empty success):
+    `operation` = the dict from `autonomy.compute_items`; `health` = {lock_alive, last_tick_at, last_event_kind}
+    of Evidence; `handoff` = {latest_id, verified, created_at} of Evidence; `worker_context` = worker_id ->
+    {tokens, window, ratio, level} of Evidence."""
     kw = {"live_after": live_after_seconds, "stale_after": stale_after_seconds}
     n = _now(now)
     events = list(events or [])
@@ -279,8 +289,211 @@ def build_snapshot(telemetry: Optional[Mapping] = None, registry=None, events: O
     snap["pull_request"] = field(bp["pr"], now=n, **kw) if bp.get("pr") is not None else \
         _unavail("pull request not observed", "github", n, **kw)
     snap["last_github_checkpoint"] = _checkpoint(events, checkpoint, n, kw)
+    for w in snap["workers"]:
+        w["context_pressure"] = _worker_pressure((worker_context or {}).get(w["worker_id"]), n, kw)
+    snap["operation"] = _operation(operation, n, kw)
+    snap["supervisor_health"] = _group(health, HEALTH_KEYS, "supervisor health not supplied", "state_store", n, kw)
+    snap["handoff"] = _group(handoff, HANDOFF_KEYS, "handoff state not supplied", "handoff", n, kw)
     snap["overall_freshness"] = _worst(_walk_fields(snap))
     return json.loads(json.dumps(snap, default=str))
+
+
+# ---------------------------------------------------------------------------------------------- operation sections
+
+HEALTH_KEYS = ("lock_alive", "last_tick_at", "last_event_kind")
+HANDOFF_KEYS = ("latest_id", "verified", "created_at")
+PRESSURE_KEYS = ("tokens", "window", "ratio", "level")
+DEFAULT_INSPECT = "python -B -m dev_supervisor.autonomy next"
+TICK_KINDS = ("tick", "supervisor_tick", "supervisor_heartbeat", "heartbeat")
+
+
+def _group(src: Optional[Mapping], keys, why: str, source: str, now, kw) -> Dict[str, Any]:
+    src = src or {}
+    return {k: field(src[k], now=now, cached=True, **kw) if src.get(k) is not None else
+            _unavail(why, source, now, **kw) for k in keys}
+
+
+def _worker_pressure(ctx: Optional[Mapping], now, kw) -> Dict[str, Any]:
+    return {k: field(ctx[k], now=now, **kw) if ctx and ctx.get(k) is not None else
+            _unavail("context pressure not measured for this worker", "telemetry", now, **kw)
+            for k in PRESSURE_KEYS}
+
+
+def _op_record(i: Mapping, actionable: bool) -> Dict[str, Any]:
+    rec = {"id": str(i.get("id", "")), "kind": str(i.get("kind", ""))}
+    if actionable:
+        rec["priority"] = i.get("priority", 99)
+        rec["summary"] = str(i.get("reason") or i.get("summary") or "")
+        rec["inspect"] = str(i.get("inspect") or DEFAULT_INSPECT)
+    else:
+        rec["summary"] = str(i.get("blocker") or i.get("reason") or i.get("summary") or "")
+    return rec
+
+
+def _operation(op: Optional[Mapping], now, kw) -> Dict[str, Any]:
+    if op is None:
+        return {"actionable": [], "others_waiting": [], "blocked": [],
+                "idle_reason": _unavail("operation picture not computed", "autonomy", now, **kw),
+                "warnings": ["operation picture not supplied: Main's next items are unknown"], "fingerprint": ""}
+    items = [_op_record(i, True) for i in op.get("items") or [] if isinstance(i, Mapping)]
+    others = [_op_record(i, True) for i in op.get("others_waiting_review") or [] if isinstance(i, Mapping)]
+    blocked = [_op_record(i, False) for i in op.get("blocked") or [] if isinstance(i, Mapping)]
+    if items:
+        idle = _unavail("not idle: %d actionable item(s)" % len(items), "autonomy", now, **kw)
+    elif op.get("idle_reason"):
+        idle = field(_ev(Label.OBSERVED, str(op["idle_reason"]), "autonomy.compute_items", now.isoformat()),
+                     now=now, **kw)
+    else:
+        idle = _unavail("no idle reason computed", "autonomy", now, **kw)
+    return {"actionable": items, "others_waiting": others, "blocked": blocked, "idle_reason": idle,
+            "warnings": [str(w) for w in op.get("warnings") or []], "fingerprint": str(op.get("fingerprint") or "")}
+
+
+def health_from_store(store, events: List[Mapping], now: datetime, pid_alive=None) -> Dict[str, Evidence]:
+    """Supervisor health from the lock file (read, never acquired) and the event log."""
+    from . import telemetry as tl
+    from .state_store import LOCK_FILE, fs_path
+    ts = now.isoformat()
+    out: Dict[str, Any] = {}
+    held = None
+    try:
+        with open(fs_path(store.directory / LOCK_FILE), "r", encoding="utf-8") as fh:
+            held = json.load(fh)
+    except FileNotFoundError:
+        out["lock_alive"] = _ev(Label.OBSERVED, False, "supervisor.lock (absent)", ts)
+    except (OSError, ValueError):
+        out["lock_alive"] = unavailable("supervisor.lock unreadable", "supervisor.lock", ts)
+    if held is not None:
+        pid = held.get("pid") if isinstance(held, dict) else None
+        if isinstance(pid, int) and not isinstance(pid, bool):
+            try:
+                alive = bool((pid_alive or tl.default_pid_alive)(pid))
+                out["lock_alive"] = _ev(Label.OBSERVED, alive, "supervisor.lock pid %d" % pid, ts)
+            except Exception:  # noqa: BLE001
+                out["lock_alive"] = unavailable("pid liveness check failed", "supervisor.lock", ts)
+        else:
+            out["lock_alive"] = unavailable("lock file has no pid", "supervisor.lock", ts)
+    ticks = [e for e in events if e.get("kind") in TICK_KINDS and e.get("ts")]
+    if ticks:
+        out["last_tick_at"] = _ev(Label.OBSERVED, ticks[-1]["ts"], "event_log:" + ticks[-1]["kind"], ticks[-1]["ts"])
+    elif events and events[-1].get("ts"):
+        out["last_tick_at"] = _ev(Label.INFERRED, events[-1]["ts"], "event_log:last event (no tick event recorded)",
+                                  events[-1]["ts"])
+    else:
+        out["last_tick_at"] = unavailable("no events recorded", "event_log", ts)
+    if events and events[-1].get("kind"):
+        out["last_event_kind"] = _ev(Label.OBSERVED, events[-1]["kind"], "event_log", events[-1].get("ts", ""))
+    else:
+        out["last_event_kind"] = unavailable("no events recorded", "event_log", ts)
+    return out
+
+
+def handoff_from_store(store, events: List[Mapping], now: datetime) -> Dict[str, Evidence]:
+    """Newest handoff file in the state directory and its recorded verification (events), read-only."""
+    ts = now.isoformat()
+    files = []
+    try:
+        files = [p for p in (store.directory / "handoffs").glob("*.json") if p.is_file()]
+    except OSError:
+        pass
+    if not files:
+        r = "no handoff file in the state directory"
+        return {k: unavailable(r, "handoffs", ts) for k in HANDOFF_KEYS}
+    newest = max(files, key=lambda p: (p.stat().st_mtime, p.name))
+    hid = newest.stem
+    src = "handoffs/" + newest.name
+    out: Dict[str, Any] = {"latest_id": _ev(Label.OBSERVED, hid, src, ts)}
+    created = None
+    try:
+        doc = json.loads(newest.read_text(encoding="utf-8"))
+        created = (doc.get("handoff") or {}).get("created_at")
+    except (OSError, ValueError, AttributeError):
+        pass
+    out["created_at"] = _ev(Label.OBSERVED, created, src, created) if created else \
+        unavailable("handoff file unreadable or has no created_at", "handoffs", ts)
+    ver = [e for e in events if e.get("kind") in ("handoff_verified", "handoff_not_safe")
+           and (e.get("data") or {}).get("handoff_id") == hid]
+    if ver:
+        out["verified"] = _ev(Label.REPORTED, ver[-1]["kind"] == "handoff_verified", "event_log:" + ver[-1]["kind"],
+                              ver[-1].get("ts", ""))
+    else:
+        out["verified"] = unavailable("no verification recorded for this handoff", "event_log", ts)
+    return out
+
+
+def worker_contexts(registry, projects_dir, config=None) -> Dict[str, Dict[str, Evidence]]:
+    """Per-worker context pressure from each worker's own transcript (session id + worktree)."""
+    from . import telemetry as tl
+    out: Dict[str, Dict[str, Evidence]] = {}
+    for w in registry.list():
+        why, path = None, None
+        if not w.session_id:
+            why = "worker has no session id recorded"
+        elif not projects_dir:
+            why = "no Claude projects directory"
+        else:
+            path = tl.find_transcript(projects_dir, w.session_id, w.worktree)
+            if path is None:
+                why = "transcript not found for the worker session"
+        if why:
+            r = unavailable(why, "transcript", now_iso())
+            out[w.worker_id] = {k: r for k in PRESSURE_KEYS}
+        else:
+            ctx = tl.context_pressure(path, config)
+            out[w.worker_id] = {k: ctx[k] for k in PRESSURE_KEYS}
+    return out
+
+
+def build_full_snapshot(state_dir=None, repo=None, sessions_dir=None, projects_dir=None, config_path=None,
+                        now: Optional[datetime] = None, git=None, env=None, pid_alive=None) -> Dict[str, Any]:
+    """Everything, read-only: telemetry, registry, events, operation, health, handoff, account usage."""
+    from . import autonomy, config as config_mod, telemetry as tl
+    from .state_store import StateStore, find_git_root
+    from .workers import WorkerRegistry
+    n = _now(now)
+    cfg = config_mod.load(config_path, env)
+    root = Path(repo) if repo else (cfg.repository_root() or find_git_root(Path(__file__).resolve().parent))
+    sessions = Path(sessions_dir) if sessions_dir else cfg.sessions_directory()
+    projects = Path(projects_dir) if projects_dir else cfg.projects_directory()
+    provider = None
+    cls = getattr(tl, "RateLimitEventProvider", None)      # may not exist yet: account usage is then UNAVAILABLE
+    if cls is not None:
+        try:
+            provider = cls()
+        except Exception:  # noqa: BLE001
+            provider = None
+    kw = {} if pid_alive is None else {"pid_alive": pid_alive}
+    tele = tl.snapshot(sessions, projects, usage_provider=provider, now=n, **kw)
+    store, reg, events = None, None, []
+    try:
+        directory = Path(state_dir) if state_dir else cfg.state_directory(env)
+        store = StateStore(directory, repo_roots=[root] if root else [], create=False)
+        if store.directory.is_dir():
+            reg = WorkerRegistry(store)
+            events, _bad = store.read_events()
+        else:
+            store = None
+    except Exception:  # noqa: BLE001
+        store, reg = None, None
+    op = None
+    if root is not None:
+        try:
+            op = autonomy.compute_items(Path(root), store, git)
+        except Exception as e:  # noqa: BLE001
+            op = {"items": [], "blocked": [], "others_waiting_review": [], "fingerprint": "",
+                  "warnings": ["operation picture failed (%s)" % e.__class__.__name__]}
+    health = handoff = wctx = main_id = None
+    if store is not None:
+        health = health_from_store(store, events, n, pid_alive)
+        handoff = handoff_from_store(store, events, n)
+        try:
+            main_id = autonomy.authoritative_main(store)
+        except Exception:  # noqa: BLE001
+            main_id = None
+        if reg is not None:
+            wctx = worker_contexts(reg, projects, None)
+    return build_snapshot(tele, reg, events, main_session_id=main_id, now=n, operation=op, health=health,
+                          handoff=handoff, worker_context=wctx)
 
 
 def load_inputs(directory=None, sessions_dir=None, projects_dir=None, now=None):
@@ -319,14 +532,15 @@ def write_snapshot(snap: Mapping, path) -> None:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Write the read-only Orbit snapshot JSON.")
+    ap = argparse.ArgumentParser(description="Write the read-only Orbit snapshot JSON (full picture).")
     ap.add_argument("--out", required=True, help="where to write the snapshot JSON")
+    ap.add_argument("--repo", default=None, help="repository root (default: from config or this checkout)")
     ap.add_argument("--state-dir", default=None, help="supervisor state directory (read only)")
     ap.add_argument("--sessions-dir", default=None, help="Claude session files directory (read only)")
     ap.add_argument("--projects-dir", default=None, help="Claude transcripts directory (read only)")
+    ap.add_argument("--config", default=None, help="supervisor config file")
     a = ap.parse_args(argv)
-    tele, reg, events = load_inputs(a.state_dir, a.sessions_dir, a.projects_dir)
-    snap = build_snapshot(tele, reg, events)
+    snap = build_full_snapshot(a.state_dir, a.repo, a.sessions_dir, a.projects_dir, a.config)
     write_snapshot(snap, a.out)
     print("snapshot written; overall freshness: %s" % snap["overall_freshness"])
     return 0
