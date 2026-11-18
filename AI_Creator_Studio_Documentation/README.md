@@ -36,6 +36,8 @@ This folder contains the project’s central specification and focused subsystem
 | `ROADMAP.md` | Phased implementation plan and current status |
 | `DECISIONS_AND_OPEN_QUESTIONS.md` | Decision log, verified facts, uncertainties and questions |
 
+Development infrastructure is documented separately from the video-production pack: the reusable development operating system guide (Main, workers, supervisor, Orbit, GitHub log) is DEVELOPMENT_OPERATING_SYSTEM.md in the repository root, added by wave w03-dev-supervisor (issue #44). It describes the agents that build this repository, not the agents that produce videos.
+
 ## Status language
 
 - **VERIFIED** — directly tested or explicitly confirmed in the project conversation.
