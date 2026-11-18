@@ -40,6 +40,11 @@ test('orbit: a purely live snapshot reports live', () => {
   const v = orbit.evaluate(r, sec(5));
   assert.equal(v.state, 'cached');                          // the unavailable account usage keeps it from claiming "live"
   r.account_usage = { provider: 'p', usage: { five_hour_used_percentage: { label: 'OBSERVED', value: 1, timestamp: r.generated_at, source: 't', freshness: 'live' } } };
+  assert.equal(orbit.evaluate(r, sec(5)).state, 'cached');  // changed in w05: the new operation/health/handoff sections are absent, so they are unavailable
+  const lv = { label: 'OBSERVED', value: 'x', timestamp: r.generated_at, source: 't', freshness: 'live' };
+  r.operation = { actionable: [], others_waiting: [], blocked: [], idle_reason: lv, warnings: [], fingerprint: 'f' };
+  r.supervisor_health = { lock_alive: lv, last_tick_at: lv, last_event_kind: lv };
+  r.handoff = { latest_id: lv, verified: lv, created_at: lv };
   assert.equal(orbit.evaluate(r, sec(5)).state, 'live');
 });
 
