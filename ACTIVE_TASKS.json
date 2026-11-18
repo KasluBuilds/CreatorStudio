@@ -1340,6 +1340,8 @@
         "orchestrator/tests/test_dev_cli.py",
         "orchestrator/tests/test_dev_provider_env.py",
         "orchestrator/tests/test_dev_telemetry.py",
+        "orchestrator/tests/test_dev_acceptance.py",
+        "orchestrator/dev_supervisor/acceptance.py",
         "DEVELOPMENT_OPERATING_SYSTEM.md",
         "ACTIVE_TASKS.json",
         "DEVELOPMENT_TRACKER.json",
@@ -1360,7 +1362,7 @@
         "cd orchestrator && python -B -m governance scope --base origin/main",
         "python -B dashboard/tracker_check.py --against origin/main"
       ],
-      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges."
+      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges. 2026-11-18: scope extended to orchestrator/dev_supervisor/acceptance.py and its test, because the 1M Claude 5 context windows in PR #59 leave the acceptance harness's fixed 200K-sized pressure simulation below the compact threshold (CI failure on the refreshed #59 head); the simulation is scaled to the model's configured window."
     },
     {
       "id": "T-DEV-012",
