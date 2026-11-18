@@ -2580,6 +2580,38 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-DEV-023",
+      "title": "dev_supervisor: acceptance harness pressure simulation scaled to the configured context window (issue #44)",
+      "steps": [
+        {
+          "id": "S-DEV-023-00",
+          "title": "Step 0: claim",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-DEV-023 is registered as ACTIVE with owned paths and acceptance criteria; no other task's record is edited",
+            "Governance validate, handoff check and tracker check pass"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change. Replaces closed PR #79, which the merge gate refused for editing T-DEV-011 from a foreign branch."
+            }
+          ]
+        },
+        {
+          "id": "S-DEV-023-01",
+          "title": "Step 1: implementation on task/t-dev-023-acceptance-window",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Simulation scaled to the configured window",
+            "test_dev_acceptance passes at 200K and 1M",
+            "Full suite passes"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }
