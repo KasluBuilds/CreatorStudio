@@ -572,7 +572,10 @@ class Scenario:
         return f"{T1} COMPLETED; next={starts[0]}; no human input"
 
     def _s_pressure(self) -> str:
-        tokens = (1_000, 5_000, 4_000) if "pressure_low" in self.inject else (6_000, 170_000, 10_000)
+        # Sized relative to the model's configured window (5% low, 93% high) so the simulation tracks the table.
+        win = telemetry.PressureConfig().window_for(MAIN_MODEL) or 200_000
+        frac = (0.005, 0.025, 0.02) if "pressure_low" in self.inject else (0.03, 0.85, 0.05)
+        tokens = tuple(int(win * f) for f in frac)
         rec = {"type": "assistant", "message": {"role": "assistant", "model": MAIN_MODEL, "content": [],
                                                 "usage": {"input_tokens": tokens[0],
                                                           "cache_read_input_tokens": tokens[1],
