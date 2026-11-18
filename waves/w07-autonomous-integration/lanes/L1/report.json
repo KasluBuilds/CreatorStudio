@@ -1,0 +1,41 @@
+{
+  "lane": "L1",
+  "status": "DONE",
+  "summary": "Added dev_supervisor/integrate.py: CLI that evaluates seven merge gates (pr_state, checks, merge_state, scope, review, secrets, forbidden_files) with injected gh/git runners and prints a gate table. Dry run by default; with --yes and all PASS it takes an exclusive O_EXCL lock file in the supervisor state dir, re-evaluates under the lock, merges with gh pr merge --merge --match-head-commit, reads back MERGED, posts one dev-integrate v1 PR comment and appends a supervisor event. Never admin/force; at most one retry after confirming head unchanged. 86 offline tests. A minimal review-marker parser and diff hash live inside integrate.py (PROPOSED: replace with dev_supervisor.review from lane L2). OBSERVED: one live dry run on PR #60 (gate table only). NOT TESTED: a real --yes merge, a real review comment against live GitHub, wave/ PR scope against a real wave PR. Follow-up: registry-only non-wave PRs now PASS the review gate (protocol section 18 gate 4); wave PRs and PRs with any non-registry file still need review.",
+  "commands": [
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_integrate.py",
+      "result": "Ran 86 tests: OK"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+      "result": "Ran 904 tests: OK"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+      "result": "Ran 2438 tests: OK (skipped=2)"
+    },
+    {
+      "command": "cd orchestrator && python -B -m dev_supervisor.integrate 60 --repo ..",
+      "result": "OBSERVED dry run PR #60: pr_state PASS, checks PASS, merge_state FAIL (BEHIND), scope FAIL (no registered task), review FAIL (no APPROVE marker), secrets PASS, forbidden_files PASS; exit 1, nothing changed"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_integrate.py",
+      "result": "Ran 89 tests: OK"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+      "result": "Ran 907 tests: OK"
+    },
+    {
+      "command": "cd orchestrator && python -B -m dev_supervisor.integrate 61 --repo ..",
+      "result": "OBSERVED dry run PR #61: all 7 gates PASS, result DRY_RUN"
+    }
+  ],
+  "unresolved": [
+    "Review gate trusts comments only from author_association OWNER/MEMBER/COLLABORATOR; reviewer id independence is by recorded id, since all workers share one GitHub account.",
+    "Lock takeover of a stale lock has a documented tiny race; O_EXCL create still admits one holder.",
+    "Wave PRs need a dev-review marker like other code PRs; no wave-close-evidence path implemented."
+  ],
+  "changelog": "T-DEV-021: dev_supervisor.integrate autonomous merge gate with seven gates, serialization lock, match-head-commit merge and read-back (86 offline tests)."
+}
