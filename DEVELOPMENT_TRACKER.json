@@ -1746,6 +1746,342 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-DEV-013",
+      "title": "Autonomy loop: task selection, wake-up wait and Main Stop hook (issue #44, mission part 2-4)",
+      "steps": [
+        {
+          "id": "S-DEV-013-00",
+          "title": "Lane L1 of wave w04-autonomy-loop",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module orchestrator/dev_supervisor/autonomy.py with its own CLI `python -B -m dev_supervisor.autonomy <cmd>` (do NOT edit cli.py, launch.py, telemetry.py or any other existing module: they are claimed by open tasks T-DEV-010..012); standard library only; reuse existing modules read-only (state_store.StateStore, workers.WorkerRegistry, config.Config loading as cli.py does, evidence labels)",
+            "`next [--json] [--repo <root>]`: builds the actionable list for Main from the repository records and the supervisor state, ordered by priority with a reason each: (a) worker results that are REPORTED and not yet verified (review_worker_result); (b) FAILED or LOST workers and whether a retry is eligible or blocked (bounded restarts, identical-failure stop); (c) wave lanes SUBMITTED but not verified, read from waves/*/wave.json plus `git` remote branch state via an injected runner; (d) registered tasks in ACTIVE_TASKS.json / DEVELOPMENT_TRACKER.json that are eligible: PLANNED or the next PLANNED step of an ACTIVE task whose dependencies are COMPLETED and whose owned_paths do not overlap another ACTIVE task; (e) blocked items with the exact blocker (dependency, lease held by another task, missing merge). When nothing is actionable it returns an explicit idle_reason (for example 'waiting for 2 running workers' or 'no eligible task: T-X waits for T-Y'). Never invents work; repository files win over supervisor cache",
+            "`wait --timeout <s> [--poll <s>] [--cursor <file>]`: blocks until the actionable fingerprint changes or a new supervisor event (events.jsonl beyond a stored cursor) of kind worker_* / main_* / replacement arrives, prints a short JSON summary of what changed, exit 0 on change and exit 3 on timeout; meant to be run by Main as a background command so its exit re-invokes Main; bounded, low CPU, tolerant of missing/corrupt state",
+            "`stop-hook`: implements the Claude Code Stop hook contract: reads the hook JSON from stdin (session_id, stop_hook_active, ...); only for the authoritative Main session id recorded in the supervisor state (any other session: allow, no output); if actionable items exist that Main has not yet been told about (fingerprint stored in the state directory), print {\"decision\": \"block\", \"reason\": \"<one line naming the next item and the command to inspect it>\"}; if stop_hook_active is true and the fingerprint is unchanged, allow; at most a configurable number of consecutive blocks (default 3) before allowing; any internal error fails OPEN (allow, exit 0) and is logged to the state directory; reasons never contain secrets or transcript text",
+            "`main-settings --out <file> [--python <exe>] [--orchestrator <dir>]`: writes a Claude Code settings JSON containing only a hooks.Stop entry that runs the stop-hook command (argument-safe quoting on Windows), for use with `claude --settings <file>`; it never edits ~/.claude, the repository's .claude/ or any launcher; wiring it into launch.py is a later task (record that as PROPOSED)",
+            "At least 40 offline tests with temp state directories, synthetic ACTIVE_TASKS/TRACKER/wave manifests, a fake git runner and a fake clock (eligibility rules, dependency and overlap blocking, idle reasons, wait change/timeout, stop-hook block/allow/loop-bound/fail-open/other-session, settings file shape)",
+            "One OBSERVED live dry run of `next --json` against this repository and the real machine-local supervisor state directory, reported as counts and task ids only",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only (never prompts, transcript text or file contents), labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "7c3fce9fc2a8cbc212a63c0bdf045cda4240b104"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w04-autonomy-loop",
+              "commit": "7c3fce9fc2a8cbc212a63c0bdf045cda4240b104"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_autonomy.py",
+              "result": "Ran 104 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+              "result": "Ran 648 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests (before fix rounds 2-3)",
+              "result": "Ran 2163 tests in 369s: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.autonomy next --json --repo <this worktree>",
+              "result": "OBSERVED: items 1 (verify_wave w04-autonomy-loop L1,L2), others_waiting 2, blocked 0, warnings 1 (multiple authoritative Main sessions, 2 short ids)"
+            },
+            {
+              "type": "observation",
+              "summary": "Added orchestrator/dev_supervisor/autonomy.py (stdlib only) with next, wait, stop-hook and main-settings, plus 89 offline tests. IMPLEMENTED and TESTED offline with synthetic registries, a fake git runner and a fake clock: eligibility (PLANNED, dependencies COMPLETED/RELEASED, owned-path overlap with ACTIVE/UNDER_REVIEW tasks ignoring shared_files), tracker steps, worker results and failures with retry eligibility, submitted-but-unmerged waves, idle reasons, wait change/timeout, Stop hook block/allow/loop-bound/fail-open/other-session, settings shape. OBSERVED once: next --json against this checkout and the real machine-local state returned 3 items (2 review_step, 1 verify_wave), 0 blocked, 0 warnings, state directory unchanged. NOT TESTED: a real Claude Code session invoking the hook, wait run as a real background command, hook run through claude --settings. Wiring main-settings into launch.py is PROPOSED (later task). Known limit: a wave merged by squash is not an ancestor of origin/main, so it can be listed as verify_wave until its remote branch is deleted. Fix round 2 (Main's live findings): review_step and start_step items are actionable only for tasks owned by --owner (default claude:repository-coordinator); other owners' steps are listed in others_waiting_review, outside the fingerprint, and never make stop-hook block. A wave is closed (never verify_wave) when all its lanes' task ids are COMPLETED/RELEASED in ACTIVE_TASKS.json (what governance wave close writes, per closeout_records) or its manifest records a closed state; ancestry is no longer the only signal. Fix round 3: authoritative_main() now prefers the session equal to main.json's session_id while RUNNING when it is among the authoritative ACTIVE/RETIRING sessions, else the single candidate, else None (fail open); next always warns 'multiple authoritative Main sessions: <short ids>' when several exist. OBSERVED live: that warning appears against the real state (two short ids)."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (648 dev tests OK, 99 node tests OK) and live checks; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-014",
+      "title": "Orbit: readable usage windows and explicit data-quality labels (issue #44, mission part 7)",
+      "steps": [
+        {
+          "id": "S-DEV-014-00",
+          "title": "Lane L2 of wave w04-autonomy-loop",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Orbit account-usage section (dashboard/desktop/src/orbit.js and its UI) shows the known keys produced by the supervisor's rate_limit_event provider in plain language: '5-hour window: used' -> '21%'; '5-hour window: resets' -> the UTC time plus a relative phrase ('in 1 h 3 min', or 'window already reset' when the time is past); the same for the 7-day window; 'rate-limit status'; unknown keys keep the existing generic rendering",
+            "A provenance line states the source (for example 'from the last worker run's rate_limit_event') and its age; a value whose own timestamp is older than the stale threshold is shown as stale, never as live",
+            "Every value shows one explicit data-quality badge from: live, cached, stale, estimated (label INFERRED), unavailable (with reason); REPORTED account usage stays UNAVAILABLE as today (the OBSERVED-only rule is unchanged)",
+            "Orbit stays read-only (no new write paths; the existing read-only test still passes); released artifact names, package name and ids are not renamed",
+            "Node tests (cd dashboard/desktop && node --test \"tests/*.test.js\") extended with fixtures for the new labels, resets in the future and in the past, stale values and unknown keys; existing tests updated only where the label text intentionally changes, with a note in the lane report",
+            "orchestrator/tests/test_dev_orbit_view.py runs the Orbit node tests through subprocess when node is on PATH (skips with a clear reason otherwise) and checks the Python snapshot fixture for the usage keys renders through orbit.js without leaking REPORTED values",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only (never prompts, transcript text or file contents), labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L2 head on the wave branch (last commit to its report)",
+              "commit": "a15f0c623f41a1d59d38865be785c4e3713d90bd"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w04-autonomy-loop",
+              "commit": "7c3fce9fc2a8cbc212a63c0bdf045cda4240b104"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "tests 99, pass 99, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 544 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "OK (skipped=2)"
+            },
+            {
+              "type": "observation",
+              "summary": "Orbit account-usage section now renders known rate_limit_event keys in plain language (5-hour/7-day window used and resets with a UTC time plus a relative phrase, rate-limit status), adds a provenance note (source in plain words plus age, no worker or file names), and gives every row one data-quality badge (live, cached, stale, estimated for INFERRED, unavailable with reason). OBSERVED-only rule unchanged. IMPLEMENTED and TESTED with synthetic fixtures (node tests, Python wrapper). NOT TESTED in a running Electron window; no live observation was made."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (648 dev tests OK, 99 node tests OK) and live checks; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-015",
+      "title": "Snapshot: operation picture (next items, idle reason), per-worker context, supervisor health, handoff state",
+      "steps": [
+        {
+          "id": "S-DEV-015-00",
+          "title": "Lane L1 of wave w05-orbit-operation",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "snapshot.build_snapshot keeps its current signature working and accepts optional inputs for the new sections; Snapshot additions (top-level keys, every value an evidence dict {label, value, timestamp, source, freshness} or a list of plain records): 'operation': {'actionable': [{id, kind, priority, summary, inspect}], 'others_waiting': [...same], 'blocked': [{id, kind, summary}], 'idle_reason': evidence, 'warnings': [str], 'fingerprint': str}; 'supervisor_health': {'lock_alive': evidence, 'last_tick_at': evidence, 'last_event_kind': evidence}; 'handoff': {'latest_id': evidence, 'verified': evidence, 'created_at': evidence}; each worker record gains 'context_pressure': {'tokens','window','ratio','level'} evidences (UNAVAILABLE with reason when its transcript is not found).",
+            "The operation section comes from dev_supervisor.autonomy (read-only import of its next computation); per-worker context pressure uses telemetry.find_transcript/context_pressure for each worker's session id and cwd (worktree)",
+            "Supervisor health from the state store lock and the events log (last tick or last event time); handoff state from the newest handoff file in the state directory and its verify status if recorded",
+            "New entry point `python -B -m dev_supervisor.snapshot --out <file> [--repo <root>]` builds the FULL snapshot (telemetry, registry, events, operation, health, handoff, account usage via telemetry.RateLimitEventProvider if that class exists, else UNAVAILABLE) and writes it atomically; read-only otherwise",
+            "At least 25 new offline tests; one OBSERVED live run of the entry point against the real state (counts only)",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py or autonomy.py (claimed by open tasks or a merged lane); import them read-only",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "9640bf04a7809fc116407a276eab48fc0cc930b7"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w05-orbit-operation",
+              "commit": "4c0039fa78f35192bbc23eb784f6fb154ad9c64c"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_snapshot.py",
+              "result": "Ran 53 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 689 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 2223 tests in 417.668s: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B -m dev_supervisor.snapshot --out <temp file outside repo> --repo <lane worktree>",
+              "result": "OBSERVED: wrote snapshot; actionable 0, others_waiting 2, blocked 0, workers 0, warnings 1; idle_reason OBSERVED; health labels lock_alive OBSERVED, last_tick_at INFERRED, last_event_kind OBSERVED; handoff labels latest_id OBSERVED, created_at OBSERVED, verified REPORTED; account usage UNAVAILABLE"
+            },
+            {
+              "type": "observation",
+              "summary": "snapshot.build_snapshot keeps its signature and gains optional operation, health, handoff and worker_context inputs. New top-level sections: operation {actionable, others_waiting, blocked, idle_reason, warnings, fingerprint} (from autonomy.compute_items, read-only), supervisor_health {lock_alive, last_tick_at, last_event_kind} (lock file read without acquiring, event log), handoff {latest_id, verified, created_at} (newest handoffs/*.json plus recorded handoff_verified/handoff_not_safe events), and a per-worker context_pressure {tokens, window, ratio, level} (telemetry.find_transcript/context_pressure by worker session id and worktree; UNAVAILABLE with reason when not found). New entry point python -B -m dev_supervisor.snapshot --out FILE [--repo ROOT] builds the full snapshot read-only and writes it atomically. Account usage uses telemetry.RateLimitEventProvider only if the class exists (it does not on this branch), else UNAVAILABLE. IMPLEMENTED and TESTED offline (synthetic data). OBSERVED once live against the real default state directory (counts only, see commands). NOT TESTED: RateLimitEventProvider against a real class, the desktop Orbit rendering of the new sections (lane L2), a real worker transcript (no live worker existed)."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (727 dev tests OK, 106 node tests OK) and live checks against the real supervisor state; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-016",
+      "title": "Orbit: operation, queued work, idle reason, worker context, supervisor health and handoff views",
+      "steps": [
+        {
+          "id": "S-DEV-016-00",
+          "title": "Lane L2 of wave w05-orbit-operation",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Orbit renders the new snapshot sections (Snapshot additions (top-level keys, every value an evidence dict {label, value, timestamp, source, freshness} or a list of plain records): 'operation': {'actionable': [{id, kind, priority, summary, inspect}], 'others_waiting': [...same], 'blocked': [{id, kind, summary}], 'idle_reason': evidence, 'warnings': [str], 'fingerprint': str}; 'supervisor_health': {'lock_alive': evidence, 'last_tick_at': evidence, 'last_event_kind': evidence}; 'handoff': {'latest_id': evidence, 'verified': evidence, 'created_at': evidence}; each worker record gains 'context_pressure': {'tokens','window','ratio','level'} evidences (UNAVAILABLE with reason when its transcript is not found).): 'Next actions for Main' (actionable, ordered), 'Waiting on others' (informational), 'Blocked', an explicit idle reason line, warnings, per-worker context pressure, supervisor health and handoff state; a missing section renders as unavailable with a reason, never as an empty success",
+            "A worker that is only registered (status ASSIGNED) is never shown as active; a blocked task is never shown as running",
+            "Every value keeps its data-quality badge (live/cached/stale/estimated/unavailable); Orbit stays read-only; no renames of released artifacts",
+            "Node tests with fixtures for each section and the missing-section case; test_dev_orbit_view.py extended to render the Python-built fixture from L1 after merging origin/wave/w05-orbit-operation",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py or autonomy.py (claimed by open tasks or a merged lane); import them read-only",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L2 head on the wave branch (last commit to its report)",
+              "commit": "4c0039fa78f35192bbc23eb784f6fb154ad9c64c"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w05-orbit-operation",
+              "commit": "4c0039fa78f35192bbc23eb784f6fb154ad9c64c"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "tests 106, pass 106, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "OK (includes test_dev_orbit_view.py, 6 tests)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests (before merging L1)",
+              "result": "Ran 2182 tests: OK (skipped=2)"
+            },
+            {
+              "type": "observation",
+              "summary": "Orbit (dashboard/desktop) now renders operation (Next actions for Main, Waiting on others, Blocked, idle reason, warnings, fingerprint), supervisor health, handoff and per-worker context pressure. A registered-only (ASSIGNED) worker is labelled 'registered only, not active'; a blocked task (worker BLOCKED or listed in operation.blocked) is labelled 'BLOCKED, not running'. Missing or not-computed sections render as UNAVAILABLE with a reason. Every value keeps its quality badge. Implemented and unit-tested with synthetic data, including a snapshot built by L1's snapshot.py and rendered through orbit.js. The Electron window itself is NOT TESTED; nothing OBSERVED live."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (727 dev tests OK, 106 node tests OK) and live checks against the real supervisor state; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-017",
+      "title": "Supervisor state repair: retire stale authoritative Main records",
+      "steps": [
+        {
+          "id": "S-DEV-017-00",
+          "title": "Lane L3 of wave w05-orbit-operation",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module dev_supervisor/repair.py with CLI `python -B -m dev_supervisor.repair [--yes]`: finds sessions-document records with role main, authoritative true, status ACTIVE/RETIRING that are NOT main.json's RUNNING session and whose process is not alive (pid from the record or ~/.claude/sessions files via telemetry.read_sessions, liveness probe injectable) and proposes retiring them (authoritative false, status RETIRED_STALE, note with reason and time)",
+            "Dry run by default prints the plan; --yes applies it through StateStore atomic writes (backup kept), appends a 'state_repaired' event, and refuses when the supervisor lock is held by a live process unless --allow-while-running is given (then it only edits the sessions document, never main.json); never touches a session that is alive or is main.json's session; never deletes records",
+            "At least 20 offline tests (stale vs alive vs current, lock held, corrupt document, idempotent re-run); one OBSERVED live DRY RUN against the real state (ids shortened to 8 chars); do not run --yes on the real state (Main decides)",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py or autonomy.py (claimed by open tasks or a merged lane); import them read-only",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L3 head on the wave branch (last commit to its report)",
+              "commit": "fbcbb917150371bbe4d9403815c01616b12b73c1"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w05-orbit-operation",
+              "commit": "4c0039fa78f35192bbc23eb784f6fb154ad9c64c"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_repair.py",
+              "result": "Ran 38 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 686 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 2220 tests in 394.808s: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.repair   (OBSERVED, real default state dir, dry run)",
+              "result": "current Main 46f52067 [RUNNING] KEEP; authoritative records 46f52067, bb87f796; RETIRE bb87f796 ACTIVE (updated 2026-11-18T08:01:39+00:00): no pid recorded and no session file names this session; no process found. File listing (16 files, mtimes, sizes) identical before and after."
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED dev_supervisor/repair.py (python -B -m dev_supervisor.repair [--yes] [--allow-while-running]): finds role main / authoritative / ACTIVE|RETIRING records that are not main.json's session and whose process is not alive (record pid or session-file pid, injectable probe), proposes authoritative=false + status RETIRED_STALE with a reason/time note. Dry run reads without any store recovery or cleanup, so it writes nothing. --yes writes the sessions document once through StateStore (backup kept), appends a state_repaired event, refuses when a live process holds the supervisor lock unless --allow-while-running (never edits main.json or the lock), never deletes records. TESTED: 38 offline tests. OBSERVED: one live dry run (see commands). NOT TESTED: --yes against real state (Main decides); behaviour with a real live second Main process. A record with no pid evidence at all is treated as 'no process found' and proposed for retirement; a probe that raises is treated as alive."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (727 dev tests OK, 106 node tests OK) and live checks against the real supervisor state; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
     }
   ]
 }
