@@ -63,6 +63,8 @@ The **Orbit** tab shows one snapshot JSON written by `python -m dev_supervisor.s
 - Every value shows its label (OBSERVED / REPORTED / INFERRED / UNAVAILABLE), a **Live / Cached / Stale / Unavailable** chip and its age. Ages are recomputed when you look, so an old file turns Cached, then Stale.
 - No file chosen, a missing file, an unreadable file or something that is not an Orbit snapshot each show an explicit state. There is never an empty "all good" screen.
 - **Account usage** is shown only when the snapshot labels it OBSERVED. Anything else (including a statusline value labelled REPORTED) is shown as UNAVAILABLE with the reason.
+- **Readable usage windows**: known `rate_limit_event` keys show as `5-hour window: used` -> `21%`, `5-hour window: resets` -> `12:50 UTC (in 1 h 3 min)` (or `window already reset`), the same for the `7-day window`, and `rate-limit status`. Unknown keys keep the generic rendering. A provenance line under the section names the source in plain words and its age (no worker or file names).
+- **Data-quality badge** on every value: Live, Cached, Stale (its own timestamp is older than the stale threshold), Estimated (label INFERRED) or Unavailable (with the reason). Account usage that is REPORTED or INFERRED stays Unavailable and its number is never shown.
 - Status: implemented and unit-tested with synthetic fixtures (`tests/orbit.test.js`); NOT TESTED in a running Electron window.
 
 ## Appearance: Light, Dark or System
