@@ -1,0 +1,680 @@
+"""Autonomy loop tests (T-DEV-013). Synthetic data only; temp dirs; fake git runner and fake clock; no network.
+
+Run from orchestrator/:  python -B -I -m unittest discover -s tests -p test_dev_autonomy.py -v
+"""
+import io
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from dev_supervisor import autonomy as au
+from dev_supervisor.state_store import StateStore
+from dev_supervisor.workers import ResultRecord, Worker, WorkerRegistry, WorkerStatus
+
+MAIN_SID = "11111111-1111-4111-8111-111111111111"
+
+
+class Clock:
+    def __init__(self, t=1_700_000_000.0):
+        self.t = t
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def task(tid, status="PLANNED", deps=(), paths=()):
+    return {"id": tid, "status": status, "depends_on": list(deps), "owned_paths": list(paths)}
+
+
+class FakeGit:
+    """Fake read-only git: waves -> {wave_id: {"merged": bool, "files": [paths]}}; missing wave = no remote branch."""
+
+    def __init__(self, waves=None):
+        self.waves = waves or {}
+        self.calls = []
+
+    def __call__(self, args):
+        a = list(args)
+        self.calls.append(a)
+        if a[0] == "rev-parse":
+            wid = a[-1].split("origin/wave/")[1]
+            return (0 if wid in self.waves else 1), ""
+        if a[0] == "merge-base":
+            wid = a[2].split("origin/wave/")[1]
+            return (0 if self.waves[wid].get("merged") else 1), ""
+        if a[0] == "ls-tree":
+            wid = a[-1].split("/")[1]
+            return 0, "\n".join(self.waves[wid].get("files", [])) + "\n"
+        return 1, ""
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.repo = self.tmp / "repo"
+        self.repo.mkdir()
+        self.state = self.tmp / "state"
+        self.clock = Clock()
+        self.env = {"CREATORSTUDIO_DEV_SUPERVISOR_CONFIG": str(self.tmp / "none.json")}
+        self.store = None
+
+    def mkstore(self):
+        self.state.mkdir(exist_ok=True)
+        self.store = StateStore(self.state, clock=self.clock)
+        return self.store
+
+    def write_registry(self, tasks, shared=None):
+        doc = {"schema_version": 1, "shared_files": shared or {"ACTIVE_TASKS.json": "shared"}, "tasks": tasks}
+        (self.repo / "ACTIVE_TASKS.json").write_text(json.dumps(doc), encoding="utf-8")
+
+    def write_tracker(self, tasks):
+        (self.repo / "DEVELOPMENT_TRACKER.json").write_text(json.dumps({"tasks": tasks}), encoding="utf-8")
+
+    def write_wave(self, wid, lanes):
+        d = self.repo / "waves" / wid
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "wave.json").write_text(json.dumps({"wave_id": wid, "lanes": [{"id": l} for l in lanes]}),
+                                     encoding="utf-8")
+
+    def items(self, git=None):
+        return au.compute_items(self.repo, self.store, git or FakeGit())
+
+    def kinds(self, res):
+        return [(i["kind"], i["id"]) for i in res["items"]]
+
+    def run_cli(self, argv, stdin="", git=None, sleep=None):
+        out = io.StringIO()
+        full = list(argv)
+        if argv[0] != "main-settings":
+            full += ["--repo", str(self.repo), "--state-dir", str(self.state)]
+        rc = au.main(full, out=out, stdin=io.StringIO(stdin), env=self.env, git=git or FakeGit(), clock=self.clock,
+                     sleep=sleep or self.clock.sleep)
+        return rc, out.getvalue()
+
+    def add_worker(self, wid, task_id, status, **kw):
+        reg = WorkerRegistry(self.store)
+        reg.add(Worker(worker_id=wid, role="dev", task_id=task_id, branch="b-" + wid, worktree=str(self.tmp / wid),
+                       owner_stream="s", status=status, **kw))
+        return reg
+
+    def set_main(self, sid=MAIN_SID):
+        self.store.write("sessions", {"sessions": {sid: {"session_id": sid, "role": "main", "authoritative": True,
+                                                         "status": "ACTIVE"}}, "failures": {}})
+
+
+class TestFingerprint(unittest.TestCase):
+    def test_stable_and_order_independent(self):
+        self.assertEqual(au.fingerprint(["b", "a"]), au.fingerprint(["a", "b", "a"]))
+
+    def test_changes_with_content(self):
+        self.assertNotEqual(au.fingerprint(["a"]), au.fingerprint(["a", "b"]))
+
+    def test_empty_is_empty_string(self):
+        self.assertEqual(au.fingerprint([]), "")
+
+    def test_overlap_rules(self):
+        self.assertTrue(au.overlaps("a/b", "a/b/c.py"))
+        self.assertTrue(au.overlaps("A/B/", "a/b/c.py"))
+        self.assertFalse(au.overlaps("a/bc", "a/b/c.py"))
+
+
+class TestTaskEligibility(Base):
+    def test_planned_task_without_deps_is_eligible(self):
+        self.write_registry([task("T-1", paths=["x/"])])
+        res = self.items()
+        self.assertEqual(self.kinds(res), [("start_task", "start_task:T-1")])
+        self.assertEqual(res["idle_reason"], None)
+
+    def test_completed_and_released_dependencies_allow(self):
+        self.write_registry([task("T-0", "COMPLETED"), task("T-9", "RELEASED"),
+                             task("T-1", deps=["T-0", "T-9"], paths=["x/"])])
+        self.assertEqual(self.kinds(self.items()), [("start_task", "start_task:T-1")])
+
+    def test_unfinished_dependency_blocks_with_reason(self):
+        self.write_registry([task("T-0", "ACTIVE", paths=["y/"]), task("T-1", deps=["T-0"], paths=["x/"])])
+        res = self.items()
+        self.assertEqual(res["items"], [])
+        self.assertIn("waits for T-0 (ACTIVE)", res["blocked"][0]["blocker"])
+
+    def test_unknown_dependency_blocks(self):
+        self.write_registry([task("T-1", deps=["T-404"])])
+        self.assertIn("unknown task T-404", self.items()["blocked"][0]["blocker"])
+
+    def test_owned_path_overlap_with_active_blocks(self):
+        self.write_registry([task("T-0", "ACTIVE", paths=["pkg/"]), task("T-1", paths=["pkg/mod.py"])])
+        self.assertIn("held by T-0", self.items()["blocked"][0]["blocker"])
+
+    def test_overlap_with_under_review_blocks(self):
+        self.write_registry([task("T-0", "UNDER_REVIEW", paths=["pkg/"]), task("T-1", paths=["pkg/mod.py"])])
+        self.assertEqual(self.items()["items"], [])
+
+    def test_no_overlap_with_completed_task(self):
+        self.write_registry([task("T-0", "COMPLETED", paths=["pkg/"]), task("T-1", paths=["pkg/mod.py"])])
+        self.assertEqual(len(self.items()["items"]), 1)
+
+    def test_shared_files_do_not_count_as_overlap(self):
+        self.write_registry([task("T-0", "ACTIVE", paths=["ACTIVE_TASKS.json", "a/"]),
+                             task("T-1", paths=["ACTIVE_TASKS.json", "b/"])])
+        self.assertEqual(self.kinds(self.items()), [("start_task", "start_task:T-1")])
+
+    def test_planned_tasks_do_not_block_each_other(self):
+        self.write_registry([task("T-1", paths=["p/"]), task("T-2", paths=["p/"])])
+        self.assertEqual(len(self.items()["items"]), 2)
+
+    def test_running_worker_blocks_start(self):
+        self.mkstore()
+        self.write_registry([task("T-1", paths=["x/"])])
+        self.add_worker("w1", "T-1", WorkerStatus.RUNNING)
+        res = self.items()
+        self.assertEqual(res["items"], [])
+        self.assertIn("worker is already running", res["blocked"][0]["blocker"])
+
+    def test_missing_registry_is_warning_not_crash(self):
+        res = self.items()
+        self.assertEqual(res["items"], [])
+        self.assertTrue(any("ACTIVE_TASKS.json" in w for w in res["warnings"]))
+
+    def test_corrupt_registry_is_warning(self):
+        (self.repo / "ACTIVE_TASKS.json").write_text("{not json", encoding="utf-8")
+        self.assertTrue(self.items()["warnings"])
+
+    def test_completed_task_never_offered(self):
+        self.write_registry([task("T-1", "COMPLETED")])
+        self.assertEqual(self.items()["items"], [])
+
+
+class TestTrackerSteps(Base):
+    def steps(self, *statuses):
+        return [{"id": f"S-{i}", "status": s} for i, s in enumerate(statuses)]
+
+    def test_ready_for_review_step_for_active_task(self):
+        self.write_registry([task("T-1", "ACTIVE")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("COMPLETED", "READY_FOR_REVIEW", "PLANNED")}])
+        self.assertEqual(self.kinds(self.items()), [("review_step", "review_step:T-1:S-1")])
+
+    def test_next_planned_step_is_start_step(self):
+        self.write_registry([task("T-1", "ACTIVE")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("COMPLETED", "PLANNED")}])
+        res = self.items()
+        self.assertEqual(self.kinds(res), [("start_step", "start_step:T-1:S-1")])
+        self.assertIn("authorization", res["items"][0]["reason"])
+
+    def test_in_progress_step_not_actionable_and_explains_idle(self):
+        self.write_registry([task("T-1", "ACTIVE")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("IN_PROGRESS", "PLANNED")}])
+        res = self.items()
+        self.assertEqual(res["items"], [])
+        self.assertIn("1 step IN_PROGRESS", res["idle_reason"])
+
+    def test_completed_registry_task_steps_ignored(self):
+        self.write_registry([task("T-1", "COMPLETED")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("READY_FOR_REVIEW")}])
+        self.assertEqual(self.items()["items"], [])
+
+    def test_all_steps_completed_nothing(self):
+        self.write_registry([task("T-1", "ACTIVE")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("COMPLETED", "COMPLETED")}])
+        self.assertEqual(self.items()["items"], [])
+
+    def test_start_step_blocked_by_running_worker(self):
+        self.mkstore()
+        self.write_registry([task("T-1", "ACTIVE")])
+        self.write_tracker([{"task_id": "T-1", "steps": self.steps("PLANNED")}])
+        self.add_worker("w1", "T-1", WorkerStatus.RUNNING)
+        self.assertEqual(self.items()["items"], [])
+
+    def test_missing_tracker_warns_but_keeps_tasks(self):
+        self.write_registry([task("T-1", paths=["x/"])])
+        res = self.items()
+        self.assertEqual(len(res["items"]), 1)
+        self.assertTrue(any("TRACKER" in w for w in res["warnings"]))
+
+
+class TestWorkers(Base):
+    def setUp(self):
+        super().setUp()
+        self.mkstore()
+        self.write_registry([])
+
+    def test_reported_result_is_review_item_and_first(self):
+        self.write_registry([task("T-2", paths=["q/"])])
+        reg = self.add_worker("w1", "T-1", WorkerStatus.EXITED)
+        reg.results["r1"] = ResultRecord(result_id="r1", worker_id="w1", task_id="T-1", outcome="DONE")
+        reg.save()
+        res = self.items()
+        self.assertEqual([i["kind"] for i in res["items"]], ["review_worker_result", "start_task"])
+        self.assertEqual(res["items"][0]["evidence"], "REPORTED")
+
+    def test_verified_and_rejected_results_not_listed(self):
+        reg = self.add_worker("w1", "T-1", WorkerStatus.EXITED)
+        reg.results["r1"] = ResultRecord(result_id="r1", worker_id="w1", task_id="T-1", outcome="DONE",
+                                         status="VERIFIED")
+        reg.results["r2"] = ResultRecord(result_id="r2", worker_id="w1", task_id="T-1", outcome="DONE",
+                                         status="REJECTED")
+        reg.save()
+        self.assertEqual(self.items()["items"], [])
+
+    def test_failed_worker_retry_eligible(self):
+        self.add_worker("w1", "T-1", WorkerStatus.FAILED, restart_count=1, failures=["exit 1"],
+                        next_restart_not_before="2026-01-01T00:00:00+00:00")
+        i = self.items()["items"][0]
+        self.assertEqual(i["kind"], "worker_failed")
+        self.assertTrue(i["retry_eligible"])
+        self.assertIn("retry eligible (restart 1/3)", i["reason"])
+
+    def test_failed_worker_retry_blocked_by_budget(self):
+        self.add_worker("w1", "T-1", WorkerStatus.FAILED, restart_count=3, failures=["a", "b", "c"])
+        i = self.items()["items"][0]
+        self.assertFalse(i["retry_eligible"])
+        self.assertIn("restart budget exhausted", i["reason"])
+
+    def test_failed_worker_retry_blocked_by_identical_failures(self):
+        self.add_worker("w1", "T-1", WorkerStatus.FAILED, restart_count=1, failures=["x", "x", "x"])
+        i = self.items()["items"][0]
+        self.assertFalse(i["retry_eligible"])
+        self.assertIn("identical failures", i["reason"])
+
+    def test_lost_worker_listed(self):
+        self.add_worker("w1", "T-1", WorkerStatus.LOST)
+        self.assertEqual(self.items()["items"][0]["kind"], "worker_failed")
+
+    def test_blocked_worker_goes_to_blocked_list_only(self):
+        self.add_worker("w1", "T-1", WorkerStatus.BLOCKED)
+        res = self.items()
+        self.assertEqual(res["items"], [])
+        self.assertIn("needs a human", res["blocked"][0]["blocker"])
+
+    def test_failed_worker_superseded_by_live_worker(self):
+        self.add_worker("w1", "T-1", WorkerStatus.FAILED, assigned_at="2026-01-01T00:00:00+00:00")
+        self.add_worker("w2", "T-1", WorkerStatus.RUNNING, assigned_at="2026-01-02T00:00:00+00:00")
+        self.assertEqual(self.items()["items"], [])
+
+    def test_failed_worker_superseded_by_newer_worker(self):
+        self.add_worker("w1", "T-1", WorkerStatus.FAILED, assigned_at="2026-01-01T00:00:00+00:00")
+        self.add_worker("w2", "T-1", WorkerStatus.EXITED, assigned_at="2026-01-02T00:00:00+00:00")
+        self.assertEqual(self.items()["items"], [])
+
+    def test_idle_reason_waiting_for_running_workers(self):
+        self.add_worker("w1", "T-1", WorkerStatus.RUNNING)
+        self.add_worker("w2", "T-2", WorkerStatus.RUNNING)
+        self.assertEqual(self.items()["idle_reason"], "waiting for 2 running workers")
+
+    def test_idle_reason_names_blocker(self):
+        self.write_registry([task("T-X", deps=["T-Y"], paths=["a/"]), task("T-Y", "ACTIVE", paths=["b/"])])
+        self.assertIn("no eligible task: T-X waits for T-Y", self.items()["idle_reason"])
+
+    def test_idle_reason_when_nothing_registered(self):
+        self.assertIn("nothing is planned", self.items()["idle_reason"])
+
+    def test_missing_state_dir_is_not_created(self):
+        self.store = StateStore(self.tmp / "absent", clock=self.clock, create=False)
+        self.write_registry([task("T-1", paths=["x/"])])
+        self.assertEqual(len(self.items()["items"]), 1)
+        self.assertFalse((self.tmp / "absent").exists())
+
+
+class TestWaves(Base):
+    def test_submitted_unmerged_wave_is_verify_item(self):
+        self.write_registry([])
+        self.write_wave("w9", ["L1", "L2"])
+        git = FakeGit({"w9": {"merged": False,
+                              "files": ["waves/w9/lanes/L1/report.json", "waves/w9/lanes/L1/BRIEF.md"]}})
+        res = self.items(git)
+        self.assertEqual(self.kinds(res), [("verify_wave", "verify_wave:w9:L1")])
+        self.assertIn("1 of 2 lanes", res["items"][0]["reason"])
+
+    def test_merged_wave_skipped(self):
+        self.write_wave("w9", ["L1"])
+        git = FakeGit({"w9": {"merged": True, "files": ["waves/w9/lanes/L1/report.json"]}})
+        self.assertEqual(self.items(git)["items"], [])
+
+    def test_wave_without_remote_branch_skipped(self):
+        self.write_wave("w9", ["L1"])
+        self.assertEqual(self.items(FakeGit())["items"], [])
+
+    def test_wave_without_reports_skipped(self):
+        self.write_wave("w9", ["L1"])
+        self.assertEqual(self.items(FakeGit({"w9": {"merged": False, "files": []}}))["items"], [])
+
+    def test_report_for_unknown_lane_ignored(self):
+        self.write_wave("w9", ["L1"])
+        git = FakeGit({"w9": {"merged": False, "files": ["waves/w9/lanes/L7/report.json"]}})
+        self.assertEqual(self.items(git)["items"], [])
+
+    def test_new_lane_changes_fingerprint(self):
+        self.write_wave("w9", ["L1", "L2"])
+        a = self.items(FakeGit({"w9": {"files": ["waves/w9/lanes/L1/report.json"]}}))["fingerprint"]
+        b = self.items(FakeGit({"w9": {"files": ["waves/w9/lanes/L1/report.json",
+                                                  "waves/w9/lanes/L2/report.json"]}}))["fingerprint"]
+        self.assertNotEqual(a, b)
+
+    def test_git_is_only_called_with_read_only_plumbing(self):
+        self.write_wave("w9", ["L1"])
+        git = FakeGit({"w9": {"files": ["waves/w9/lanes/L1/report.json"]}})
+        self.items(git)
+        self.assertEqual({c[0] for c in git.calls}, {"rev-parse", "merge-base", "ls-tree"})
+
+    def test_unreadable_manifest_warns(self):
+        d = self.repo / "waves" / "bad"
+        d.mkdir(parents=True)
+        (d / "wave.json").write_text("nope", encoding="utf-8")
+        self.assertTrue(any("bad/wave.json" in w for w in self.items()["warnings"]))
+
+    def test_git_failure_never_raises(self):
+        self.write_wave("w9", ["L1"])
+
+        def boom(args):
+            raise OSError("boom")
+        res = au.compute_items(self.repo, None, boom)
+        self.assertTrue(res["warnings"])
+
+
+class TestOrdering(Base):
+    def test_priority_order(self):
+        self.mkstore()
+        self.write_registry([task("T-1", "ACTIVE"), task("T-2", paths=["z/"])])
+        self.write_tracker([{"task_id": "T-1", "steps": [{"id": "S-0", "status": "READY_FOR_REVIEW"}]}])
+        self.write_wave("w9", ["L1"])
+        reg = self.add_worker("w1", "T-5", WorkerStatus.FAILED)
+        reg.results["r1"] = ResultRecord(result_id="r1", worker_id="w1", task_id="T-5", outcome="DONE")
+        reg.save()
+        git = FakeGit({"w9": {"files": ["waves/w9/lanes/L1/report.json"]}})
+        kinds = [i["kind"] for i in self.items(git)["items"]]
+        self.assertEqual(kinds, ["review_worker_result", "worker_failed", "review_step", "verify_wave", "start_task"])
+
+    def test_every_item_has_reason_and_inspect(self):
+        self.write_registry([task("T-1", paths=["x/"])])
+        for i in self.items()["items"]:
+            self.assertTrue(i["reason"] and i["inspect"] and isinstance(i["priority"], int))
+
+
+class TestNextCli(Base):
+    def test_json_output_shape(self):
+        self.write_registry([task("T-1", paths=["x/"])])
+        rc, out = self.run_cli(["next", "--json"])
+        d = json.loads(out)
+        self.assertEqual(rc, 0)
+        self.assertEqual(d["counts"]["items"], 1)
+        self.assertIn("fingerprint", d)
+
+    def test_text_output_idle(self):
+        self.write_registry([])
+        rc, out = self.run_cli(["next"])
+        self.assertEqual(rc, 0)
+        self.assertTrue(out.startswith("idle:"))
+
+    def test_next_does_not_create_state_dir(self):
+        self.write_registry([task("T-1", paths=["x/"])])
+        self.run_cli(["next", "--json"])
+        self.assertFalse(self.state.exists())
+
+    def test_next_does_not_change_existing_state_files(self):
+        self.mkstore()
+        self.set_main()
+        before = {p.name: p.read_bytes() for p in self.state.iterdir()}
+        self.write_registry([task("T-1", paths=["x/"])])
+        self.run_cli(["next", "--json"])
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.state.iterdir()})
+
+    def test_bad_config_exits_2(self):
+        bad = self.tmp / "bad.json"
+        bad.write_text("{", encoding="utf-8")
+        out = io.StringIO()
+        rc = au.main(["next", "--config", str(bad), "--repo", str(self.repo)], out=out, env=self.env)
+        self.assertEqual(rc, 2)
+
+
+class TestStopHook(Base):
+    def setUp(self):
+        super().setUp()
+        self.mkstore()
+        self.set_main()
+        self.write_registry([task("T-1", paths=["x/"])])
+
+    def hook(self, payload=None, extra=()):
+        payload = {"session_id": MAIN_SID, "stop_hook_active": False} if payload is None else payload
+        return self.run_cli(["stop-hook", *extra], stdin=json.dumps(payload))
+
+    def test_blocks_with_one_json_object(self):
+        rc, out = self.hook()
+        self.assertEqual(rc, 0)
+        d = json.loads(out)
+        self.assertEqual(d["decision"], "block")
+        self.assertEqual(len(out.strip().splitlines()), 1)
+        self.assertIn("start_task:T-1", d["reason"])
+        self.assertNotIn("\n", d["reason"])
+
+    def test_other_session_allowed_silently(self):
+        self.assertEqual(self.hook({"session_id": "other", "stop_hook_active": False}), (0, ""))
+
+    def test_missing_session_id_allowed(self):
+        self.assertEqual(self.hook({"stop_hook_active": False}), (0, ""))
+
+    def test_no_items_allows_and_resets(self):
+        self.hook()
+        self.write_registry([])
+        self.assertEqual(self.hook(), (0, ""))
+        self.assertEqual(self.store.read("autonomy")["consecutive_blocks"], 0)
+
+    def test_active_with_unchanged_fingerprint_allows(self):
+        self.hook()
+        self.assertEqual(self.hook({"session_id": MAIN_SID, "stop_hook_active": True}), (0, ""))
+
+    def test_active_with_changed_fingerprint_blocks_again(self):
+        self.hook()
+        self.write_registry([task("T-1", paths=["x/"]), task("T-2", paths=["y/"])])
+        rc, out = self.hook({"session_id": MAIN_SID, "stop_hook_active": True})
+        self.assertIn("2 actionable", json.loads(out)["reason"])
+
+    def test_consecutive_blocks_are_bounded(self):
+        results = [self.hook()[1] for _ in range(5)]
+        self.assertEqual([bool(r) for r in results], [True, True, True, False, False])
+
+    def test_max_blocks_option(self):
+        self.assertTrue(self.hook(extra=["--max-blocks", "1"])[1])
+        self.assertEqual(self.hook(extra=["--max-blocks", "1"]), (0, ""))
+
+    def test_max_blocks_zero_never_blocks(self):
+        self.assertEqual(self.hook(extra=["--max-blocks", "0"]), (0, ""))
+
+    def test_max_blocks_from_environment(self):
+        self.env[au.ENV_MAX_BLOCKS] = "1"
+        self.assertTrue(self.hook()[1])
+        self.assertEqual(self.hook(), (0, ""))
+
+    def test_counter_resets_when_fingerprint_changes(self):
+        for _ in range(3):
+            self.hook()
+        self.write_registry([task("T-2", paths=["y/"])])
+        self.assertTrue(self.hook()[1])
+        self.assertEqual(self.store.read("autonomy")["consecutive_blocks"], 1)
+
+    def test_fails_open_on_invalid_stdin(self):
+        self.assertEqual(self.run_cli(["stop-hook"], stdin="not json"), (0, ""))
+
+    def test_fails_open_on_empty_stdin(self):
+        self.assertEqual(self.run_cli(["stop-hook"], stdin=""), (0, ""))
+
+    def test_fails_open_and_logs_on_internal_error(self):
+        with mock.patch.object(au, "compute_items", side_effect=RuntimeError("boom")):
+            self.assertEqual(self.hook(), (0, ""))
+        events, _ = self.store.read_events()
+        self.assertEqual(events[-1]["kind"], "autonomy_hook_error")
+        self.assertEqual(events[-1]["data"]["error"], "RuntimeError")
+
+    def test_fails_open_on_bad_config(self):
+        bad = self.tmp / "bad.json"
+        bad.write_text("{", encoding="utf-8")
+        out = io.StringIO()
+        rc = au.main(["stop-hook", "--config", str(bad)], out=out, stdin=io.StringIO("{}"), env=self.env)
+        self.assertEqual((rc, out.getvalue()), (0, ""))
+
+    def test_no_state_dir_allows_without_creating(self):
+        shutil.rmtree(self.state)
+        self.assertEqual(self.hook(), (0, ""))
+        self.assertFalse(self.state.exists())
+
+    def test_main_json_fallback_when_no_sessions_doc(self):
+        (self.state / "sessions.json").unlink()
+        self.store.write("main", {"session_id": MAIN_SID, "status": "RUNNING"})
+        self.assertTrue(self.hook()[1])
+
+    def test_retired_main_is_not_authoritative(self):
+        self.store.write("sessions", {"sessions": {MAIN_SID: {"role": "main", "authoritative": True,
+                                                              "status": "RETIRED"}}, "failures": {}})
+        self.assertEqual(self.hook(), (0, ""))
+
+    def test_reason_has_no_secret_and_is_bounded(self):
+        self.write_registry([task("T-1 sk-abcdefghijklmnopqrstuvwx" + "x" * 400, paths=["x/"])])
+        reason = json.loads(self.hook()[1])["reason"]
+        self.assertNotIn("sk-abcdefghijkl", reason)
+        self.assertLess(len(reason), 520)
+
+
+class TestWait(Base):
+    def setUp(self):
+        super().setUp()
+        self.mkstore()
+        self.write_registry([])
+        self.cursor = self.tmp / "cursor.json"
+
+    def wait(self, timeout=10, sleep=None, poll=1):
+        return self.run_cli(["wait", "--timeout", str(timeout), "--poll", str(poll), "--cursor", str(self.cursor)],
+                            sleep=sleep)
+
+    def test_timeout_exit_3(self):
+        rc, out = self.wait(timeout=5)
+        self.assertEqual(rc, 3)
+        self.assertTrue(json.loads(out)["timeout"])
+        self.assertGreaterEqual(self.clock.t - 1_700_000_000.0, 5)
+
+    def test_timeout_is_bounded_by_poll_steps(self):
+        calls = []
+        self.wait(timeout=10, poll=3, sleep=lambda s: (calls.append(s), self.clock.sleep(s)))
+        self.assertLessEqual(len(calls), 5)
+
+    def test_fingerprint_change_exit_0(self):
+        def sleep(s):
+            self.write_registry([task("T-1", paths=["x/"])])
+            self.clock.sleep(s)
+        rc, out = self.wait(sleep=sleep)
+        d = json.loads(out)
+        self.assertEqual((rc, d["reason"]), (0, "fingerprint"))
+        self.assertEqual(d["added"], ["start_task:T-1"])
+
+    def test_new_worker_event_exit_0(self):
+        def sleep(s):
+            self.store.append_event("worker_failed", worker_id="w1")
+            self.clock.sleep(s)
+        rc, out = self.wait(sleep=sleep)
+        d = json.loads(out)
+        self.assertEqual((rc, d["reason"], d["new_events"][0]["kind"]), (0, "events", "worker_failed"))
+
+    def test_main_and_replacement_events_count(self):
+        for kind in ("main_exited", "replacement_confirmed"):
+            if self.cursor.exists():
+                self.cursor.unlink()
+
+            def sleep(s, k=kind):
+                self.store.append_event(k)
+                self.clock.sleep(s)
+            self.assertEqual(self.wait(sleep=sleep)[0], 0)
+
+    def test_unrelated_event_does_not_wake(self):
+        def sleep(s):
+            self.store.append_event("handoff_written")
+            self.clock.sleep(s)
+        self.assertEqual(self.wait(timeout=3, sleep=sleep)[0], 3)
+
+    def test_events_before_cursor_do_not_wake(self):
+        self.store.append_event("worker_failed")
+        self.assertEqual(self.wait(timeout=2)[0], 3)  # first call baselines at the current end of the log
+        self.assertEqual(self.wait(timeout=2)[0], 3)  # stored cursor already covers it
+
+    def test_event_after_stored_cursor_wakes_next_call(self):
+        self.wait(timeout=1)
+        self.store.append_event("worker_started")
+        self.assertEqual(self.wait(timeout=1)[0], 0)
+
+    def test_cursor_persists_fingerprint(self):
+        self.write_registry([task("T-1", paths=["x/"])])
+        self.assertEqual(self.wait(timeout=1)[0], 3)
+        saved = json.loads(self.cursor.read_text(encoding="utf-8"))
+        self.assertEqual(saved["ids"], ["start_task:T-1"])
+        self.assertEqual(self.wait(timeout=1)[0], 3)
+
+    def test_corrupt_cursor_tolerated(self):
+        self.cursor.write_text("{{{", encoding="utf-8")
+        self.assertEqual(self.wait(timeout=1)[0], 3)
+
+    def test_missing_state_dir_tolerated(self):
+        shutil.rmtree(self.state)
+        rc, _ = self.run_cli(["wait", "--timeout", "1", "--poll", "1"])
+        self.assertEqual(rc, 3)
+        self.assertFalse(self.state.exists())
+
+    def test_corrupt_event_line_tolerated(self):
+        self.store.append_event("worker_failed")
+        with open(self.state / "events.jsonl", "ab") as fh:
+            fh.write(b"{torn")
+        self.assertEqual(self.wait(timeout=1)[0], 3)
+
+
+class TestMainSettings(Base):
+    def test_shape_and_only_stop_hook(self):
+        out = self.tmp / "s.json"
+        rc, _text = self.run_cli(["main-settings", "--out", str(out), "--python", "py", "--orchestrator",
+                                  str(self.tmp / "orch")])
+        self.assertEqual(rc, 0)
+        d = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(list(d), ["hooks"])
+        self.assertEqual(list(d["hooks"]), ["Stop"])
+        hook = d["hooks"]["Stop"][0]["hooks"][0]
+        self.assertEqual(hook["type"], "command")
+        self.assertIn("autonomy.py stop-hook", hook["command"])
+        self.assertTrue(hook["command"].startswith("py -B "))
+
+    def test_paths_with_spaces_are_quoted_with_forward_slashes(self):
+        cmd = au.build_hook_command("C:\\Program Files\\Python\\python.exe",
+                                    "C:\\My Repo\\orch\\dev_supervisor\\autonomy.py", 2)
+        self.assertEqual(cmd, '"C:/Program Files/Python/python.exe" -B "C:/My Repo/orch/dev_supervisor/autonomy.py" '
+                              "stop-hook --max-blocks 2")
+
+    def test_refuses_dot_claude_target(self):
+        target = self.tmp / ".claude" / "settings.json"
+        rc, _text = self.run_cli(["main-settings", "--out", str(target)])
+        self.assertEqual(rc, 1)
+        self.assertFalse(target.exists())
+
+    def test_generated_command_runs_as_script(self):
+        script = Path(au.__file__).resolve()
+        p = subprocess.run([sys.executable, "-B", str(script), "stop-hook", "--repo", str(self.repo),
+                            "--state-dir", str(self.state)], input=json.dumps({"session_id": "x"}),
+                           capture_output=True, text=True, timeout=60,
+                           env={**os.environ, "CREATORSTUDIO_DEV_SUPERVISOR_CONFIG": str(self.tmp / "none.json")})
+        self.assertEqual((p.returncode, p.stdout), (0, ""))
+
+
+class TestNoNetwork(Base):
+    def test_sockets_blocked_during_next(self):
+        self.write_registry([task("T-1", paths=["x/"])])
+        with mock.patch.object(socket, "socket", side_effect=AssertionError("network used")):
+            self.assertEqual(self.run_cli(["next", "--json"])[0], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
