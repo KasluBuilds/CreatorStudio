@@ -245,7 +245,7 @@ test('orbit usage: known rate_limit_event keys render in plain language with a r
   assert.equal(urow(v, '5-hour window: used').text, '21%');
   assert.equal(urow(v, '5-hour window: resets').text, '12:50 UTC (in 1 h 3 min)');
   assert.equal(urow(v, '7-day window: used').text, '8.5%');
-  assert.equal(urow(v, '7-day window: resets').text, '14:47 UTC (in 3 d 3 h)');
+  assert.equal(urow(v, '7-day window: resets').text, 'Sat 21 Nov 14:47 UTC (in 3 d 3 h)');   // changed in w06: more than 24 h away, so the date is shown
   assert.equal(urow(v, '5-hour window: status').text, 'allowed');
   assert.equal(urow(v, 'rate-limit status').text, 'allowed');
   assert.equal(urow(v, '5-hour window: used').quality, 'live');
@@ -260,6 +260,25 @@ test('orbit usage: a reset time in the past says the window already reset; near 
   assert.equal(orbit.relativeReset(NOW + 20000, NOW), 'in under 1 min');
   assert.equal(orbit.relativeReset(NOW + 3600000, NOW), 'in 1 h');
   assert.equal(orbit.relativeReset(NOW, NOW), 'window already reset');
+});
+
+test('orbit usage: a reset more than 24 h after now shows the UTC weekday, day, month and time with the relative phrase', () => {
+  const ts = iso(NOW - 60000);
+  const v = orbit.evaluate(usageSnap({ weekly_resets_at: EV('2026-11-21T23:00:00Z', ts), five_hour_resets_at: EV('2026-11-21T23:00:00Z', ts) }), NOW);
+  assert.equal(urow(v, '7-day window: resets').text, 'Sat 21 Nov 23:00 UTC (in 3 d 11 h)');
+  assert.equal(urow(v, '5-hour window: resets').text, 'Sat 21 Nov 23:00 UTC (in 3 d 11 h)');
+  // a month boundary, and the date stays deterministic for a fixed now
+  assert.equal(orbit.resetText(Date.parse('2026-12-01T00:30:00Z'), NOW), 'Tue 1 Dec 00:30 UTC (in 12 d 12 h)');
+  assert.equal(orbit.resetText(Date.parse('2026-12-01T00:30:00Z'), NOW), orbit.resetText(Date.parse('2026-12-01T00:30:00Z'), NOW));
+  // one minute past 24 h is dated; exactly 24 h is still within the clock form
+  assert.equal(orbit.resetText(NOW + 24 * 3600000 + 60000, NOW), 'Thu 19 Nov 11:48 UTC (in 1 d)');
+});
+
+test('orbit usage: exactly 24 h and just under are NOT dated; past resets keep the clock form', () => {
+  assert.equal(orbit.resetText(NOW + 24 * 3600000, NOW), '11:47 UTC (in 1 d)');          // boundary: within 24 h
+  assert.equal(orbit.resetText(NOW + 24 * 3600000 - 60000, NOW), '11:46 UTC (in 23 h 59 min)');
+  assert.equal(orbit.resetText(Date.parse('2026-11-15T09:00:00Z'), NOW), '09:00 UTC (window already reset)');   // past: unchanged
+  assert.equal(orbit.resetText(NOW, NOW), '11:47 UTC (window already reset)');
 });
 
 test('orbit usage: unparseable values fall back to the plain value; unknown keys stay generic', () => {

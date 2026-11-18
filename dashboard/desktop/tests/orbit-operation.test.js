@@ -133,6 +133,17 @@ test('orbit operation: context pressure shows each value with its badge; UNAVAIL
   assert.ok(none[0].reason);
 });
 
+test('orbit operation styles: every activity kind the view can emit has a stylesheet rule, and the operation classes are styled', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'ui', 'styles.css'), 'utf8');
+  const kinds = new Set(['ASSIGNED', 'BLOCKED', 'RUNNING', 'STARTING', 'STOPPING', 'STALE', 'STOPPED', 'FAILED', undefined]
+    .map((s) => orbit.activityOf(s === undefined ? { label: 'UNAVAILABLE' } : { label: 'OBSERVED', value: s }).kind));
+  assert.ok(kinds.size >= 5, `expected several kinds, got ${[...kinds]}`);
+  for (const k of kinds) assert.match(css, new RegExp(`\\.orbit-card ul\\.plain li\\.orbit-act-${k}\\b`), `orbit-act-${k} has a rule`);
+  for (const cls of ['orbit-act', 'orbit-activity', 'orbit-context']) assert.match(css, new RegExp(`\\.${cls}\\b[^{]*\\{`), `${cls} has a rule`);
+  const views = fs.readFileSync(path.join(__dirname, '..', 'ui', 'views.js'), 'utf8');
+  assert.match(views, /orbit-act orbit-act-\$\{i\.activity\.kind\}/);       // the classes the rules target are the ones emitted
+});
+
 test('orbit operation: the view stays read-only (no file, network or process access, input not mutated)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'orbit.js'), 'utf8');
   assert.ok(!/require\(|child_process|fetch\(|writeFile|https?:/.test(src));
