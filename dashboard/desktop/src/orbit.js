@@ -79,6 +79,19 @@ function relativeReset(resetMs, nowMs) {
   return `in ${m} min`;
 }
 
+const DAY_NAMES = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+const MONTH_NAMES = Object.freeze(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']);
+const DAY_MS = 86400000;
+
+/** Reset time as shown in account usage. More than 24 h after nowMs the date is shown ("Sat 21 Nov 23:00 UTC (in 3 d 9 h)"); otherwise
+ *  the clock time ("12:50 UTC (in 1 h 3 min)"). A reset at or before nowMs keeps the clock form ("(window already reset)"). UTC getters only. */
+function resetText(resetMs, nowMs) {
+  const dated = resetMs - nowMs > DAY_MS;
+  const d = new Date(resetMs);
+  const when = dated ? `${DAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]} ${utcClock(resetMs)}` : utcClock(resetMs);
+  return `${when} (${relativeReset(resetMs, nowMs)})`;
+}
+
 const USAGE_KEYS = Object.freeze({
   five_hour_used_percentage: ['5-hour window: used', 'percent'],
   five_hour_resets_at: ['5-hour window: resets', 'reset'],
@@ -100,7 +113,7 @@ function usageRow(key, f, nowMs, thr) {
     out.text = `${Math.round(base.value * 10) / 10}%`;
   } else if (known[1] === 'reset') {
     const t = Date.parse(base.value);
-    if (typeof base.value === 'string' && Number.isFinite(t)) out.text = `${utcClock(t)} (${relativeReset(t, nowMs)})`;
+    if (typeof base.value === 'string' && Number.isFinite(t)) out.text = resetText(t, nowMs);
   }
   return out;
 }
@@ -258,4 +271,4 @@ function fromLoad(load, nowMs = Date.now()) {
   return { ...evaluate(load.data, nowMs), fileName: load.name };
 }
 
-module.exports = { activityOf, evaluate, fromLoad, fieldView, ageText, relativeReset, FRESHNESS, QUALITY, LABELS, thresholds, TITLE };
+module.exports = { activityOf, evaluate, fromLoad, fieldView, ageText, relativeReset, resetText, FRESHNESS, QUALITY, LABELS, thresholds, TITLE };

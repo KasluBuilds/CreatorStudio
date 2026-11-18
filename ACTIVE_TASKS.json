@@ -1159,6 +1159,96 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Completed 2026-11-18 as lane L3 of wave w05-orbit-operation; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head 4c0039fa78f35192bbc23eb784f6fb154ad9c64c, lane head fbcbb917150371bbe4d9403815c01616b12b73c1). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-018",
+      "title": "End-to-end autonomy acceptance harness (issue #44, mission part 11)",
+      "description": "Wave w06-acceptance-text-workers, lane L1: End-to-end autonomy acceptance harness (issue #44, mission part 11).",
+      "owner": "claude:repository-coordinator",
+      "branch": "lane/w06-acceptance-text-workers/L1",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "New module dev_supervisor/acceptance.py with CLI `python -B -m dev_supervisor.acceptance --out <report.json> [--real-worker] [--keep]` that runs a scripted scenario in an ISOLATED temp state directory and a temp git repository (never the real supervisor state, never this repository's registry): (1) a synthetic ACTIVE_TASKS.json/DEVELOPMENT_TRACKER.json with two eligible tasks and one blocked task; (2) autonomy next selects the first eligible task; (3) a worker is assigned and spawned through the existing lifecycle (ConfiguredSupervisor / WorkerSupervisor) with a fake launcher by default, or with --real-worker a REAL bounded `claude -p --model haiku` run (child env without parent-session markers and without ANTHROPIC_* overrides, prompt: write one file in its temp worktree) whose exit and output file are checked; (4) the result is recorded REPORTED, independently verified by the harness (file content check), marked VERIFIED; (5) the task is marked COMPLETED in the synthetic registry and autonomy next selects the second task without any human input; (6) a context threshold is SIMULATED with a synthetic transcript above the compact threshold, compaction decides, a handoff is built, written and verified (handoff module, injected checkers), and replacement runs with a fake Main launcher and a simulated heartbeat; (7) the replacement Main's view (autonomy next) still shows the second task and not the completed first one (no duplication); (8) the stop-hook blocks the new Main while work remains and allows after it is told",
+        "The report lists every step with outcome PASS/FAIL and a mode label REAL, SIMULATED or MOCKED, plus timings; exit 0 only if all steps pass; nothing is labelled REAL unless a real process ran",
+        "At least 25 offline tests (default mocked mode, failure injection per step, report shape, isolation: the real state dir and repo registry are never touched); one OBSERVED live run in default mode and one with --real-worker (counts and step outcomes only)",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+        "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_acceptance.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L1 of wave w06-acceptance-text-workers; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head f79e9011ad4ffa2e28f279bef0e495ea6424530a, lane head 7358fcc8fc72872b917889aa5ddcdfa017e40c68). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-019",
+      "title": "OmniRoute text-only workers on free routes (issue #44, mission part 5)",
+      "description": "Wave w06-acceptance-text-workers, lane L2: OmniRoute text-only workers on free routes (issue #44, mission part 5).",
+      "owner": "claude:repository-coordinator",
+      "branch": "lane/w06-acceptance-text-workers/L2",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "New module dev_supervisor/text_worker.py with CLI `python -B -m dev_supervisor.text_worker --task <task.json> --out <result.json> [--routes r1,r2] [--benchmark <results.json>]`: runs one bounded TEXT-ONLY task (kinds: summarise, classify, extract_json, review_notes) through the existing dev_supervisor.omniroute client against the local gateway; route order from a benchmark results file when given (pass rate, then latency), else a configured default list; bounded retries and fallback to the next route on rate_limited/timeout/not_found/auth_error; a deterministic output checker per kind (length bounds, label in allowed set, valid JSON with required keys); the result JSON records route, attempts, latencies, failure classes, checker verdict, and labels the output REPORTED until a checker passes (then CHECKED) — never VERIFIED",
+        "Refuses non-local base URLs unless explicitly allowed; never uses a paid route; no tool use (Claude Code through OmniRoute currently fails tool calls with a Gemini thought_signature error, OBSERVED 2026-11-18: record that limitation in the module docstring)",
+        "At least 30 offline tests with a fake transport (fallback order, retry bounds, each checker, refusal of remote URLs, no key in output); one OBSERVED live run of each task kind on the free gemini/gemini-3.1-flash-lite route (route, pass/fail, latency only)",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+        "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_text_worker.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L2 of wave w06-acceptance-text-workers; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head f79e9011ad4ffa2e28f279bef0e495ea6424530a, lane head 11ec7383019098782330b6c054350b87c669acc9). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-020",
+      "title": "Orbit polish: styles for operation sections and dated long resets",
+      "description": "Wave w06-acceptance-text-workers, lane L3: Orbit polish: styles for operation sections and dated long resets.",
+      "owner": "claude:dev-orbit",
+      "branch": "lane/w06-acceptance-text-workers/L3",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "dashboard/desktop styles give the operation sections (classes added by the previous wave, e.g. orbit-act) readable list styling consistent with the existing theme in light and dark mode; no new dependencies",
+        "Account-usage reset rows show the date when the reset is more than 24 h away (e.g. 'Sat 21 Nov 23:00 UTC (in 3 d 9 h)'), deterministic from nowMs; existing behaviour for nearer resets unchanged",
+        "Node tests for both; Orbit stays read-only; no renames of released artifacts",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+        "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_orbit_view.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L3 of wave w06-acceptance-text-workers; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head f79e9011ad4ffa2e28f279bef0e495ea6424530a, lane head 6c0c4beb218f06be766f4940fc9f4c709b4ebebb). No claim, step-start, lease or closeout pull request was used."
     }
   ]
 }
