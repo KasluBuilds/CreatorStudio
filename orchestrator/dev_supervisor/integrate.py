@@ -613,6 +613,10 @@ def _gate_scope(c: _Ctx, git: Callable, owners_out: List[str]) -> Gate:
 
 def _author_ids(pr: Dict[str, Any], owners: List[str]) -> set:
     ids = {_norm(o) for o in owners if o}
+    for o in owners:   # reviewer ids cannot contain ':' (review.py), so also match 'claude:x' as 'x' and 'claude-x'
+        if o:
+            ids.add(_norm(str(o).split(":", 1)[-1]))
+            ids.add(_norm(str(o).replace(":", "-")))
     for cm in pr.get("commits") or []:
         if not isinstance(cm, dict):
             continue

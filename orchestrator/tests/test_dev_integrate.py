@@ -27,7 +27,7 @@ def fake_secret():
     return "gh" + "p_" + "A" * 24          # built at runtime so no literal key-like string is committed
 
 
-def marker(pr=7, h=DHASH, verdict="APPROVE", reviewer="claude:reviewer-1"):
+def marker(pr=7, h=DHASH, verdict="APPROVE", reviewer="claude-reviewer-1"):
     return f"<!-- dev-review v1 pr={pr} diff_sha256={h} verdict={verdict} reviewer={reviewer} -->"
 
 
@@ -174,7 +174,7 @@ def run_eval(gh=None, git=None):
 class MarkerAndHash(unittest.TestCase):
     def test_marker_valid(self):
         m = I.parse_review_marker(marker())
-        self.assertEqual((m["pr"], m["verdict"], m["reviewer"]), (7, "APPROVE", "claude:reviewer-1"))
+        self.assertEqual((m["pr"], m["verdict"], m["reviewer"]), (7, "APPROVE", "claude-reviewer-1"))
 
     def test_marker_rejects_bad_forms(self):
         for bad in ("", "hello", marker().replace("v1", "v2"), marker(h="abc"), marker(verdict="MAYBE"),
@@ -485,11 +485,11 @@ class GateFive(unittest.TestCase):
         self.assertEqual(self.review(cs), I.PASS)
 
     def test_other_reviewer_changes_requested_blocks(self):
-        cs = [comment(marker()), comment(marker(verdict="CHANGES_REQUESTED", reviewer="claude:reviewer-2"), 2)]
+        cs = [comment(marker()), comment(marker(verdict="CHANGES_REQUESTED", reviewer="claude-reviewer-2"), 2)]
         self.assertEqual(self.review(cs), I.FAIL)
 
     def test_reviewer_equal_task_owner_fails(self):
-        self.assertEqual(self.review([comment(marker(reviewer=OWNER))]), I.FAIL)
+        self.assertEqual(self.review([comment(marker(reviewer='demo-worker'))]), I.FAIL)
 
     def test_reviewer_equal_coauthor_fails(self):
         self.assertEqual(self.review([comment(marker(reviewer="Claude-Worker"))]), I.FAIL)
@@ -501,7 +501,7 @@ class GateFive(unittest.TestCase):
         self.assertEqual(self.review([comment(marker(reviewer="dev"))]), I.FAIL)
 
     def test_independent_approve_beside_author_approve_passes(self):
-        self.assertEqual(self.review([comment(marker(reviewer=OWNER)), comment(marker(), 2)]), I.PASS)
+        self.assertEqual(self.review([comment(marker(reviewer='demo-worker')), comment(marker(), 2)]), I.PASS)
 
     def test_comments_unreadable_unknown(self):
         self.assertEqual(self.review([], {"comments_rc": 1}), I.UNKNOWN)
