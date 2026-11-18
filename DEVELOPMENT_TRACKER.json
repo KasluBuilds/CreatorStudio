@@ -2082,6 +2082,219 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-DEV-018",
+      "title": "End-to-end autonomy acceptance harness (issue #44, mission part 11)",
+      "steps": [
+        {
+          "id": "S-DEV-018-00",
+          "title": "Lane L1 of wave w06-acceptance-text-workers",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module dev_supervisor/acceptance.py with CLI `python -B -m dev_supervisor.acceptance --out <report.json> [--real-worker] [--keep]` that runs a scripted scenario in an ISOLATED temp state directory and a temp git repository (never the real supervisor state, never this repository's registry): (1) a synthetic ACTIVE_TASKS.json/DEVELOPMENT_TRACKER.json with two eligible tasks and one blocked task; (2) autonomy next selects the first eligible task; (3) a worker is assigned and spawned through the existing lifecycle (ConfiguredSupervisor / WorkerSupervisor) with a fake launcher by default, or with --real-worker a REAL bounded `claude -p --model haiku` run (child env without parent-session markers and without ANTHROPIC_* overrides, prompt: write one file in its temp worktree) whose exit and output file are checked; (4) the result is recorded REPORTED, independently verified by the harness (file content check), marked VERIFIED; (5) the task is marked COMPLETED in the synthetic registry and autonomy next selects the second task without any human input; (6) a context threshold is SIMULATED with a synthetic transcript above the compact threshold, compaction decides, a handoff is built, written and verified (handoff module, injected checkers), and replacement runs with a fake Main launcher and a simulated heartbeat; (7) the replacement Main's view (autonomy next) still shows the second task and not the completed first one (no duplication); (8) the stop-hook blocks the new Main while work remains and allows after it is told",
+            "The report lists every step with outcome PASS/FAIL and a mode label REAL, SIMULATED or MOCKED, plus timings; exit 0 only if all steps pass; nothing is labelled REAL unless a real process ran",
+            "At least 25 offline tests (default mocked mode, failure injection per step, report shape, isolation: the real state dir and repo registry are never touched); one OBSERVED live run in default mode and one with --real-worker (counts and step outcomes only)",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+            "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "7358fcc8fc72872b917889aa5ddcdfa017e40c68"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w06-acceptance-text-workers",
+              "commit": "f79e9011ad4ffa2e28f279bef0e495ea6424530a"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_acceptance.py",
+              "result": "Ran 40 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 769 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 2303 tests in 307.035s: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.acceptance --out <temp>/mocked.json",
+              "result": "OBSERVED overall PASS 13/13 steps, 1.694s, mode mocked"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.acceptance --out <temp>/real.json --real-worker",
+              "result": "OBSERVED overall PASS 13/13 steps, 13.905s, mode real-worker (worker_run REAL 12.66s)"
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED dev_supervisor/acceptance.py: a 13-step scripted autonomy scenario in a fresh temp state dir and temp git repository (two eligible tasks, one blocked; autonomy next; worker via lifecycle.Supervisor with a fake launcher or one bounded real `claude -p --model haiku --allowedTools Write` run in a cleaned environment; REPORTED then VERIFIED by reading the output file back; task COMPLETED then second task selected; synthetic transcript at 0.93 context ratio, compaction defers then allows after a verified handoff; replacement with fake launcher/heartbeat; replacement Main sees only the second task; Stop hook blocks then allows). Report lists each step with PASS/FAIL, REAL/SIMULATED/MOCKED and timings. TESTED: 40 offline tests (every failure injection fails exactly its step, isolation checks, report shape). OBSERVED: one default-mode run and one --real-worker run, both 13/13 PASS (real run: haiku exit 0, 10 stream lines, 1 result event, 0 errors). NOT TESTED: other models, Linux/macOS, interactive Main, real Resolve. Harness result on synthetic data is not a VERIFIED claim about the project."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (818 dev tests OK, 109 node tests OK), the acceptance harness in both modes (13/13 each) and a live text-worker call; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-019",
+      "title": "OmniRoute text-only workers on free routes (issue #44, mission part 5)",
+      "steps": [
+        {
+          "id": "S-DEV-019-00",
+          "title": "Lane L2 of wave w06-acceptance-text-workers",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module dev_supervisor/text_worker.py with CLI `python -B -m dev_supervisor.text_worker --task <task.json> --out <result.json> [--routes r1,r2] [--benchmark <results.json>]`: runs one bounded TEXT-ONLY task (kinds: summarise, classify, extract_json, review_notes) through the existing dev_supervisor.omniroute client against the local gateway; route order from a benchmark results file when given (pass rate, then latency), else a configured default list; bounded retries and fallback to the next route on rate_limited/timeout/not_found/auth_error; a deterministic output checker per kind (length bounds, label in allowed set, valid JSON with required keys); the result JSON records route, attempts, latencies, failure classes, checker verdict, and labels the output REPORTED until a checker passes (then CHECKED) — never VERIFIED",
+            "Refuses non-local base URLs unless explicitly allowed; never uses a paid route; no tool use (Claude Code through OmniRoute currently fails tool calls with a Gemini thought_signature error, OBSERVED 2026-11-18: record that limitation in the module docstring)",
+            "At least 30 offline tests with a fake transport (fallback order, retry bounds, each checker, refusal of remote URLs, no key in output); one OBSERVED live run of each task kind on the free gemini/gemini-3.1-flash-lite route (route, pass/fail, latency only)",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+            "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L2 head on the wave branch (last commit to its report)",
+              "commit": "11ec7383019098782330b6c054350b87c669acc9"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w06-acceptance-text-workers",
+              "commit": "f79e9011ad4ffa2e28f279bef0e495ea6424530a"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_text_worker.py",
+              "result": "Ran 49 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+              "result": "Ran 778 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "OK (full suite)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B -m dev_supervisor.text_worker --task <task.json> --out <result.json> --routes gemini/gemini-3.1-flash-lite (x4 kinds)",
+              "result": "summarise/classify/extract_json/review_notes all CHECKED, 1 attempt each"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B -m dev_supervisor.text_worker --task <classify.json> --out <result.json> --routes groq/openai/gpt-oss-20b,gemini/gemini-3.1-flash-lite",
+              "result": "CHECKED on gemini route after auth_error on groq, 2 attempts"
+            },
+            {
+              "type": "observation",
+              "summary": "Added dev_supervisor/text_worker.py: bounded text-only worker (summarise, classify, extract_json, review_notes) over the local OmniRoute client. Free-route allowlist (gemini/, groq/), route order from a benchmark file (pass rate, then latency) or default list, 1 same-route retry for timeout/upstream/connection, immediate fallback on rate_limited/not_found/auth_error/check_failed, total attempts capped at 8, deterministic checkers, result labelled REPORTED until the checker passes then CHECKED (never VERIFIED). No tool use (Gemini thought_signature limitation recorded in the module docstring). 49 offline tests with a fake transport. OBSERVED live: one CHECKED run per kind on gemini/gemini-3.1-flash-lite (6.6 s, 8.0 s, 9.9 s, 8.7 s total latency) and one fallback (groq/openai/gpt-oss-20b auth_error HTTP 403 5.4 s, then gemini/gemini-3.1-flash-lite ok 2.0 s). 5 live calls total. NOT VERIFIED beyond that: single run, synthetic inputs only."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (818 dev tests OK, 109 node tests OK), the acceptance harness in both modes (13/13 each) and a live text-worker call; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-020",
+      "title": "Orbit polish: styles for operation sections and dated long resets",
+      "steps": [
+        {
+          "id": "S-DEV-020-00",
+          "title": "Lane L3 of wave w06-acceptance-text-workers",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "dashboard/desktop styles give the operation sections (classes added by the previous wave, e.g. orbit-act) readable list styling consistent with the existing theme in light and dark mode; no new dependencies",
+            "Account-usage reset rows show the date when the reset is more than 24 h away (e.g. 'Sat 21 Nov 23:00 UTC (in 3 d 9 h)'), deterministic from nowMs; existing behaviour for nearer resets unchanged",
+            "Node tests for both; Orbit stays read-only; no renames of released artifacts",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+            "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L3 head on the wave branch (last commit to its report)",
+              "commit": "6c0c4beb218f06be766f4940fc9f4c709b4ebebb"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w06-acceptance-text-workers",
+              "commit": "f79e9011ad4ffa2e28f279bef0e495ea6424530a"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\" (baseline, before changes)",
+              "result": "tests 106, pass 106, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\" (after changes)",
+              "result": "tests 109, pass 109, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_orbit_view.py",
+              "result": "Ran 6 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "Orbit (dashboard/desktop) now styles the operation sections: each orbit-act item is a bordered row whose left edge carries the activity colour (accent for active, bad for blocked, warn for stale/unknown, muted for registered/inactive), with orbit-activity and orbit-context lines set smaller. Only existing theme tokens are used, so light and dark follow the same palette. Account-usage reset rows more than 24 h after nowMs show the UTC weekday, day, month and time, e.g. 'Sat 21 Nov 23:00 UTC (in 3 d 11 h)'. Within 24 h (including exactly 24 h) and past resets keep the previous format. The format is computed from nowMs with UTC getters only (src/orbit.js resetText). Node tests cover the future, boundary and past cases, a month boundary, and that every activity kind has a stylesheet rule. Orbit stays read-only; no new dependencies. Synthetic data only; no network; nothing observed live."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (818 dev tests OK, 109 node tests OK), the acceptance harness in both modes (13/13 each) and a live text-worker call; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
     }
   ]
 }
