@@ -2391,14 +2391,20 @@
         {
           "id": "S-DEV-011-01",
           "title": "Step 1: implementation on task/dev-supervisor-transcript-env",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "A supervisor-launched Main writes its transcript and session record (OBSERVED)",
             "compact-check reports a numeric ratio for claude-opus-5-5",
             "A token count above the configured window never yields REPLACE",
             "Tests and validators pass"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "pull_request",
+              "commit": "cd475b3aa8c17070ae08d620784a113d67c347f1",
+              "summary": "Implementation delivered in PR #59 (merge commit cd475b3aa8c17070ae08d620784a113d67c347f1); record caught up at closeout."
+            }
+          ]
         }
       ]
     },
