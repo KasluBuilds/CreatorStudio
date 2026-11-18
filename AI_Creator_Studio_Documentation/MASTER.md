@@ -228,6 +228,7 @@ When working in this project:
 8. Do not force `DAVINCI_RESOLVE_BRIDGE=1` by default. The MCP repository source says this forces bridge-only transport and disables fallback; the server is designed to fall back automatically when the direct transport is unavailable.
 9. Do not change `pro.ps1`, `backup.ps1`, `.mcp.json`, bridge configuration or MCP installation without a clear reason and an explanation.
 10. Do not start editing real footage during connection/compatibility tests. Use disposable test projects and media.
+11. Development-time agents (Main, workers, the Python supervisor, Orbit) are reusable development infrastructure, separate from the video-production agents in AGENTS.md. Their rules are in PROJECT_OPERATING_PROTOCOL.md section 19 and their guide is DEVELOPMENT_OPERATING_SYSTEM.md (added by wave w03-dev-supervisor, issue #44); implementation status is recorded there and in PROJECT_STATUS.json, and until that wave is merged treat it as PROPOSED.
 
 ## 13. Documentation authority
 
