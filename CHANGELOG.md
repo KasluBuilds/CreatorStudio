@@ -5,6 +5,10 @@ project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
 
+## 2026-11-18 — `T-GOV-008`: autonomous PR integration policy (issue #44)
+
+- Rule changed (Lukas's direct authorization): the Repository Coordinator (Main) may merge its own pull requests and worker pull requests when every gate of protocol section 18 passes, now including scope against the registered task, an independent reviewer worker's review bound to the diff hash, and a serialized merge with read-back. Why: full development autonomy without a human or ChatGPT in the routine merge loop. GitHub branch protection is unchanged (pull request required, `validate` required and strict, administrators enforced, no force-push, no deletion). Reserved actions stay with Lukas.
+
 ## 2026-11-18 — wave `w07-autonomous-integration`: Autonomous integration: merge gate with lock, independent review packets and validation (issue #44) (2 lanes, one pull request)
 
 - `T-DEV-021` lane L1 (claude:repository-coordinator): T-DEV-021: dev_supervisor.integrate autonomous merge gate with seven gates, serialization lock, match-head-commit merge and read-back (86 offline tests).
