@@ -2330,13 +2330,19 @@
         {
           "id": "S-DEV-010-01",
           "title": "Step 1: implementation on task/dev-supervisor-launch-env",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "main contains provider_env.child_env and launch/lifecycle use it",
             "dev_supervisor tests and the full suite pass",
             "validate passes on the PR head"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "pull_request",
+              "commit": "7feb86b81bf30a099eb1391672bde56adf1678fa",
+              "summary": "Implementation delivered in PR #60 (merge commit 7feb86b81bf30a099eb1391672bde56adf1678fa); record caught up at closeout."
+            }
+          ]
         }
       ]
     },
