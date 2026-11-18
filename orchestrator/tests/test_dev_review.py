@@ -25,8 +25,8 @@ def mk(pr=5, h=H1, v="APPROVE", who="rev-1"):
     return rv.format_marker(pr, h, v, who)
 
 
-def cm(body, cid=1, login="reviewer-bot", at="2026-01-01T00:00:00Z"):
-    return {"id": cid, "body": body, "user": {"login": login}, "created_at": at}
+def cm(body, cid=1, login="reviewer-bot", at="2026-01-01T00:00:00Z", assoc="OWNER"):
+    return {"id": cid, "body": body, "user": {"login": login}, "created_at": at, "author_association": assoc}
 
 
 class FakeRunner:
@@ -114,9 +114,11 @@ class ParseMarker(NoNetwork):
 
     def test_reviewer_charset(self):
         self.assertIsNone(rv.parse_marker(mk(who="a b")))
-        self.assertIsNone(rv.parse_marker(mk(who="-lead")))
         self.assertIsNone(rv.parse_marker(mk(who="x" * 65)))
-        self.assertIsNotNone(rv.parse_marker(mk(who="claude:reviewer_2.a-b")))
+        self.assertIsNone(rv.parse_marker(mk(who="a:b")))
+        self.assertIsNone(rv.parse_marker(mk(who="a/b")))
+        self.assertIsNotNone(rv.parse_marker(mk(who="x" * 64)))
+        self.assertIsNotNone(rv.parse_marker(mk(who="-lead_2.a-b")))
 
     def test_missing_field(self):
         self.assertIsNone(rv.parse_marker(mk().replace(" reviewer=rev-1", "")))
@@ -177,16 +179,68 @@ class Status(NoNetwork):
         self.assertEqual(self.st(c)["status"], rv.CHANGES_REQUESTED)
 
     def test_latest_wins_changes_then_approve(self):
-        c = [cm(mk(v="CHANGES_REQUESTED"), 1, at="2026-01-01T00:00:00Z"), cm(mk(who="rev-2"), 2, at="2026-01-02T00:00:00Z")]
-        self.assertEqual(self.st(c)["status"], rv.CURRENT_APPROVED)
+        c = [cm(mk(v="CHANGES_REQUESTED"), 1, at="2026-01-01T00:00:00Z"), cm(mk(), 2, at="2026-01-02T00:00:00Z")]
+        self.assertEqual(self.st(c)["status"], rv.CURRENT_APPROVED)  # same reviewer: latest wins
 
     def test_order_independent_of_input_order(self):
-        c = [cm(mk(v="CHANGES_REQUESTED"), 1, at="2026-01-01T00:00:00Z"), cm(mk(who="rev-2"), 2, at="2026-01-02T00:00:00Z")]
+        c = [cm(mk(v="CHANGES_REQUESTED"), 1, at="2026-01-01T00:00:00Z"), cm(mk(), 2, at="2026-01-02T00:00:00Z")]
         self.assertEqual(self.st(list(reversed(c)))["status"], rv.CURRENT_APPROVED)
 
     def test_same_timestamp_higher_id_wins(self):
-        c = [cm(mk(), 9, at="t"), cm(mk(v="CHANGES_REQUESTED", who="r2"), 3, at="t")]
+        c = [cm(mk(), 9, at="t"), cm(mk(v="CHANGES_REQUESTED"), 3, at="t")]
         self.assertEqual(self.st(c)["status"], rv.CURRENT_APPROVED)
+
+    def test_other_reviewer_approve_does_not_hide_changes_requested(self):
+        c = [cm(mk(v="CHANGES_REQUESTED", who="rev-a"), 1, at="2026-01-01T00:00:00Z"),
+             cm(mk(who="rev-b"), 2, at="2026-01-02T00:00:00Z")]
+        r = self.st(c)
+        self.assertEqual(r["status"], rv.CHANGES_REQUESTED)
+        self.assertEqual(r["reviewer"], "rev-a")
+        self.assertEqual(r["current_reviewers"], {"rev-a": "CHANGES_REQUESTED", "rev-b": "APPROVE"})
+
+    def test_two_approvals_current(self):
+        c = [cm(mk(who="rev-a"), 1), cm(mk(who="rev-b"), 2, at="2026-01-02T00:00:00Z")]
+        self.assertEqual(self.st(c)["status"], rv.CURRENT_APPROVED)
+
+    def test_reviewer_can_withdraw_own_changes_requested(self):
+        c = [cm(mk(v="CHANGES_REQUESTED", who="rev-a"), 1, at="2026-01-01T00:00:00Z"),
+             cm(mk(who="rev-a"), 2, at="2026-01-02T00:00:00Z")]
+        self.assertEqual(self.st(c)["status"], rv.CURRENT_APPROVED)
+
+    def test_reviewer_id_case_insensitive_key(self):
+        c = [cm(mk(v="CHANGES_REQUESTED", who="Rev-A"), 1, at="2026-01-01T00:00:00Z"),
+             cm(mk(who="rev-a"), 2, at="2026-01-02T00:00:00Z")]
+        self.assertEqual(self.st(c)["status"], rv.CURRENT_APPROVED)
+
+    def test_stale_changes_requested_from_other_reviewer_ignored(self):
+        c = [cm(mk(v="CHANGES_REQUESTED", who="rev-a", h=H2), 1, at="2026-01-01T00:00:00Z"),
+             cm(mk(who="rev-b"), 2, at="2026-01-02T00:00:00Z")]
+        self.assertEqual(self.st(c)["status"], rv.CURRENT_APPROVED)
+
+    def test_reviewer_stale_latest_does_not_erase_current_marker(self):
+        c = [cm(mk(v="CHANGES_REQUESTED", who="rev-a"), 1, at="2026-01-01T00:00:00Z"),
+             cm(mk(who="rev-a", h=H2), 2, at="2026-01-02T00:00:00Z")]
+        self.assertEqual(self.st(c)["status"], rv.CHANGES_REQUESTED)
+
+    def test_association_filter(self):
+        for a in ("OWNER", "MEMBER", "COLLABORATOR", "owner"):
+            self.assertEqual(self.st([cm(mk(), assoc=a)])["status"], rv.CURRENT_APPROVED, a)
+        for a in ("NONE", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "MANNEQUIN", "", None):
+            r = self.st([cm(mk(), assoc=a)])
+            self.assertEqual(r["status"], rv.INVALID, a)
+            self.assertIn("author_association", r["rejected"][0]["reason"])
+
+    def test_association_missing_key_rejected(self):
+        c = cm(mk())
+        del c["author_association"]
+        self.assertEqual(self.st([c])["status"], rv.INVALID)
+
+    def test_untrusted_comment_cannot_block_trusted_approval(self):
+        c = [cm(mk(), 1, at="2026-01-01T00:00:00Z"),
+             cm(mk(v="CHANGES_REQUESTED", who="evil"), 2, at="2026-01-02T00:00:00Z", assoc="NONE")]
+        r = self.st(c)
+        self.assertEqual(r["status"], rv.CURRENT_APPROVED)
+        self.assertEqual(len(r["rejected"]), 1)
 
     def test_old_stale_then_new_current(self):
         c = [cm(mk(h=H2), 1, at="2026-01-01T00:00:00Z"), cm(mk(h=H1), 2, at="2026-01-02T00:00:00Z")]
@@ -311,6 +365,46 @@ class GitGh(NoNetwork):
     def test_check_pr_missing(self):
         f = FakeRunner()
         self.assertEqual(rv.check_pr(5, f, f)["status"], rv.MISSING)
+
+
+class BaseRestriction(NoNetwork):
+    def test_non_main_base_refused(self):
+        f = FakeRunner(base="wave/x")
+        with self.assertRaises(rv.ReviewError):
+            rv.check_pr(5, f, f)
+
+    def test_non_main_base_allowed_with_flag(self):
+        f = FakeRunner(base="wave/x")
+        self.assertEqual(rv.check_pr(5, f, f, allow_base=True)["base"], "wave/x")
+
+    def test_base_override_refused_without_flag(self):
+        f = FakeRunner()
+        with self.assertRaises(rv.ReviewError):
+            rv.check_pr(5, f, f, base="develop")
+
+    def test_base_override_with_flag_used_for_diff(self):
+        f = FakeRunner()
+        rv.check_pr(5, f, f, base="develop", allow_base=True)
+        self.assertIn(["git", "merge-base", "origin/develop", "origin/task/x"], f.calls)
+
+    def test_base_main_override_ok(self):
+        f = FakeRunner()
+        self.assertEqual(rv.check_pr(5, f, f, base="main")["base"], "main")
+
+    def test_packet_refuses_non_main(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = FakeRunner(base="wave/x")
+            with self.assertRaises(rv.ReviewError):
+                rv.build_packet(5, Path(d) / "o", f, f, Path(d))
+
+    def test_cli_flags(self):
+        f = FakeRunner(base="wave/x")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            self.assertEqual(rv.main(["check", "5"], gh=f, git=f, root=Path(".")), 2)
+            rv.main(["check", "5", "--allow-base"], gh=f, git=f, root=Path("."))
+        self.assertIn("not main", err.getvalue())
+        self.assertIn("MISSING", out.getvalue())
 
 
 class Packet(NoNetwork):

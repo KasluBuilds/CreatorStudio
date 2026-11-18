@@ -29,7 +29,7 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Seque
 
 __all__ = ["Marker", "ReviewError", "parse_marker", "marker_problem", "diff_hash", "review_status", "format_marker",
            "SubprocessRunner", "compute_diff", "fetch_comments", "fetch_pr", "find_registered_task", "build_packet",
-           "build_prompt", "check_pr", "author_ids", "main",
+           "build_prompt", "check_pr", "author_ids", "main", "TRUSTED_ASSOCIATIONS",
            "CURRENT_APPROVED", "STALE", "CHANGES_REQUESTED", "MISSING", "INVALID"]
 
 CURRENT_APPROVED = "CURRENT_APPROVED"
@@ -38,7 +38,8 @@ CHANGES_REQUESTED = "CHANGES_REQUESTED"
 MISSING = "MISSING"
 INVALID = "INVALID"
 
-_REVIEWER_RE = r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}"
+_REVIEWER_RE = r"[A-Za-z0-9._-]{1,64}"
+TRUSTED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
 _MARKER_RE = re.compile(
     r"^<!-- dev-review v1 pr=(?P<pr>[1-9][0-9]{0,8}) diff_sha256=(?P<hash>[0-9a-f]{16}) "
     r"verdict=(?P<verdict>APPROVE|CHANGES_REQUESTED) reviewer=(?P<reviewer>" + _REVIEWER_RE + r") -->$")
@@ -105,7 +106,9 @@ def review_status(pr: int, comments: Iterable[Mapping[str, Any]], current_hash: 
     """Pure. comments: GitHub issue-comment dicts (id, body, user.login, created_at). author_ids: identities of the PR
     author: a review whose `reviewer=` id is one of them is rejected. The GitHub login of the commenter is deliberately
     NOT compared: all workers post through one shared account, so the independent reviewer id is the identity.
-    The latest VALID review wins."""
+    Per reviewer id the latest valid marker for the current hash counts; any current
+    CHANGES_REQUESTED blocks; CURRENT_APPROVED needs at least one current APPROVE. Only comments whose
+    author_association is OWNER, MEMBER or COLLABORATOR count."""
     authors = {_norm(a) for a in author_ids if _norm(a)}
     valid: List[Tuple[Mapping[str, Any], Marker]] = []
     rejected: List[Dict[str, Any]] = []
@@ -118,7 +121,11 @@ def review_status(pr: int, comments: Iterable[Mapping[str, Any]], current_hash: 
             continue
         attempts += 1
         cid = c.get("id")
-        if mk is None:
+        assoc = str(c.get("author_association") or "").upper()
+        if assoc not in TRUSTED_ASSOCIATIONS:
+            rejected.append({"comment_id": cid, "reason": f"author_association {assoc or 'MISSING'} is not "
+                                                          "OWNER, MEMBER or COLLABORATOR"})
+        elif mk is None:
             rejected.append({"comment_id": cid, "reason": prob})
         elif mk.pr != int(pr):
             rejected.append({"comment_id": cid, "reason": f"marker is for PR {mk.pr}, not {int(pr)}"})
@@ -128,18 +135,26 @@ def review_status(pr: int, comments: Iterable[Mapping[str, Any]], current_hash: 
             valid.append((c, mk))
     res: Dict[str, Any] = {"pr": int(pr), "current_hash": current_hash, "review_attempts": attempts,
                            "valid_reviews": len(valid), "rejected": rejected, "reviewer": None,
-                           "review_hash": None, "verdict": None, "comment_id": None}
+                           "review_hash": None, "verdict": None, "comment_id": None, "current_reviewers": {}}
     if not valid:
         res["status"] = INVALID if attempts else MISSING
         return res
-    c, mk = valid[-1]
-    res.update(reviewer=mk.reviewer, review_hash=mk.diff_sha256, verdict=mk.verdict, comment_id=c.get("id"))
-    if mk.diff_sha256 != current_hash:
-        res["status"] = STALE
-    elif mk.verdict == "APPROVE":
-        res["status"] = CURRENT_APPROVED
-    else:
-        res["status"] = CHANGES_REQUESTED
+    # each reviewer id's latest marker for the CURRENT hash counts (valid is already in time order)
+    latest: Dict[str, Tuple[Mapping[str, Any], Marker]] = {}
+    for c, mk in valid:
+        if mk.diff_sha256 == current_hash:
+            latest[_norm(mk.reviewer)] = (c, mk)
+    if not latest:
+        c, mk = valid[-1]
+        res.update(reviewer=mk.reviewer, review_hash=mk.diff_sha256, verdict=mk.verdict, comment_id=c.get("id"),
+                   status=STALE)
+        return res
+    res["current_reviewers"] = {mk.reviewer: mk.verdict for _, mk in latest.values()}
+    blockers = [(c, mk) for c, mk in latest.values() if mk.verdict == "CHANGES_REQUESTED"]
+    pick = max(blockers or list(latest.values()), key=lambda t: _comment_key(t[0]))
+    c, mk = pick
+    res.update(reviewer=mk.reviewer, review_hash=mk.diff_sha256, verdict=mk.verdict, comment_id=c.get("id"),
+               status=CHANGES_REQUESTED if blockers else CURRENT_APPROVED)
     return res
 
 
@@ -173,7 +188,7 @@ def _check_ref(name: str) -> str:
     return name
 
 
-def fetch_pr(gh: Callable, pr: int) -> Dict[str, Any]:
+def fetch_pr(gh: Callable, pr: int, base: Optional[str] = None, allow_base: bool = False) -> Dict[str, Any]:
     out = gh(["gh", "pr", "view", str(int(pr)), "--json",
               "number,title,headRefName,baseRefName,headRefOid,author,state,url"])
     try:
@@ -182,6 +197,10 @@ def fetch_pr(gh: Callable, pr: int) -> Dict[str, Any]:
         raise ReviewError("unparseable gh pr view output")
     if not isinstance(d, dict) or not d.get("headRefName") or not d.get("baseRefName"):
         raise ReviewError("gh pr view returned no head/base")
+    if base:
+        d["baseRefName"] = base
+    if d["baseRefName"] != "main" and not allow_base:
+        raise ReviewError(f"base ref {d['baseRefName']!r} is not main; pass --allow-base to review against it")
     return d
 
 
@@ -233,8 +252,9 @@ def author_ids(pr_info: Mapping[str, Any]) -> List[str]:
     return [a["login"]] if isinstance(a, Mapping) and a.get("login") else []
 
 
-def check_pr(pr: int, gh: Callable, git: Callable, fetch: bool = True) -> Dict[str, Any]:
-    info = fetch_pr(gh, pr)
+def check_pr(pr: int, gh: Callable, git: Callable, fetch: bool = True, base: Optional[str] = None,
+             allow_base: bool = False) -> Dict[str, Any]:
+    info = fetch_pr(gh, pr, base, allow_base)
     _, digest, mb, files = compute_diff(git, info["baseRefName"], info["headRefName"], fetch)
     res = review_status(pr, fetch_comments(gh, pr), digest, author_ids(info))
     res.update(base=info["baseRefName"], head=info["headRefName"], merge_base=mb, files=len(files))
@@ -308,7 +328,7 @@ The FIRST LINE must be exactly this marker (nothing before it, hash and PR numbe
 {ex}
 
 Use `verdict=CHANGES_REQUESTED` when appropriate and replace `<your reviewer id>` with your own id (letters,
-digits, `_ . : -`). Then the body:
+digits, `_ . -`, 1 to 64 characters). Then the body:
 
     ## BLOCKING
     - <finding or "none">
@@ -321,8 +341,9 @@ If the PR head moves after you start, the hash is stale: re-fetch, recompute and
 """
 
 
-def build_packet(pr: int, out: Path, gh: Callable, git: Callable, root: Path, fetch: bool = True) -> Dict[str, Any]:
-    info = fetch_pr(gh, pr)
+def build_packet(pr: int, out: Path, gh: Callable, git: Callable, root: Path, fetch: bool = True,
+                 base: Optional[str] = None, allow_base: bool = False) -> Dict[str, Any]:
+    info = fetch_pr(gh, pr, base, allow_base)
     diff, digest, mb, files = compute_diff(git, info["baseRefName"], info["headRefName"], fetch)
     task = find_registered_task(root, info["headRefName"])
     out.mkdir(parents=True, exist_ok=True)
@@ -357,18 +378,22 @@ def main(argv: Optional[Sequence[str]] = None, gh: Optional[Callable] = None, gi
     p1 = sub.add_parser("packet")
     p1.add_argument("pr", type=int)
     p1.add_argument("--out", required=True)
+    p1.add_argument("--base", default=None, help="override the PR base ref (only main unless --allow-base)")
+    p1.add_argument("--allow-base", action="store_true")
     p2 = sub.add_parser("check")
     p2.add_argument("pr", type=int)
     p2.add_argument("--json", action="store_true")
+    p2.add_argument("--base", default=None, help="override the PR base ref (only main unless --allow-base)")
+    p2.add_argument("--allow-base", action="store_true")
     a = ap.parse_args(argv)
     root = root or _repo_root()
     gh = gh or SubprocessRunner(str(root))
     git = git or SubprocessRunner(str(root))
     try:
         if a.cmd == "packet":
-            print(json.dumps(build_packet(a.pr, Path(a.out), gh, git, root), sort_keys=True))
+            print(json.dumps(build_packet(a.pr, Path(a.out), gh, git, root, base=a.base, allow_base=a.allow_base), sort_keys=True))
             return 0
-        r = check_pr(a.pr, gh, git)
+        r = check_pr(a.pr, gh, git, base=a.base, allow_base=a.allow_base)
     except ReviewError as e:
         print(f"review: error: {e}", file=sys.stderr)
         return 2
