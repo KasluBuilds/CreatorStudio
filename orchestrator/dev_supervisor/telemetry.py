@@ -219,7 +219,7 @@ def context_pressure(transcript_path, config: Optional[PressureConfig] = None) -
     ts = now_iso()
     src = "transcript_tail"
     if transcript_path is None or not Path(transcript_path).is_file():
-        return _all_unavailable("transcript not found", src, ts)
+        return _all_unavailable("transcript not found (an interactive claude started with inherited parent-session markers such as CLAUDE_CODE_CHILD_SESSION writes none; see issue #58)", src, ts)
     try:
         u = read_last_usage(transcript_path)
     except OSError as e:

@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
 from . import compaction, config as config_mod, handoff, replacement, routing, telemetry
-from . import github_log, omniroute, resolve_discovery
+from . import github_log, omniroute, provider_env, resolve_discovery
 from .config import Config, ConfigError
 from .evidence import Evidence, unavailable
 from .launch import (MAIN_ROLE, InteractiveMainLauncher, LaunchError, MainProfile, NewConsoleTerminal,
@@ -823,6 +823,12 @@ def doctor_checks(svc: Services) -> List[Dict[str, str]]:
                              (" (acceptable: no identity configured)" if verdict == "UNCONFIGURED" else "")))
     except (ValueError, OSError) as e:
         checks.append(_check("resolve", "FAIL", f"identity config unusable ({e.__class__.__name__})"))
+
+    markers = provider_env.parent_session_markers(svc.env if svc.env is not None else os.environ)
+    checks.append(_check("parent_session", "WARN" if markers else "OK",
+                         ("supervisor runs inside a Claude Code session (" + ", ".join(markers) +
+                          "); children get them removed, but start the supervisor from a plain terminal")
+                         if markers else "not inside a Claude Code session"))
 
     sd = cfg.state_directory(svc.env)
     try:
