@@ -29,6 +29,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence, Tuple
 
+from . import provider_env
+
 try:
     from .state_store import StateStore, StoreError, parse_iso, utc_iso
     from .workers import (DuplicateWorkerError, ResultRecord, ResultStatus, UnknownWorkerError, Worker,
@@ -201,7 +203,7 @@ class ClaudeCliLauncher:
         if not spec.argv or any(not isinstance(a, str) for a in spec.argv):
             raise LifecycleError("argv must be a non-empty list of strings")
         argv = [self.resolve_executable()] + list(spec.argv[1:])
-        kwargs: Dict[str, Any] = {"cwd": spec.cwd, "shell": False, "close_fds": True}
+        kwargs: Dict[str, Any] = {"cwd": spec.cwd, "shell": False, "close_fds": True, "env": provider_env.child_env()}
         if os.name == "nt":
             kwargs["creationflags"] = (getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
                                        | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
