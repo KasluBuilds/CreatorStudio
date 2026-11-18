@@ -88,6 +88,22 @@
       ],
       "owner": "claude:resolve-stream",
       "owner_status": "ASSIGNED - Lukas assigned T-RSV-002 (safe Resolve execution layer, M-RSV-02) directly in session on 2026-11-17"
+    },
+    "dev_supervisor": {
+      "paths": [
+        "orchestrator/dev_supervisor/",
+        "orchestrator/tests/test_dev_telemetry.py",
+        "orchestrator/tests/test_dev_lifecycle.py",
+        "orchestrator/tests/test_dev_handoff.py",
+        "orchestrator/tests/test_dev_routing.py",
+        "orchestrator/tests/test_dev_resolve_discovery.py",
+        "orchestrator/tests/test_dev_github_log.py",
+        "orchestrator/tests/test_dev_snapshot.py",
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/tests/test_dev_docs.py"
+      ],
+      "owner": "claude:repository-coordinator",
+      "owner_status": "ASSIGNED - Lukas authorized issue #44 (autonomous development supervisor) on 2026-11-18; built by wave w03-dev-supervisor; development-time infrastructure, not a video-production agent"
     }
   },
   "shared_files": {
@@ -730,6 +746,266 @@
         "python -B dashboard/tracker_check.py --against origin/main"
       ],
       "integration_notes": "Assigned directly by Lukas in session 2026-11-17, who also authorized this session to open and merge its own pull requests after technical self-review once every required check passes (no ChatGPT or human code review is claimed). Holds the exclusive resource 'resolve' for live tests on a disposable project only. Synthetic media only; never MVI_0879.MOV or any real footage. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; only this task's own records are edited. Does not touch tools/, launchers, .mcp.json or the bridge configuration."
+    },
+    {
+      "id": "T-DEV-001",
+      "title": "Telemetry and evidence model: sessions, context pressure, usage signals (issue #44 part A)",
+      "description": "Wave w03-dev-supervisor, lane L1: Telemetry and evidence model: sessions, context pressure, usage signals (issue #44 part A).",
+      "owner": "claude:dev-telemetry",
+      "branch": "lane/w03-dev-supervisor/L1",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "evidence.py: a small Evidence model with a source label (OBSERVED, REPORTED, INFERRED, UNAVAILABLE), timestamp, staleness check and helpers; every telemetry value carries a label and never an exact number the source does not expose",
+        "telemetry.py reads the Claude Code per-process session files (pid, sessionId, cwd, status busy/idle, name, startedAt, messaging socket path) from a configurable directory, tolerates missing/corrupt files and dead pids (liveness by pid probe, injectable), and reports staleness",
+        "telemetry.py computes per-session context pressure from the JSONL transcript by reading only the last assistant usage record (input + cache_read + cache_creation tokens, model id), with a configurable per-model context window table and thresholds (warn, compact, replace) as configuration with documented defaults; unknown model window gives UNAVAILABLE pressure, never a guess; tail read so large transcripts are not loaded whole; no transcript text is ever returned",
+        "Account usage and reset windows: a pluggable provider interface plus a statusline-JSON ingestor; with no source it returns UNAVAILABLE with the reason; the module documentation states plainly that nothing here is an account-usage reading unless a provider supplies it",
+        "A single snapshot function returns a JSON-serialisable dict (schema_version, generated_at, sessions[], each with the labelled fields) used later by the supervisor and Orbit",
+        "At least 40 offline tests with synthetic session files and synthetic transcripts (corrupt lines, huge line, missing usage, multiple models, dead pid, threshold edges); one real-machine OBSERVED run reported as numbers only",
+        "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_telemetry.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L1 of wave w03-dev-supervisor; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b9564e03115d569135017e05479598085f1e4639, lane head d861206bec7b6120be924c95262d59ac206db227). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-002",
+      "title": "Supervisor state store and worker lifecycle: spawn, assign, monitor, restart, stop (issue #44 part B)",
+      "description": "Wave w03-dev-supervisor, lane L2: Supervisor state store and worker lifecycle: spawn, assign, monitor, restart, stop (issue #44 part B).",
+      "owner": "claude:dev-lifecycle",
+      "branch": "lane/w03-dev-supervisor/L2",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "state_store.py: a crash-safe machine-local store (atomic write, schema_version, fsync and rename, backup of the previous file, corruption detected and recovered from the backup, append-only JSON-lines event log) in a configurable directory that defaults OUTSIDE the repository; refuses a directory inside the repo working tree; no secrets ever written (scrub on write)",
+        "workers.py: a Worker record (id, role, task_id, branch, worktree, owner stream, provider/model identity, status, pid, session id, started and last-heartbeat, restart count, last result reference) and a registry that survives process restarts",
+        "lifecycle.py: spawn, assign, monitor, collect, restart and stop through an injected ProcessLauncher protocol (a fake launcher in tests; a real launcher that runs the claude CLI in print/stream-json mode with an explicit --model, --session-id and a task prompt file, argument lists only, no shell string interpolation, bounded runtime); heartbeat and stale detection; bounded restarts with backoff and a hard stop after N identical failures recorded as a blocker; graceful stop; duplicate-worker prevention for the same task/worktree; the worktree and branch must exist (injected checker) before a worker is assigned",
+        "Result collection: a worker result is stored as REPORTED until an injected verifier marks it VERIFIED or REJECTED; contradictory reports from two workers on one task are detected and flagged",
+        "Recovery: a fresh supervisor process reloads the registry, reconciles with live pids, marks vanished workers LOST and produces a recovery plan without relaunching anything automatically",
+        "At least 50 offline tests (fake launcher, fake clock, corruption, crash mid-write, restart storms, duplicate assignment, contradiction detection)",
+        "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_lifecycle.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L2 of wave w03-dev-supervisor; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b9564e03115d569135017e05479598085f1e4639, lane head 73d2ced965545408fabad027a4e5642ccf00f99a). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-003",
+      "title": "Safe handoff, compaction and session replacement (issue #44 part C)",
+      "description": "Wave w03-dev-supervisor, lane L3: Safe handoff, compaction and session replacement (issue #44 part C).",
+      "owner": "claude:dev-handoff",
+      "branch": "lane/w03-dev-supervisor/L3",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "handoff.py: a handoff builder that captures objective, decisions, current plan, task graph, worker identities and status, branches/worktrees, latest commits and PRs, tests and evidence with labels, blockers, next actions and resource state (context and usage signals with their labels); written as machine-readable JSON plus a human Markdown file in the machine-local state store, with a content hash; a VERIFY step re-reads the files, validates the schema, checks that every referenced branch/worktree/commit/PR exists through injected checkers, and returns NOT_SAFE with reasons when anything is missing; contains no secrets or transcript text",
+        "compaction.py: a policy that, given context pressure from the L1 telemetry (merge origin/wave/w03-dev-supervisor to use it) and configurable thresholds, decides NONE / WARN / COMPACT / REPLACE with a recorded reason; compaction is only requested when the session is idle and a handoff has just been verified; never claims exact usage when the signal is UNAVAILABLE; a compaction event is recorded through the state store event log",
+        "replacement.py: the replace-a-session procedure: verify handoff, mark the old session retiring, launch a fresh Main or worker through the L2 launcher protocol with a prompt that points to the verified handoff, wait for the new session's first heartbeat, then retire the old; if the handoff is not verified the old session is never cleared; the module and its result state that a fresh session does NOT replenish account usage; bounded retries and rollback (the old session stays authoritative until the new one is confirmed)",
+        "At least 40 offline tests (missing branch, corrupt handoff, hash mismatch, threshold edges, retiring and rollback, never-clear-without-verified-handoff, repeated failure stops)",
+        "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_handoff.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L3 of wave w03-dev-supervisor; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b9564e03115d569135017e05479598085f1e4639, lane head c61952a3bd4f5fefe1d2b163b849872efcdf736b). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-004",
+      "title": "Provider/model routing and OmniRoute benchmarking (issue #44 part D)",
+      "description": "Wave w03-dev-supervisor, lane L4: Provider/model routing and OmniRoute benchmarking (issue #44 part D).",
+      "owner": "claude:dev-routing",
+      "branch": "lane/w03-dev-supervisor/L4",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "omniroute.py: a client over an injected HTTP transport for the local OmniRoute (base URL from configuration or env; the API key is read from the environment or the machine-local OmniRoute env file ONLY at call time, never logged, never stored, never in exceptions); lists models, sends a small benchmark prompt, records latency, status, token counts if returned and error class; localhost-only by default and refuses non-local base URLs unless explicitly allowed",
+        "routing.py: a task-profile scheduler: input is criticality, complexity class, estimated context size, deadline, concurrency, current context pressure and quota signals (each possibly UNAVAILABLE); output is a ranked decision with reasons (strongest Claude model for architecture, integration and high criticality; OmniRoute Gemini/Groq routes for routine, mechanical, search and repetitive work; escalation to Claude on validation failure or repeated failure; never a paid API route unless a configuration flag explicitly authorises it, default off); deterministic and fully explained; no fixed percentage split",
+        "A benchmark harness runs a fixed set of small synthetic tasks (code transform, JSON extraction, summarise, a tool-use style instruction, a refusal-safe task) against each reachable OmniRoute route, scores them with deterministic checkers (not an LLM judge), records pass rate, latency and failure class, and writes a results JSON containing no secrets",
+        "LIVE verification: run the harness against the local OmniRoute (the Coordinator started it on port 20128; if it is down start it with `omniroute serve --daemon --no-open`); report which Gemini/Groq routes answer, pass rates and latencies, which fail and why; write the factual results into OMNIROUTE_BENCHMARK.md labelled OBSERVED with date and commands; do not print or store any key, do not look for billing, do not configure paid providers",
+        "At least 40 offline tests; routing decisions covered for every branch including all-UNAVAILABLE signals and the paid-route-off default",
+        "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_routing.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L4 of wave w03-dev-supervisor; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b9564e03115d569135017e05479598085f1e4639, lane head 1c3da5ac3733d146738e39b00b6d9525edb48055). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-005",
+      "title": "Resolve project discovery and bridge bootstrap, read-only (issue #44 part E)",
+      "description": "Wave w03-dev-supervisor, lane L5: Resolve project discovery and bridge bootstrap, read-only (issue #44 part E).",
+      "owner": "claude:dev-resolve-bootstrap",
+      "branch": "lane/w03-dev-supervisor/L5",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "INVESTIGATE first and write the findings into RESOLVE_BOOTSTRAP.md (OBSERVED versus inferred): why an agent could launch DaVinci Resolve Free 21.0.4.5 yet not identify the intended project or start the in-app bridge; read-only inspection only (process list, the listening bridge port 49632 on 127.0.0.1, .mcp.json.example, the davinci-resolve MCP read tools, local Resolve project metadata); you must NOT open, create, rename, save, import into or modify any project or timeline and must not click in Resolve; if a read needs the bridge and it is unavailable, document exactly what the user must do",
+        "resolve_discovery.py: a pure, injectable discovery module: is Resolve running (process check), is the bridge listening (TCP connect to 127.0.0.1 only), can the MCP answer a read-only call, current project name and stable identity (unique id where the API exposes one, else name plus database plus folder), current timeline name, project list; every field labelled OBSERVED or UNAVAILABLE; no guessing by name: it accepts a machine-local config of the expected project identity and reports MATCH, MISMATCH, UNCONFIGURED or UNAVAILABLE, and refuses to proceed on MISMATCH",
+        "A small CLI entry (`python -B -m dev_supervisor.resolve_discovery`) prints the report as JSON, exit code non-zero on MISMATCH or UNAVAILABLE; it never performs a project mutation; bridge start is documented, and launched only on an explicit flag and only as far as it can be done without touching a project; otherwise it prints the exact manual fallback",
+        "The real active project on this machine is DISCOVERED read-only and recorded (name, identity if available, timeline) in the lane report as OBSERVED; never written to a tracked file if it contains a personal path or a name not already public in the repository",
+        "At least 30 offline tests with a fake process list, fake socket and fake MCP transport (MISMATCH, UNCONFIGURED, bridge down, Resolve closed, timeouts); coordination note: T-RSV-002 owns the resolve_executor package and the exclusive 'resolve' resource; this lane is read-only and does not touch that package",
+        "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_resolve_discovery.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L5 of wave w03-dev-supervisor; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b9564e03115d569135017e05479598085f1e4639, lane head 1c6a2b1aab38bec018a80206c6f6be3c5e8022c7). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-006",
+      "title": "Automatic GitHub progress reporting: durable event log (issue #44 part 5)",
+      "description": "Wave w03-dev-supervisor, lane L6: Automatic GitHub progress reporting: durable event log (issue #44 part 5).",
+      "owner": "claude:dev-github-log",
+      "branch": "lane/w03-dev-supervisor/L6",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "github_log.py: an event model (task_started, step_done, decision, test_run, failure, retry, provider_change, handoff, compaction, blocker, pr_opened) with evidence references and a source label; renders a concise Markdown comment; every event is scrubbed (tokens, key/value secrets, absolute user paths, long opaque strings) before it leaves the process",
+        "Posting goes through an injected Runner protocol wrapping the gh CLI with argument lists (never shell strings): issue comment, issue create (sub-task), issue close; a real runner is provided but all tests use a fake; rate limiting and batching, bounded retries with backoff, an offline spool file (machine-local, atomic) so an event is never lost when GitHub or the network is down, and an idempotent flush (an event id marker prevents duplicate comments)",
+        "Visibility safety: the repository is PUBLIC; the logger refuses to post content flagged as sensitive (secret pattern, transcript text marker, personal path) and records the refusal locally instead",
+        "A helper creates a sub-task issue from a task record (id, owner, scope, dependencies, acceptance criteria, branch/worktree) with a back-reference to the parent issue number",
+        "At least 40 offline tests (fake gh runner, outage plus spool plus flush, duplicate prevention, scrubbing, refusal)",
+        "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_github_log.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L6 of wave w03-dev-supervisor; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b9564e03115d569135017e05479598085f1e4639, lane head d3f55bc490b1588f7065f0632f19e8ff05cfa2e9). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-007",
+      "title": "Orbit observability: supervisor snapshot and dashboard panel (issue #44 part F)",
+      "description": "Wave w03-dev-supervisor, lane L7: Orbit observability: supervisor snapshot and dashboard panel (issue #44 part F).",
+      "owner": "claude:dev-orbit",
+      "branch": "lane/w03-dev-supervisor/L7",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "snapshot.py builds one read-only JSON for Orbit from the L1 telemetry and the L2 registry (Main, workers, tasks, model/provider, context pressure with labels, account usage only when OBSERVED, branch/PR, last durable GitHub checkpoint, blockers, failures, retries, next actions); each value says whether it is live or cached and its age; stale and offline are first-class states",
+        "The existing dashboard (read-only) gains an Operation/Supervisor view that renders that snapshot (from a local file path or setting, never a network write); a missing or stale file shows an explicit offline/stale state, never an empty success view; the UI distinguishes live from cached data; the product identity is shown as Orbit in the window title, headings of the NEW view and the About text, while released artifact names, file names and existing ids are NOT renamed; record the naming decision in the lane report",
+        "The dashboard stays read-only: no code path writes to GitHub, the repository or the supervisor state; add a test asserting this where the existing test style allows",
+        "Existing dashboard node tests (dashboard/desktop/tests) and Python snapshot tests still pass and are not weakened; new tests cover live, stale and offline rendering with fixtures",
+        "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_snapshot.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L7 of wave w03-dev-supervisor; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b9564e03115d569135017e05479598085f1e4639, lane head ea203ccc9ac07410973d3915623e339834be7e51). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-008",
+      "title": "Supervisor CLI and one-command launch of Main (issue #44 integration)",
+      "description": "Wave w03-dev-supervisor, lane L8: Supervisor CLI and one-command launch of Main (issue #44 integration).",
+      "owner": "claude:dev-cli",
+      "branch": "lane/w03-dev-supervisor/L8",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "config.py: machine-local configuration (state directory outside the repo, thresholds, model table, OmniRoute base URL, GitHub repo and issue, paid-route flag default off) loaded from a machine-local file; a documented example is committed as a template with placeholders only",
+        "cli.py and __main__.py: `python -B -m dev_supervisor` with subcommands start (launch Main under the supervisor), status, workers, assign, handoff, compact-check, replace, report (flush the GitHub log), snapshot, route (explain a routing decision), doctor (check claude CLI, git, gh, OmniRoute, Resolve discovery, state dir, repo clean); each is non-destructive by default and exits non-zero on a failed check; the documented single launch command starts Main and the supervisor loop",
+        "launch.py: starts Main as a claude CLI session with the verified handoff and operating instructions as an appended prompt file, in the repository root, with a selectable profile that only passes flags (model, permission mode as configured) and NEVER reads, copies or modifies pro.ps1, backup.ps1 or .mcp.json; the Claude Pro versus OmniRoute choice is made by which local launcher the user runs and is documented, not automated by editing those launchers; the dangerous-permissions flag is only passed when the machine-local config explicitly enables it",
+        "Integration test with fakes: start, assign two fake workers, simulate pressure, handoff verified, replacement, status reflects the new Main; nothing touches the real machine in tests",
+        "At least 30 offline tests",
+        "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_cli.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L8 of wave w03-dev-supervisor; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b9564e03115d569135017e05479598085f1e4639, lane head 581e95c22dc13d322ec415c4660fca2c911ba2db). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-009",
+      "title": "Development operating system documentation and doc reconciliation (issue #44 part G)",
+      "description": "Wave w03-dev-supervisor, lane L9: Development operating system documentation and doc reconciliation (issue #44 part G).",
+      "owner": "claude:dev-docs",
+      "branch": "lane/w03-dev-supervisor/L9",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "DEVELOPMENT_OPERATING_SYSTEM.md (project-independent, placeholders instead of machine values): how Main controls the operation; how specialist agents communicate (Claude Code messaging, GitHub as the durable log); the Python supervisor, session/context rotation and recovery; GitHub task/step/event logging, branches, worktrees, PRs and integration; Orbit and what it observes; Claude Pro versus OmniRoute (free Gemini/Groq, no paid API assumed) with quota realities and the statement that a fresh session does not replenish usage; Windows/VS Code setup and machine-local configuration; how to onboard a new repository; how Main proposes ideas, evaluates feasibility and trade-offs and asks essential questions before a major build; and the distinction between reusable development infrastructure and Creator Studio's video-production agents",
+        "Every capability in the document is labelled with its real status (IMPLEMENTED, TESTED, OBSERVED, REPORTED, PROPOSED, NOT TESTED) taken from the lane reports and the merged code on the wave branch, with nothing promoted beyond its evidence",
+        "AGENTS.md, WORKFLOW.md and ENVIRONMENT.md are reconciled (no duplicated or conflicting rules): development-time agents are clearly separated from video-production agents; MASTER.md, ROADMAP.md, DECISIONS_AND_OPEN_QUESTIONS.md, README.md, TOOLS.md, CLAUDE.md, PROJECT_OPERATING_PROTOCOL.md, RESOLVE_INTEGRATION.md and TECHNICAL_ARCHITECTURE.md are NOT edited by this lane (shared files, the integrator and T-RSV-002 own them); list the proposed edits to those files in the lane report instead",
+        "test_dev_docs.py checks that DEVELOPMENT_OPERATING_SYSTEM.md contains every required section, a status label on each capability, no secret patterns, no absolute user paths and no launcher contents; the existing docs tests still pass",
+        "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_docs.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L9 of wave w03-dev-supervisor; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b9564e03115d569135017e05479598085f1e4639, lane head b9564e03115d569135017e05479598085f1e4639). No claim, step-start, lease or closeout pull request was used."
     }
   ]
 }

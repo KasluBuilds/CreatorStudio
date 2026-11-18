@@ -1,0 +1,35 @@
+{
+  "lane": "L3",
+  "status": "DONE",
+  "summary": "IMPLEMENTED and tested offline (66 tests): handoff.py builds a labelled handoff (objective, decisions, plan, task graph, L2 worker identities/status, branches, worktrees, commits, PRs, tests and evidence with labels, blockers, next actions, L1 context/usage signals with their labels; UNAVAILABLE never carries a value), refuses secret- or transcript-like text and over-long strings, writes JSON plus Markdown under <state store>/handoffs/ with a SHA-256 content hash, and verify_handoff re-reads both files, validates the schema, recomputes the hash and confirms every branch/worktree/commit/PR through injected checkers (missing, failing or absent checker = NOT_SAFE with reasons). Only a SAFE verification yields a VerifiedHandoff; it cannot be constructed or copied elsewhere (module-private seal plus issued-object registry), and require_verified also enforces freshness. compaction.py decides NONE/WARN/COMPACT/REPLACE from L1 context_pressure using PressureConfig.level and its thresholds, records the reason, allows COMPACT/REPLACE only when the session is idle and a fresh VerifiedHandoff exists, returns NONE with an explicit UNAVAILABLE/stale reason when pressure is unavailable or stale, and records compaction_decision/compaction_requested/compaction_refused in the state store event log. replacement.py requires a fresh VerifiedHandoff for the old session before anything happens, re-verifies on disk, marks the old session RETIRING (still authoritative), launches through the L2 ProcessLauncher with a prompt that only points to the handoff path and hash, waits (bounded) for the first heartbeat, moves authority to the new session, verifies the handoff once more and only then calls the retirer; bounded attempts, rollback to the old session, and a stop after N failed replacements in a row until a human resets. The module docstring and every ReplacementResult state that a fresh session does NOT replenish account usage. NOT TESTED: GitRefChecker and GhPrChecker against a live repository/GitHub, a real claude launch through ClaudeCliLauncher, any real heartbeat or retirer implementation (none exists yet; they are injected protocols). No live-machine observation was made in this lane.",
+  "implemented": [
+    "orchestrator/dev_supervisor/handoff.py: build_handoff, worker_entries, pressure_to_resource, validate_schema, content_hash, write_handoff, verify_handoff, VerifiedHandoff (sealed), require_verified, GitRefChecker, GhPrChecker",
+    "orchestrator/dev_supervisor/compaction.py: decide, record_decision, request_compaction, CompactionDecision",
+    "orchestrator/dev_supervisor/replacement.py: replace_session, register_session, reset_failures, load_sessions, ReplacementPolicy, ReplacementResult",
+    "orchestrator/tests/test_dev_handoff.py: 66 offline tests (socket creation patched to fail, temp state dirs, fake checkers/launcher/heartbeat/retirer/clock)"
+  ],
+  "tested": [
+    "missing branch/worktree/commit/PR, checker exception, missing checker -> NOT_SAFE",
+    "corrupt JSON, missing JSON, missing Markdown, schema-invalid, tampered content, expected-hash mismatch, secret injected after write -> NOT_SAFE",
+    "VerifiedHandoff cannot be constructed directly or copied with dataclasses.replace; stale verification rejected (edge at exactly max age accepted)",
+    "threshold edges 0.5999/0.60/0.7999/0.80/0.9199/0.92 with default L1 thresholds; custom PressureConfig thresholds honoured",
+    "UNAVAILABLE pressure and missing pressure -> NONE, ratio None, reason says UNAVAILABLE; stale pressure -> NONE",
+    "compaction only requested when idle and handoff freshly verified; busy, idle UNAVAILABLE, no or old handoff -> refused and recorded",
+    "replacement: happy path, old RETIRING and authoritative during launch, never clear/launch without verified handoff (None, string, dict, forged copy, NOT_SAFE report, stale, other session), tampered or branch deleted after verify -> refused, heartbeat timeout -> rollback, launch error then retry, early exit, bounded attempts, repeated failure stops then human reset, retirer refusal/exception -> old not cleared, handoff removed before retire -> old not cleared, event order, worker role, usage note in result and module"
+  ],
+  "reported": [],
+  "proposed": [
+    "A real HeartbeatProbe (e.g. from L1 session files or the L2 stream log) and a real SessionRetirer/CompactionRequester for Claude Code sessions; not designed here"
+  ],
+  "commands": [
+    {"command": "git fetch && git merge origin/wave/w03-dev-supervisor", "result": "merged L1, L2, L4, L5, L6 into the lane branch"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_handoff.py", "result": "Ran 66 tests: OK"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"", "result": "Ran 472 tests: OK"}
+  ],
+  "unresolved": [
+    "dev_supervisor/__init__.py (L1-owned) does not re-export the L3 modules; import them as dev_supervisor.handoff / .compaction / .replacement. Re-exporting would need an edit outside L3 paths.",
+    "Live checks NOT TESTED: GitRefChecker/GhPrChecker against the real repository, ClaudeCliLauncher replacement launch, real heartbeat and retire mechanisms (no implementations exist yet).",
+    "The L2 launcher runs claude in print mode (-p); replacing an interactive Main session through it yields a non-interactive session. How an interactive Main is relaunched is OPEN."
+  ],
+  "changelog": "w03 L3 (T-DEV-003): verified-handoff gate (write + read-back verify with hash and ref checks), compaction policy on L1 thresholds, and safe session replacement with bounded retries and rollback; 66 offline tests."
+}
