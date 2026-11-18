@@ -177,8 +177,9 @@ Labels: IMPLEMENTED (code exists), TESTED (offline tests pass), OBSERVED (seen o
 | Compaction decision | IMPLEMENTED, TESTED (offline) | decision and refusal rules only |
 | Main replacement and heartbeat | IMPLEMENTED, TESTED (offline), NOT TESTED | no real heartbeat or retirer observed |
 | Routing scheduler | IMPLEMENTED, TESTED (offline) | 70 offline tests; weights are PROPOSED, not calibrated |
-| OmniRoute benchmark | OBSERVED | 2 of 7 routes answered; Groq auth_error; one run |
-| Claude Code through OmniRoute | NOT TESTED | open item |
+| OmniRoute benchmark | OBSERVED | Two runs (2026-11-18): 2 of 7 routes answered both times (gemini-3.1-flash-lite 5/5, gemini-3-flash-preview 4/5). Groq fails with HTTP 403 Cloudflare error 1010 (client signature blocked at Groq's edge; the provider connection test passes), not a login problem |
+| Claude Code through OmniRoute | OBSERVED (partial) | `claude -p` with the local gateway on gemini-3.1-flash-lite answers text; tool use fails (`400 Function call is missing a thought_signature`), so file-editing workers stay on Claude Pro |
+| OmniRoute text-only workers (`dev_supervisor.text_worker`) | IMPLEMENTED, TESTED (offline), OBSERVED | 49 offline tests; live: summarise, classify, extract_json and review_notes CHECKED on the free Gemini route, plus Groq-to-Gemini fallback; output labelled REPORTED until a deterministic checker passes, then CHECKED and never promoted further |
 | Paid API route | NOT TESTED | none exists; excluded unless `allow_paid_api` |
 | Resolve discovery (MATCH/MISMATCH/UNCONFIGURED/UNAVAILABLE) | IMPLEMENTED, TESTED (offline), OBSERVED | 60 offline tests; live read-only run gave MISMATCH and UNCONFIGURED as described |
 | Resolve bridge start from outside | NOT TESTED | the user must run `resolve_bridge`; raw bridge reply untested |
@@ -188,7 +189,12 @@ Labels: IMPLEMENTED (code exists), TESTED (offline tests pass), OBSERVED (seen o
 | Orbit Electron window and IPC | NOT TESTED | electron not installed in the lane |
 | Command line (`python -B -m dev_supervisor`) | IMPLEMENTED, TESTED (offline), OBSERVED | `doctor` ran live: required checks passed, Resolve UNCONFIGURED warning |
 | Reusable onboarding to a second repository | PROPOSED | checklist in section 12 never run on another repository |
-| End-to-end autonomous overnight run | NOT TESTED | no end-to-end run |
+| Autonomy loop (`dev_supervisor.autonomy next/wait/stop-hook/main-settings`) | IMPLEMENTED, TESTED (offline), OBSERVED | 104 offline tests; a real Claude Code session with the generated `--settings` file was kept working by the Stop hook (blocked once, continued, then allowed); not yet wired into the supervisor's Main launch (PROPOSED) |
+| Operation snapshot and Orbit views (next actions, waiting on others, blocked, idle reason, per-worker context, supervisor health, handoff) | IMPLEMENTED, TESTED (offline), OBSERVED | rendered from the real supervisor state; `cli snapshot` still uses the older builder (PROPOSED switch to `build_full_snapshot`) |
+| Supervisor state repair (`dev_supervisor.repair`) | IMPLEMENTED, TESTED (offline), OBSERVED | applied once to the real state: retired a stale duplicate authoritative Main record |
+| Worker waves run by Main | OBSERVED | waves w04, w05 and w06 (8 lanes) were implemented by worker subagents, verified independently by Main (including live checks that found and returned defects), closed and merged by Main as the Repository Coordinator |
+| End-to-end autonomy acceptance harness (`dev_supervisor.acceptance`) | IMPLEMENTED, TESTED (offline), OBSERVED | 13/13 steps PASS in default mode and with `--real-worker` (a real haiku worker); handoff checkers, Main replacement and the context threshold are MOCKED or SIMULATED there |
+| Supervisor-spawned real worker and unattended multi-cycle run | NOT TESTED | needs a supervisor restart with `worker_permission_mode` configured; workers so far were Claude Code subagents of Main |
 
 ## 15. Safety summary
 
