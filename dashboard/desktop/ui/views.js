@@ -295,8 +295,11 @@
     const body = [];
     if (s.rows.length) body.push(h('table', { class: 'orbit-table' }, h('tbody', null, s.rows.map(orbitRow))));
     if (s.items.length) {
-      body.push(h('ul', { class: 'plain' }, s.items.map((i) => h('li', null, i.text,
-        i.status ? h('span', null, ' ', freshPill(i.status.freshness), ' ', h('span', { class: 'muted' }, `${i.status.label === 'UNAVAILABLE' ? 'status unavailable' : i.status.text} · ${i.status.ageText}`)) : null))));
+      body.push(h('ul', { class: 'plain' }, s.items.map((i) => h('li', { class: i.activity ? `orbit-act orbit-act-${i.activity.kind}` : null }, i.text,
+        i.status ? h('span', null, ' ', freshPill(i.status.freshness), ' ', h('span', { class: 'muted' }, `${i.status.label === 'UNAVAILABLE' ? 'status unavailable' : i.status.text} · ${i.status.ageText}`)) : null,
+        i.activity ? h('div', { class: 'muted orbit-activity' }, `activity: ${i.activity.text}`) : null,
+        i.inspect ? h('div', { class: 'muted' }, `inspect: ${i.inspect}`) : null,
+        i.context ? h('div', { class: 'muted orbit-context' }, ...i.context.map((c) => h('span', { 'data-quality': c.quality }, `${c.name}: ${c.label === 'UNAVAILABLE' ? `UNAVAILABLE (${c.reason})` : c.text} `, qualityPill(c.quality) || freshPill(c.freshness), '  '))) : null))));
     }
     if (!s.rows.length && !s.items.length) body.push(empty(s.empty || 'Nothing recorded.'));
     if (s.note) body.push(h('p', { class: 'muted' }, s.note));
