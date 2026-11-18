@@ -139,7 +139,8 @@
         "T-DEV-010",
         "T-DEV-011",
         "T-DEV-012",
-        "T-GOV-008"
+        "T-GOV-008",
+        "T-DEV-023"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -1507,6 +1508,46 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Completed 2026-11-18 as lane L2 of wave w07-autonomous-integration; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b0d346d9eb662d7a6602cb32af08a13bc58b4742, lane head 94e2e785f47f80d4e0f4d430def1fbc32a3f3fe0). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-023",
+      "title": "dev_supervisor: acceptance harness pressure simulation scaled to the configured context window (issue #44)",
+      "description": "The acceptance harness (wave w06) simulates context pressure with a fixed ~186K-token transcript sized for a 200K window. With the 1M Claude 5 windows from PR #59 it falls below the compact threshold and 10 acceptance tests fail (CI on the refreshed #59 head). Scale the simulated token counts to the window configured for the simulated model.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/t-dev-023-acceptance-window",
+      "worktree": "../CreatorStudio-worktrees/t-dev-023-acceptance-window",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-18T12:53:44+00:00",
+        "expires": "2026-11-19T12:53:44+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/acceptance.py",
+        "orchestrator/tests/test_dev_acceptance.py",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "Pressure simulation token counts are derived from telemetry.PressureConfig().window_for(MAIN_MODEL), falling back to 200000",
+        "test_dev_acceptance passes with both 200K and 1M windows for the simulated model",
+        "Full suite passes"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests",
+        "cd orchestrator && python -B -m governance validate --against origin/main",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main"
+      ],
+      "integration_notes": "Claimed by Main (Repository Coordinator, package owner of orchestrator/dev_supervisor/). Integrated under PROJECT_OPERATING_PROTOCOL.md section 18 gates."
     }
   ]
 }
