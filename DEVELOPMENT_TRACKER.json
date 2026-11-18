@@ -2670,13 +2670,19 @@
         {
           "id": "S-DEV-023-01",
           "title": "Step 1: implementation on task/t-dev-023-acceptance-window",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Simulation scaled to the configured window",
             "test_dev_acceptance passes at 200K and 1M",
             "Full suite passes"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "pull_request",
+              "commit": "13202fc1b15a979055ec62a00732e1fd60033a1b",
+              "summary": "Implementation delivered in PR #81 (merge commit 13202fc1b15a979055ec62a00732e1fd60033a1b); record caught up at closeout."
+            }
+          ]
         }
       ]
     }
