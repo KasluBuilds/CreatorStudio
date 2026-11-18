@@ -31,7 +31,11 @@ function thresholds(raw) {
   return { live: num(t.live_after_seconds, DEFAULT_LIVE_S), stale: num(t.stale_after_seconds, DEFAULT_STALE_S) };
 }
 
-const UNAVAILABLE_VIEW = (reason) => ({ label: 'UNAVAILABLE', freshness: 'offline', value: null, text: 'unavailable', reason, ageText: 'age unknown', ageSeconds: null });
+const UNAVAILABLE_VIEW = (reason) => ({ label: 'UNAVAILABLE', freshness: 'offline', quality: 'unavailable', value: null, text: 'unavailable', reason, ageText: 'age unknown', ageSeconds: null });
+
+/** Data-quality badge: live | cached | stale | estimated (label INFERRED) | unavailable. One per value. */
+const QUALITY = Object.freeze(['live', 'cached', 'stale', 'estimated', 'unavailable']);
+const qualityOf = (label, freshness) => (label === 'UNAVAILABLE' || freshness === 'offline' ? 'unavailable' : (label === 'INFERRED' && freshness !== 'stale' ? 'estimated' : freshness));
 
 /** One snapshot field -> display model. `opts.observedOnly` applies the account-usage rule. */
 function fieldView(f, nowMs, thr, opts = {}) {
@@ -52,7 +56,7 @@ function fieldView(f, nowMs, thr, opts = {}) {
     ageSeconds = Math.max(0, (nowMs - t) / 1000);
     freshness = ageSeconds > thr.stale ? 'stale' : (ageSeconds > thr.live || f.freshness === 'cached' ? 'cached' : 'live');
   }
-  return { label, freshness, value, text: text(value), reason, ageText: ageText(ageSeconds), ageSeconds, source: text(f.source) };
+  return { label, freshness, quality: qualityOf(label, freshness), value, text: text(value), reason, ageText: ageText(ageSeconds), ageSeconds, source: text(f.source) };
 }
 
 const worst = (list) => FRESHNESS[Math.max(0, ...list.map((x) => FRESHNESS.indexOf(x)))];
@@ -60,6 +64,58 @@ const arr = (x) => (Array.isArray(x) ? x : []);
 const named = (obj, names, nowMs, thr, prefix = '') => names.filter((n) => obj && obj[n] !== undefined)
   .map((n) => ({ name: prefix + n.replace(/_/g, ' '), ...fieldView(obj[n], nowMs, thr) }));
 const row = (name, f, nowMs, thr, opts) => ({ name, ...fieldView(f, nowMs, thr, opts) });
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const utcClock = (ms) => { const d = new Date(ms); return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())} UTC`; };
+
+/** Relative phrase for a future time ("in 1 h 3 min"); a time at or before nowMs is "window already reset". Deterministic. */
+function relativeReset(resetMs, nowMs) {
+  const mins = Math.floor((resetMs - nowMs) / 60000);
+  if (resetMs <= nowMs) return 'window already reset';
+  if (mins < 1) return 'in under 1 min';
+  const d = Math.floor(mins / 1440); const h = Math.floor((mins % 1440) / 60); const m = mins % 60;
+  if (d > 0) return `in ${d} d${h ? ` ${h} h` : ''}`;
+  if (h > 0) return `in ${h} h${m ? ` ${m} min` : ''}`;
+  return `in ${m} min`;
+}
+
+const USAGE_KEYS = Object.freeze({
+  five_hour_used_percentage: ['5-hour window: used', 'percent'],
+  five_hour_resets_at: ['5-hour window: resets', 'reset'],
+  five_hour_status: ['5-hour window: status', 'plain'],
+  weekly_used_percentage: ['7-day window: used', 'percent'],
+  weekly_resets_at: ['7-day window: resets', 'reset'],
+  weekly_status: ['7-day window: status', 'plain'],
+  status: ['rate-limit status', 'plain'],
+});
+
+/** Readable account-usage row. Unknown keys keep the generic rendering. Only a value that survived the OBSERVED-only rule is formatted. */
+function usageRow(key, f, nowMs, thr) {
+  const base = row(key.replace(/_/g, ' '), f, nowMs, thr, { observedOnly: true });
+  const known = USAGE_KEYS[key];
+  if (!known) return base;
+  const out = { ...base, name: known[0] };
+  if (base.label === 'UNAVAILABLE') return out;
+  if (known[1] === 'percent' && typeof base.value === 'number' && Number.isFinite(base.value)) {
+    out.text = `${Math.round(base.value * 10) / 10}%`;
+  } else if (known[1] === 'reset') {
+    const t = Date.parse(base.value);
+    if (typeof base.value === 'string' && Number.isFinite(t)) out.text = `${utcClock(t)} (${relativeReset(t, nowMs)})`;
+  }
+  return out;
+}
+
+/** Plain-language source summary for the account-usage section. Never includes worker ids or file names. */
+function usageProvenance(au, rows, nowMs) {
+  const provider = text(au.provider) || 'none';
+  const live = rows.filter((r) => r.label !== 'UNAVAILABLE' && r.source);
+  if (!live.length) return `provider: ${provider}. No usage value is available, so there is no source or age to show.`;
+  const src = live[0].source;
+  const where = /^rate_limit_event/.test(src) ? "from the last worker run's rate_limit_event" : `from ${src.replace(/[\/].*$/, '')}`;
+  const ages = live.map((r) => r.ageSeconds).filter((a) => a !== null);
+  const age = ages.length ? `observed ${ageText(Math.min(...ages))}` : 'age unknown';
+  return `provider: ${provider}. ${where}; ${age}.`;
+}
 
 function invalid(message) {
   return { state: 'invalid', title: TITLE, message, sections: [], generatedAtText: 'unknown' };
@@ -90,8 +146,9 @@ function evaluate(raw, nowMs = Date.now()) {
   const au = raw.account_usage || {};
   const usage = au.usage;
   const usageRows = usage && usage.label ? [row('account usage', usage, nowMs, thr, { observedOnly: true })]
-    : Object.keys(usage || {}).map((k) => row(k.replace(/_/g, ' '), usage[k], nowMs, thr, { observedOnly: true }));
-  add({ id: 'account', title: 'Account usage', rows: usageRows.length ? usageRows : [row('account usage', null, nowMs, thr)], note: `provider: ${text(au.provider) || 'none'}` });
+    : Object.keys(usage || {}).map((k) => usageRow(k, usage[k], nowMs, thr));
+  const accountRows = usageRows.length ? usageRows : [row('account usage', null, nowMs, thr)];
+  add({ id: 'account', title: 'Account usage', rows: accountRows, note: usageProvenance(au, accountRows, nowMs) });
   add({ id: 'workers', title: 'Workers', items: arr(raw.workers).map((w) => ({
     text: `${text(w.worker_id)} (${text(w.role)}) on ${text(w.task_id)}: restarts ${Number(w.restart_count) || 0}, failures ${Number(w.failure_count) || 0}`,
     status: fieldView(w.status, nowMs, thr), model: fieldView(w.model, nowMs, thr), branch: fieldView(w.branch, nowMs, thr) })),
@@ -136,4 +193,4 @@ function fromLoad(load, nowMs = Date.now()) {
   return { ...evaluate(load.data, nowMs), fileName: load.name };
 }
 
-module.exports = { evaluate, fromLoad, fieldView, ageText, FRESHNESS, LABELS, thresholds, TITLE };
+module.exports = { evaluate, fromLoad, fieldView, ageText, relativeReset, FRESHNESS, QUALITY, LABELS, thresholds, TITLE };

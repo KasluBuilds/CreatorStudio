@@ -282,11 +282,13 @@
   // ------------------------------------------------------------ Orbit (operation / supervisor), read-only
   const FRESH = { live: ['Live', 'done'], cached: ['Cached', 'active'], stale: ['Stale', 'ready'], offline: ['Unavailable', 'blocked'], invalid: ['Invalid', 'blocked'], unconfigured: ['No file', 'upcoming'] };
   const freshPill = (f) => pill(FRESH[f][0], FRESH[f][1]);
+  const QUALITY_PILL = { live: ['Live', 'done'], cached: ['Cached', 'active'], stale: ['Stale', 'ready'], estimated: ['Estimated', 'type'], unavailable: ['Unavailable', 'blocked'] };
+  const qualityPill = (q) => (QUALITY_PILL[q] ? pill(QUALITY_PILL[q][0], QUALITY_PILL[q][1]) : null);
 
   function orbitRow(r) {
     const val = r.label === 'UNAVAILABLE' ? h('span', { class: 'muted' }, `UNAVAILABLE: ${r.reason}`) : h('span', null, r.text);
     return h('tr', { class: `orbit-row orbit-${r.freshness}` }, h('th', { scope: 'row' }, r.name), h('td', null, val),
-      h('td', null, h('span', { class: 'muted' }, r.label)), h('td', null, freshPill(r.freshness), ' ', h('span', { class: 'muted' }, r.ageText)));
+      h('td', null, h('span', { class: 'muted' }, r.label)), h('td', { 'data-quality': r.quality }, qualityPill(r.quality) || freshPill(r.freshness), ' ', h('span', { class: 'muted' }, r.ageText)));
   }
 
   function orbitSection(s) {
