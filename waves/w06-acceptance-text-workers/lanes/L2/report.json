@@ -1,0 +1,18 @@
+{
+  "lane": "L2",
+  "status": "DONE",
+  "summary": "Added dev_supervisor/text_worker.py: bounded text-only worker (summarise, classify, extract_json, review_notes) over the local OmniRoute client. Free-route allowlist (gemini/, groq/), route order from a benchmark file (pass rate, then latency) or default list, 1 same-route retry for timeout/upstream/connection, immediate fallback on rate_limited/not_found/auth_error/check_failed, total attempts capped at 8, deterministic checkers, result labelled REPORTED until the checker passes then CHECKED (never VERIFIED). No tool use (Gemini thought_signature limitation recorded in the module docstring). 49 offline tests with a fake transport. OBSERVED live: one CHECKED run per kind on gemini/gemini-3.1-flash-lite (6.6 s, 8.0 s, 9.9 s, 8.7 s total latency) and one fallback (groq/openai/gpt-oss-20b auth_error HTTP 403 5.4 s, then gemini/gemini-3.1-flash-lite ok 2.0 s). 5 live calls total. NOT VERIFIED beyond that: single run, synthetic inputs only.",
+  "commands": [
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_text_worker.py", "result": "Ran 49 tests: OK"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py", "result": "Ran 778 tests: OK"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests", "result": "OK (full suite)"},
+    {"command": "python -B -m dev_supervisor.text_worker --task <task.json> --out <result.json> --routes gemini/gemini-3.1-flash-lite (x4 kinds)", "result": "summarise/classify/extract_json/review_notes all CHECKED, 1 attempt each"},
+    {"command": "python -B -m dev_supervisor.text_worker --task <classify.json> --out <result.json> --routes groq/openai/gpt-oss-20b,gemini/gemini-3.1-flash-lite", "result": "CHECKED on gemini route after auth_error on groq, 2 attempts"}
+  ],
+  "unresolved": [
+    "No integration into cli.py or the supervisor yet (outside owned paths); text_worker is standalone.",
+    "Groq routes fail with HTTP 403 (classed auth_error); cause not investigated here.",
+    "Not tested: long inputs, concurrency, sustained rate limits, authenticated key path live."
+  ],
+  "changelog": "Added dev_supervisor.text_worker: bounded text-only OmniRoute worker with free-route fallback and deterministic checkers (T-DEV-019)."
+}
