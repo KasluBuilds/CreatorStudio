@@ -124,7 +124,7 @@
   },
   "integration_agreements": {
     "AGR-GOV-REGISTRY-01": {
-      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-002, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time. Extended to T-RSR-001 (Research security remediation, Assignment 6) by its claim pull request on the same terms, with Lukas's and ChatGPT's authorization relayed in session 2026-11-17. Extended to T-RSV-002 (safe Resolve execution layer) by its claim pull request on the same terms, under Lukas's direct assignment in session 2026-11-17.",
+      "description": "Integrator (ChatGPT, under Lukas's standing delegation) agreement so T-AST-002, T-DNA-001 and T-CRD-001 may overlap only on the four named shared registry files. Each task may edit only its own task and step records; never another task's entry. CHANGELOG.md is append-only. SESSION_HANDOFF.md is regenerated with the official command, never hand-edited. ChatGPT serializes merges into main, one pull request at a time. Extended to T-RSR-001 (Research security remediation, Assignment 6) by its claim pull request on the same terms, with Lukas's and ChatGPT's authorization relayed in session 2026-11-17. Extended to T-RSV-002 (safe Resolve execution layer) by its claim pull request on the same terms, under Lukas's direct assignment in session 2026-11-17. Extended to T-DEV-010, T-DEV-011 and T-DEV-012 (Repository Coordinator post-wave dev_supervisor fixes, issue #44) by their claim pull request on the same terms.",
       "task_ids": [
         "T-AST-002",
         "T-DNA-001",
@@ -135,7 +135,10 @@
         "T-GOV-006",
         "T-GOV-007",
         "T-RSR-001",
-        "T-RSV-002"
+        "T-RSV-002",
+        "T-DEV-010",
+        "T-DEV-011",
+        "T-DEV-012"
       ],
       "paths": [
         "ACTIVE_TASKS.json",
@@ -154,6 +157,22 @@
         "orchestrator/tests/test_development_tracker.py",
         "DEVELOPMENT_STEP_PROTOCOL.md",
         ".github/workflows/validate.yml"
+      ]
+    },
+    "AGR-DEV-FIXES-01": {
+      "description": "T-DEV-010, T-DEV-011 and T-DEV-012 have one owner (claude:repository-coordinator, package owner of orchestrator/dev_supervisor/) and are stacked: each later branch contains or follows the earlier one. They may overlap only on the paths named here. Merge order is fixed: T-DEV-010 (PR #60), then T-DEV-011 (PR #59), then T-DEV-012; each merges origin/main before its own merge. Lukas merges; Main never self-merges.",
+      "task_ids": [
+        "T-DEV-010",
+        "T-DEV-011",
+        "T-DEV-012"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py",
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/telemetry.py",
+        "orchestrator/tests/test_dev_telemetry.py",
+        "DEVELOPMENT_OPERATING_SYSTEM.md"
       ]
     }
   },
@@ -1249,6 +1268,143 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Completed 2026-11-18 as lane L3 of wave w06-acceptance-text-workers; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head f79e9011ad4ffa2e28f279bef0e495ea6424530a, lane head 6c0c4beb218f06be766f4940fc9f4c709b4ebebb). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-010",
+      "title": "dev_supervisor: explicit claude child environment into main (PR #60, follow-up to #57)",
+      "description": "Carry commit 5ee1310 (provider_env.child_env: drop inherited gateway/provider overrides so --model resolves against Claude Pro) into main. PR #57 merged it into the wave branch after the wave had merged, so main never received it.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/dev-supervisor-launch-env",
+      "worktree": "../CreatorStudio-worktrees/dev-supervisor-launch-env",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-18T12:53:44+00:00",
+        "expires": "2026-11-19T12:53:44+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01",
+        "AGR-DEV-FIXES-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/launch.py",
+        "orchestrator/dev_supervisor/lifecycle.py",
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "main contains provider_env.child_env and launch/lifecycle use it",
+        "dev_supervisor tests and the full suite pass",
+        "validate passes on the PR head"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests",
+        "cd orchestrator && python -B -m governance validate --against origin/main",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main"
+      ],
+      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges."
+    },
+    {
+      "id": "T-DEV-011",
+      "title": "dev_supervisor: context telemetry for a supervisor-launched Main (issue #58, PR #59)",
+      "description": "Strip inherited parent Claude session markers from children so an interactive Main writes its transcript and session record; Claude 5 family context windows (1M); tokens above the window are UNAVAILABLE, never REPLACE; doc status updated.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/dev-supervisor-transcript-env",
+      "worktree": "../CreatorStudio-worktrees/w03-dev-supervisor-coordinator",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-010"
+      ],
+      "lease": {
+        "acquired": "2026-11-18T12:53:44+00:00",
+        "expires": "2026-11-19T12:53:44+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01",
+        "AGR-DEV-FIXES-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/dev_supervisor/telemetry.py",
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/tests/test_dev_provider_env.py",
+        "orchestrator/tests/test_dev_telemetry.py",
+        "DEVELOPMENT_OPERATING_SYSTEM.md",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "A supervisor-launched Main writes its transcript and session record (OBSERVED)",
+        "compact-check reports a numeric ratio for claude-opus-5-5",
+        "A token count above the configured window never yields REPLACE",
+        "Tests and validators pass"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests",
+        "cd orchestrator && python -B -m governance validate --against origin/main",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main"
+      ],
+      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges."
+    },
+    {
+      "id": "T-DEV-012",
+      "title": "dev_supervisor: account usage from Claude Code rate_limit_event (issue #44)",
+      "description": "RateLimitEventProvider reads the newest rate_limit_event from worker stream-json logs (5-hour and 7-day utilization, reset times, status; OBSERVED, timestamped by log write time); status, snapshot and handoff use it.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/dev-supervisor-rate-limit-usage",
+      "worktree": "../CreatorStudio-worktrees/dev-supervisor-rate-limit-usage",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-011"
+      ],
+      "lease": {
+        "acquired": "2026-11-18T12:53:44+00:00",
+        "expires": "2026-11-19T12:53:44+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01",
+        "AGR-DEV-FIXES-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/telemetry.py",
+        "orchestrator/tests/test_dev_telemetry.py",
+        "DEVELOPMENT_OPERATING_SYSTEM.md",
+        "ACTIVE_TASKS.json",
+        "DEVELOPMENT_TRACKER.json",
+        "SESSION_HANDOFF.md",
+        "CHANGELOG.md"
+      ],
+      "acceptance_criteria": [
+        "Account usage is OBSERVED from a real rate_limit_event, else UNAVAILABLE with the reason",
+        "No transcript or prompt text is read into the result",
+        "Tests and validators pass"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests",
+        "cd orchestrator && python -B -m governance validate --against origin/main",
+        "cd orchestrator && python -B -m governance handoff --check",
+        "cd orchestrator && python -B -m governance scope --base origin/main",
+        "python -B dashboard/tracker_check.py --against origin/main"
+      ],
+      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges."
     }
   ]
 }
