@@ -606,6 +606,66 @@ class TestStopHook(Base):
         self.assertLess(len(reason), 520)
 
 
+class TestAmbiguousMain(Base):
+    STALE = "22222222-2222-4222-8222-222222222222"
+
+    def setUp(self):
+        super().setUp()
+        self.mkstore()
+        self.write_registry([task("T-1", paths=["x/"])])
+
+    def sessions(self, *sids):
+        self.store.write("sessions", {"sessions": {s: {"session_id": s, "role": "main", "authoritative": True,
+                                                       "status": "ACTIVE"} for s in sids}, "failures": {}})
+
+    def hook(self, sid):
+        return self.run_cli(["stop-hook"], stdin=json.dumps({"session_id": sid}))
+
+    def test_main_json_running_picks_current_over_stale_first_entry(self):
+        self.sessions(self.STALE, MAIN_SID)
+        self.store.write("main", {"session_id": MAIN_SID, "status": "RUNNING"})
+        self.assertEqual(au.authoritative_main(self.store), MAIN_SID)
+        self.assertTrue(self.hook(MAIN_SID)[1])
+        self.assertEqual(self.hook(self.STALE), (0, ""))
+
+    def test_single_candidate_used_even_without_main_json(self):
+        self.sessions(MAIN_SID)
+        self.assertEqual(au.authoritative_main(self.store), MAIN_SID)
+
+    def test_single_candidate_used_when_main_json_not_running(self):
+        self.sessions(MAIN_SID)
+        self.store.write("main", {"session_id": self.STALE, "status": "RUNNING"})
+        self.assertEqual(au.authoritative_main(self.store), MAIN_SID)
+
+    def test_several_without_match_is_none_and_hook_fails_open(self):
+        self.sessions(self.STALE, MAIN_SID)
+        self.store.write("main", {"session_id": "other", "status": "STOPPED"})
+        self.assertIsNone(au.authoritative_main(self.store))
+        self.assertEqual(self.hook(MAIN_SID), (0, ""))
+        self.assertEqual(self.hook(self.STALE), (0, ""))
+
+    def test_next_warns_about_multiple_even_when_resolved(self):
+        self.sessions(self.STALE, MAIN_SID)
+        self.store.write("main", {"session_id": MAIN_SID, "status": "RUNNING"})
+        d = json.loads(self.run_cli(["next", "--json"])[1])
+        w = [x for x in d["warnings"] if x.startswith("multiple authoritative Main sessions: ")]
+        self.assertEqual(len(w), 1)
+        self.assertIn(self.STALE[:8], w[0])
+        self.assertIn(MAIN_SID[:8], w[0])
+        self.assertEqual(d["counts"]["warnings"], len(d["warnings"]))
+
+    def test_no_warning_for_single_main(self):
+        self.sessions(MAIN_SID)
+        d = json.loads(self.run_cli(["next", "--json"])[1])
+        self.assertFalse([w for w in d["warnings"] if "authoritative" in w])
+
+    def test_warning_does_not_change_fingerprint(self):
+        self.sessions(MAIN_SID)
+        a = self.items()["fingerprint"]
+        self.sessions(self.STALE, MAIN_SID)
+        self.assertEqual(self.items()["fingerprint"], a)
+
+
 class TestWait(Base):
     def setUp(self):
         super().setUp()

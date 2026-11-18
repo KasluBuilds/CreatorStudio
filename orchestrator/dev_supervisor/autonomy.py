@@ -366,6 +366,13 @@ def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunn
         elif blocked:
             parts.append(f"{len(blocked)} blocked item(s) need a human")
         idle = "; ".join(parts) or "no registered work: nothing is planned or waiting"
+    if store is not None and store.directory.is_dir():
+        try:
+            cands = authoritative_candidates(store)
+            if len(cands) > 1:
+                warnings.append("multiple authoritative Main sessions: " + ", ".join(c[:8] for c in cands))
+        except Exception:  # noqa: BLE001
+            pass
     ids = [i["id"] for i in items]
     return {"evidence": Label.OBSERVED.value, "counts": {"items": len(items), "blocked": len(blocked),
                                                           "running_workers": running, "warnings": len(warnings),
@@ -383,22 +390,37 @@ def open_store(cfg: Config, env: Optional[Dict[str, str]], clock: Callable[[], f
     return StateStore(directory, repo_roots=[root] if root else [], clock=clock, create=False)
 
 
-def authoritative_main(store: StateStore) -> Optional[str]:
-    """Session id of the authoritative Main (sessions document first, then main.json while RUNNING)."""
+def authoritative_candidates(store: StateStore) -> List[str]:
+    """Session ids recorded as authoritative Main (role main, ACTIVE or RETIRING), in document order."""
     try:
         doc = store.read("sessions", default=None) or {}
-        for sid, rec in (doc.get("sessions") or {}).items():
-            if (rec.get("role") == "main" and rec.get("authoritative")
-                    and rec.get("status") in ("ACTIVE", "RETIRING")):
-                return str(sid)
+        return [str(sid) for sid, rec in (doc.get("sessions") or {}).items()
+                if rec.get("role") == "main" and rec.get("authoritative")
+                and rec.get("status") in ("ACTIVE", "RETIRING")]
     except (StoreError, AttributeError, TypeError):
-        pass
+        return []
+
+
+def authoritative_main(store: StateStore) -> Optional[str]:
+    """The authoritative Main session id, or None when unknown or ambiguous (callers then fail open).
+
+    1. main.json is RUNNING and its session is among the candidates: that one (resolves stale duplicates).
+    2. exactly one candidate: it.  3. several and none matches main.json: None.
+    With no sessions document, main.json while RUNNING is the fallback."""
+    cands = authoritative_candidates(store)
+    running = None
     try:
         main = store.read("main", default=None) or {}
         if main.get("session_id") and main.get("status") == "RUNNING":
-            return str(main["session_id"])
+            running = str(main["session_id"])
     except (StoreError, AttributeError, TypeError):
         pass
+    if running is not None and running in cands:
+        return running
+    if len(cands) == 1:
+        return cands[0]
+    if not cands:
+        return running
     return None
 
 
