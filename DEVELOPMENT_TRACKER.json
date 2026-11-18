@@ -1746,6 +1746,106 @@
           }
         }
       ]
+    },
+    {
+      "task_id": "T-DEV-010",
+      "title": "dev_supervisor: explicit claude child environment into main (PR #60, follow-up to #57)",
+      "steps": [
+        {
+          "id": "S-DEV-010-00",
+          "title": "Step 0: claim",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-DEV-010 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "AGR-GOV-REGISTRY-01 extended and AGR-DEV-FIXES-01 added; no other task's record is edited",
+            "Governance validate, handoff check and tracker check pass"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 2cfc78c; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change. Retroactive: the implementation branch already exists (see integration_notes)."
+            }
+          ]
+        },
+        {
+          "id": "S-DEV-010-01",
+          "title": "Step 1: implementation on task/dev-supervisor-launch-env",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "main contains provider_env.child_env and launch/lifecycle use it",
+            "dev_supervisor tests and the full suite pass",
+            "validate passes on the PR head"
+          ],
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-011",
+      "title": "dev_supervisor: context telemetry for a supervisor-launched Main (issue #58, PR #59)",
+      "steps": [
+        {
+          "id": "S-DEV-011-00",
+          "title": "Step 0: claim",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-DEV-011 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "AGR-GOV-REGISTRY-01 extended and AGR-DEV-FIXES-01 added; no other task's record is edited",
+            "Governance validate, handoff check and tracker check pass"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 2cfc78c; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change. Retroactive: the implementation branch already exists (see integration_notes)."
+            }
+          ]
+        },
+        {
+          "id": "S-DEV-011-01",
+          "title": "Step 1: implementation on task/dev-supervisor-transcript-env",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "A supervisor-launched Main writes its transcript and session record (OBSERVED)",
+            "compact-check reports a numeric ratio for claude-opus-5-5",
+            "A token count above the configured window never yields REPLACE",
+            "Tests and validators pass"
+          ],
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-012",
+      "title": "dev_supervisor: account usage from Claude Code rate_limit_event (issue #44)",
+      "steps": [
+        {
+          "id": "S-DEV-012-00",
+          "title": "Step 0: claim",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-DEV-012 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "AGR-GOV-REGISTRY-01 extended and AGR-DEV-FIXES-01 added; no other task's record is edited",
+            "Governance validate, handoff check and tracker check pass"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 2cfc78c; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change. Retroactive: the implementation branch already exists (see integration_notes)."
+            }
+          ]
+        },
+        {
+          "id": "S-DEV-012-01",
+          "title": "Step 1: implementation on task/dev-supervisor-rate-limit-usage",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Account usage is OBSERVED from a real rate_limit_event, else UNAVAILABLE with the reason",
+            "No transcript or prompt text is read into the result",
+            "Tests and validators pass"
+          ],
+          "evidence": []
+        }
+      ]
     }
   ]
 }
