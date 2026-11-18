@@ -58,6 +58,22 @@ class Base(unittest.TestCase):
             self.assertEqual(steps[sid]["outcome"], "FAIL")
 
 
+class PressureScalesWithWindow(unittest.TestCase):
+    """T-DEV-023: the simulated pressure tracks the configured window (200K and 1M), never a fixed token count."""
+
+    def _overall(self, window):
+        from dev_supervisor import telemetry
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(socket, "socket", _no_net),                 mock.patch.dict(telemetry.DEFAULT_CONTEXT_WINDOWS, {acc.MAIN_MODEL: window}):
+            report, _ = acc.run_acceptance(base_dir=d)
+        return report["overall"], {s["id"]: s["outcome"] for s in report["steps"]}["pressure_simulated"]
+
+    def test_200k_window(self):
+        self.assertEqual(self._overall(200_000), ("PASS", "PASS"))
+
+    def test_1m_window(self):
+        self.assertEqual(self._overall(1_000_000), ("PASS", "PASS"))
+
+
 class HappyPath(Base):
     @classmethod
     def setUpClass(cls):
