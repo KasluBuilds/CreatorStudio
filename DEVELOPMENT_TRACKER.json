@@ -2397,6 +2397,35 @@
       ]
     },
     {
+      "task_id": "T-GOV-008",
+      "title": "Autonomous PR integration policy (issue #44)",
+      "steps": [
+        {
+          "id": "S-GOV-008-00",
+          "title": "Step 0: claim",
+          "status": "READY_FOR_REVIEW",
+          "acceptance_criteria": [
+            "T-GOV-008 registered ACTIVE with lease, owned paths and criteria; AGR-GOV-REGISTRY-01 extended; no other record edited"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch from origin/main; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change."
+            }
+          ]
+        },
+        {
+          "id": "S-GOV-008-01",
+          "title": "Step 1: policy text in sections 18/19 and CLAUDE.md",
+          "status": "PLANNED",
+          "acceptance_criteria": [
+            "Per the task acceptance criteria"
+          ],
+          "evidence": []
+        }
+      ]
+    },
+    {
       "task_id": "T-DEV-021",
       "title": "Autonomous merge gate with serialization lock (issue #44, full-autonomy policy)",
       "steps": [
