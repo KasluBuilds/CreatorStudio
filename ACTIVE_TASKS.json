@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-18",
+  "updated": "2026-11-17",
   "lease_policy": {
     "default_hours": 24,
     "max_hours": 72
@@ -1025,6 +1025,69 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Completed 2026-11-18 as lane L9 of wave w03-dev-supervisor; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head b9564e03115d569135017e05479598085f1e4639, lane head b9564e03115d569135017e05479598085f1e4639). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-013",
+      "title": "Autonomy loop: task selection, wake-up wait and Main Stop hook (issue #44, mission part 2-4)",
+      "description": "Wave w04-autonomy-loop, lane L1: Autonomy loop: task selection, wake-up wait and Main Stop hook (issue #44, mission part 2-4).",
+      "owner": "claude:repository-coordinator",
+      "branch": "lane/w04-autonomy-loop/L1",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "New module orchestrator/dev_supervisor/autonomy.py with its own CLI `python -B -m dev_supervisor.autonomy <cmd>` (do NOT edit cli.py, launch.py, telemetry.py or any other existing module: they are claimed by open tasks T-DEV-010..012); standard library only; reuse existing modules read-only (state_store.StateStore, workers.WorkerRegistry, config.Config loading as cli.py does, evidence labels)",
+        "`next [--json] [--repo <root>]`: builds the actionable list for Main from the repository records and the supervisor state, ordered by priority with a reason each: (a) worker results that are REPORTED and not yet verified (review_worker_result); (b) FAILED or LOST workers and whether a retry is eligible or blocked (bounded restarts, identical-failure stop); (c) wave lanes SUBMITTED but not verified, read from waves/*/wave.json plus `git` remote branch state via an injected runner; (d) registered tasks in ACTIVE_TASKS.json / DEVELOPMENT_TRACKER.json that are eligible: PLANNED or the next PLANNED step of an ACTIVE task whose dependencies are COMPLETED and whose owned_paths do not overlap another ACTIVE task; (e) blocked items with the exact blocker (dependency, lease held by another task, missing merge). When nothing is actionable it returns an explicit idle_reason (for example 'waiting for 2 running workers' or 'no eligible task: T-X waits for T-Y'). Never invents work; repository files win over supervisor cache",
+        "`wait --timeout <s> [--poll <s>] [--cursor <file>]`: blocks until the actionable fingerprint changes or a new supervisor event (events.jsonl beyond a stored cursor) of kind worker_* / main_* / replacement arrives, prints a short JSON summary of what changed, exit 0 on change and exit 3 on timeout; meant to be run by Main as a background command so its exit re-invokes Main; bounded, low CPU, tolerant of missing/corrupt state",
+        "`stop-hook`: implements the Claude Code Stop hook contract: reads the hook JSON from stdin (session_id, stop_hook_active, ...); only for the authoritative Main session id recorded in the supervisor state (any other session: allow, no output); if actionable items exist that Main has not yet been told about (fingerprint stored in the state directory), print {\"decision\": \"block\", \"reason\": \"<one line naming the next item and the command to inspect it>\"}; if stop_hook_active is true and the fingerprint is unchanged, allow; at most a configurable number of consecutive blocks (default 3) before allowing; any internal error fails OPEN (allow, exit 0) and is logged to the state directory; reasons never contain secrets or transcript text",
+        "`main-settings --out <file> [--python <exe>] [--orchestrator <dir>]`: writes a Claude Code settings JSON containing only a hooks.Stop entry that runs the stop-hook command (argument-safe quoting on Windows), for use with `claude --settings <file>`; it never edits ~/.claude, the repository's .claude/ or any launcher; wiring it into launch.py is a later task (record that as PROPOSED)",
+        "At least 40 offline tests with temp state directories, synthetic ACTIVE_TASKS/TRACKER/wave manifests, a fake git runner and a fake clock (eligibility rules, dependency and overlap blocking, idle reasons, wait change/timeout, stop-hook block/allow/loop-bound/fail-open/other-session, settings file shape)",
+        "One OBSERVED live dry run of `next --json` against this repository and the real machine-local supervisor state directory, reported as counts and task ids only",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only (never prompts, transcript text or file contents), labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_autonomy.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L1 of wave w04-autonomy-loop; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head 7c3fce9fc2a8cbc212a63c0bdf045cda4240b104, lane head 7c3fce9fc2a8cbc212a63c0bdf045cda4240b104). No claim, step-start, lease or closeout pull request was used."
+    },
+    {
+      "id": "T-DEV-014",
+      "title": "Orbit: readable usage windows and explicit data-quality labels (issue #44, mission part 7)",
+      "description": "Wave w04-autonomy-loop, lane L2: Orbit: readable usage windows and explicit data-quality labels (issue #44, mission part 7).",
+      "owner": "claude:dev-orbit",
+      "branch": "lane/w04-autonomy-loop/L2",
+      "worktree": null,
+      "status": "COMPLETED",
+      "depends_on": [],
+      "lease": null,
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [],
+      "acceptance_criteria": [
+        "Orbit account-usage section (dashboard/desktop/src/orbit.js and its UI) shows the known keys produced by the supervisor's rate_limit_event provider in plain language: '5-hour window: used' -> '21%'; '5-hour window: resets' -> the UTC time plus a relative phrase ('in 1 h 3 min', or 'window already reset' when the time is past); the same for the 7-day window; 'rate-limit status'; unknown keys keep the existing generic rendering",
+        "A provenance line states the source (for example 'from the last worker run's rate_limit_event') and its age; a value whose own timestamp is older than the stale threshold is shown as stale, never as live",
+        "Every value shows one explicit data-quality badge from: live, cached, stale, estimated (label INFERRED), unavailable (with reason); REPORTED account usage stays UNAVAILABLE as today (the OBSERVED-only rule is unchanged)",
+        "Orbit stays read-only (no new write paths; the existing read-only test still passes); released artifact names, package name and ids are not renamed",
+        "Node tests (cd dashboard/desktop && node --test \"tests/*.test.js\") extended with fixtures for the new labels, resets in the future and in the past, stale values and unknown keys; existing tests updated only where the label text intentionally changes, with a note in the lane report",
+        "orchestrator/tests/test_dev_orbit_view.py runs the Orbit node tests through subprocess when node is on PATH (skips with a clear reason otherwise) and checks the Python snapshot fixture for the usage keys renders through orbit.js without leaking REPORTED values",
+        "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+        "Any live observation is summarised as numbers and identifiers only (never prompts, transcript text or file contents), labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+        "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+        "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_orbit_view.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Completed 2026-11-18 as lane L2 of wave w04-autonomy-loop; delivered through the wave branch and merged to main in one wave pull request (reviewed wave head 7c3fce9fc2a8cbc212a63c0bdf045cda4240b104, lane head a15f0c623f41a1d59d38865be785c4e3713d90bd). No claim, step-start, lease or closeout pull request was used."
     },
     {
       "id": "T-DEV-010",

@@ -1748,6 +1748,141 @@
       ]
     },
     {
+      "task_id": "T-DEV-013",
+      "title": "Autonomy loop: task selection, wake-up wait and Main Stop hook (issue #44, mission part 2-4)",
+      "steps": [
+        {
+          "id": "S-DEV-013-00",
+          "title": "Lane L1 of wave w04-autonomy-loop",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module orchestrator/dev_supervisor/autonomy.py with its own CLI `python -B -m dev_supervisor.autonomy <cmd>` (do NOT edit cli.py, launch.py, telemetry.py or any other existing module: they are claimed by open tasks T-DEV-010..012); standard library only; reuse existing modules read-only (state_store.StateStore, workers.WorkerRegistry, config.Config loading as cli.py does, evidence labels)",
+            "`next [--json] [--repo <root>]`: builds the actionable list for Main from the repository records and the supervisor state, ordered by priority with a reason each: (a) worker results that are REPORTED and not yet verified (review_worker_result); (b) FAILED or LOST workers and whether a retry is eligible or blocked (bounded restarts, identical-failure stop); (c) wave lanes SUBMITTED but not verified, read from waves/*/wave.json plus `git` remote branch state via an injected runner; (d) registered tasks in ACTIVE_TASKS.json / DEVELOPMENT_TRACKER.json that are eligible: PLANNED or the next PLANNED step of an ACTIVE task whose dependencies are COMPLETED and whose owned_paths do not overlap another ACTIVE task; (e) blocked items with the exact blocker (dependency, lease held by another task, missing merge). When nothing is actionable it returns an explicit idle_reason (for example 'waiting for 2 running workers' or 'no eligible task: T-X waits for T-Y'). Never invents work; repository files win over supervisor cache",
+            "`wait --timeout <s> [--poll <s>] [--cursor <file>]`: blocks until the actionable fingerprint changes or a new supervisor event (events.jsonl beyond a stored cursor) of kind worker_* / main_* / replacement arrives, prints a short JSON summary of what changed, exit 0 on change and exit 3 on timeout; meant to be run by Main as a background command so its exit re-invokes Main; bounded, low CPU, tolerant of missing/corrupt state",
+            "`stop-hook`: implements the Claude Code Stop hook contract: reads the hook JSON from stdin (session_id, stop_hook_active, ...); only for the authoritative Main session id recorded in the supervisor state (any other session: allow, no output); if actionable items exist that Main has not yet been told about (fingerprint stored in the state directory), print {\"decision\": \"block\", \"reason\": \"<one line naming the next item and the command to inspect it>\"}; if stop_hook_active is true and the fingerprint is unchanged, allow; at most a configurable number of consecutive blocks (default 3) before allowing; any internal error fails OPEN (allow, exit 0) and is logged to the state directory; reasons never contain secrets or transcript text",
+            "`main-settings --out <file> [--python <exe>] [--orchestrator <dir>]`: writes a Claude Code settings JSON containing only a hooks.Stop entry that runs the stop-hook command (argument-safe quoting on Windows), for use with `claude --settings <file>`; it never edits ~/.claude, the repository's .claude/ or any launcher; wiring it into launch.py is a later task (record that as PROPOSED)",
+            "At least 40 offline tests with temp state directories, synthetic ACTIVE_TASKS/TRACKER/wave manifests, a fake git runner and a fake clock (eligibility rules, dependency and overlap blocking, idle reasons, wait change/timeout, stop-hook block/allow/loop-bound/fail-open/other-session, settings file shape)",
+            "One OBSERVED live dry run of `next --json` against this repository and the real machine-local supervisor state directory, reported as counts and task ids only",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only (never prompts, transcript text or file contents), labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "7c3fce9fc2a8cbc212a63c0bdf045cda4240b104"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w04-autonomy-loop",
+              "commit": "7c3fce9fc2a8cbc212a63c0bdf045cda4240b104"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_autonomy.py",
+              "result": "Ran 104 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+              "result": "Ran 648 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests (before fix rounds 2-3)",
+              "result": "Ran 2163 tests in 369s: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.autonomy next --json --repo <this worktree>",
+              "result": "OBSERVED: items 1 (verify_wave w04-autonomy-loop L1,L2), others_waiting 2, blocked 0, warnings 1 (multiple authoritative Main sessions, 2 short ids)"
+            },
+            {
+              "type": "observation",
+              "summary": "Added orchestrator/dev_supervisor/autonomy.py (stdlib only) with next, wait, stop-hook and main-settings, plus 89 offline tests. IMPLEMENTED and TESTED offline with synthetic registries, a fake git runner and a fake clock: eligibility (PLANNED, dependencies COMPLETED/RELEASED, owned-path overlap with ACTIVE/UNDER_REVIEW tasks ignoring shared_files), tracker steps, worker results and failures with retry eligibility, submitted-but-unmerged waves, idle reasons, wait change/timeout, Stop hook block/allow/loop-bound/fail-open/other-session, settings shape. OBSERVED once: next --json against this checkout and the real machine-local state returned 3 items (2 review_step, 1 verify_wave), 0 blocked, 0 warnings, state directory unchanged. NOT TESTED: a real Claude Code session invoking the hook, wait run as a real background command, hook run through claude --settings. Wiring main-settings into launch.py is PROPOSED (later task). Known limit: a wave merged by squash is not an ancestor of origin/main, so it can be listed as verify_wave until its remote branch is deleted. Fix round 2 (Main's live findings): review_step and start_step items are actionable only for tasks owned by --owner (default claude:repository-coordinator); other owners' steps are listed in others_waiting_review, outside the fingerprint, and never make stop-hook block. A wave is closed (never verify_wave) when all its lanes' task ids are COMPLETED/RELEASED in ACTIVE_TASKS.json (what governance wave close writes, per closeout_records) or its manifest records a closed state; ancestry is no longer the only signal. Fix round 3: authoritative_main() now prefers the session equal to main.json's session_id while RUNNING when it is among the authoritative ACTIVE/RETIRING sessions, else the single candidate, else None (fail open); next always warns 'multiple authoritative Main sessions: <short ids>' when several exist. OBSERVED live: that warning appears against the real state (two short ids)."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (648 dev tests OK, 99 node tests OK) and live checks; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-014",
+      "title": "Orbit: readable usage windows and explicit data-quality labels (issue #44, mission part 7)",
+      "steps": [
+        {
+          "id": "S-DEV-014-00",
+          "title": "Lane L2 of wave w04-autonomy-loop",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Orbit account-usage section (dashboard/desktop/src/orbit.js and its UI) shows the known keys produced by the supervisor's rate_limit_event provider in plain language: '5-hour window: used' -> '21%'; '5-hour window: resets' -> the UTC time plus a relative phrase ('in 1 h 3 min', or 'window already reset' when the time is past); the same for the 7-day window; 'rate-limit status'; unknown keys keep the existing generic rendering",
+            "A provenance line states the source (for example 'from the last worker run's rate_limit_event') and its age; a value whose own timestamp is older than the stale threshold is shown as stale, never as live",
+            "Every value shows one explicit data-quality badge from: live, cached, stale, estimated (label INFERRED), unavailable (with reason); REPORTED account usage stays UNAVAILABLE as today (the OBSERVED-only rule is unchanged)",
+            "Orbit stays read-only (no new write paths; the existing read-only test still passes); released artifact names, package name and ids are not renamed",
+            "Node tests (cd dashboard/desktop && node --test \"tests/*.test.js\") extended with fixtures for the new labels, resets in the future and in the past, stale values and unknown keys; existing tests updated only where the label text intentionally changes, with a note in the lane report",
+            "orchestrator/tests/test_dev_orbit_view.py runs the Orbit node tests through subprocess when node is on PATH (skips with a clear reason otherwise) and checks the Python snapshot fixture for the usage keys renders through orbit.js without leaking REPORTED values",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only (never prompts, transcript text or file contents), labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L2 head on the wave branch (last commit to its report)",
+              "commit": "a15f0c623f41a1d59d38865be785c4e3713d90bd"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w04-autonomy-loop",
+              "commit": "7c3fce9fc2a8cbc212a63c0bdf045cda4240b104"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "tests 99, pass 99, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 544 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "OK (skipped=2)"
+            },
+            {
+              "type": "observation",
+              "summary": "Orbit account-usage section now renders known rate_limit_event keys in plain language (5-hour/7-day window used and resets with a UTC time plus a relative phrase, rate-limit status), adds a provenance note (source in plain words plus age, no worker or file names), and gives every row one data-quality badge (live, cached, stale, estimated for INFERRED, unavailable with reason). OBSERVED-only rule unchanged. IMPLEMENTED and TESTED with synthetic fixtures (node tests, Python wrapper). NOT TESTED in a running Electron window; no live observation was made."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (648 dev tests OK, 99 node tests OK) and live checks; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
       "task_id": "T-DEV-010",
       "title": "dev_supervisor: explicit claude child environment into main (PR #60, follow-up to #57)",
       "steps": [
