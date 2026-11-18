@@ -528,6 +528,35 @@ def _registry_view(store: StateStore) -> Dict[str, Any]:
             "contradictions": [c for c in reg.contradictions if not c.get("resolved")]}
 
 
+def _account_usage(store: StateStore) -> Dict[str, Any]:
+    """Account usage from the newest rate_limit_event in worker stream-json logs (OBSERVED), else UNAVAILABLE."""
+    return telemetry.account_usage(telemetry.RateLimitEventProvider(store.directory / "logs"))
+
+
+def _usage_evidence(au: Dict[str, Any]) -> Any:
+    """One Evidence-shaped dict for a handoff: the observed usage fields as one value, or the UNAVAILABLE evidence."""
+    u = au.get("usage")
+    if isinstance(u, dict) and u:
+        first = next(iter(u.values()))
+        return {"label": first.label.value, "value": {k: v.value for k, v in u.items()},
+                "source": first.source, "timestamp": first.timestamp}
+    return u
+
+
+def _usage_text(au: Dict[str, Any]) -> str:
+    u = au.get("usage")
+    if not isinstance(u, dict) or not u:
+        return _ev_text(u)
+    parts = []
+    for name, label in (("five_hour", "5h"), ("weekly", "7d")):
+        pct = u.get(name + "_used_percentage")
+        if pct is not None:
+            rs = u.get(name + "_resets_at")
+            parts.append(f"{label} {pct.value}%" + (f" (resets {rs.value})" if rs is not None else ""))
+    first = next(iter(u.values()))
+    return (", ".join(parts) or "no windows") + f" [{first.label.value}, observed {first.timestamp}]"
+
+
 def cmd_status(svc: Services, a: argparse.Namespace) -> int:
     store = svc.store(create=False)
     main = read_main(store)
@@ -547,9 +576,12 @@ def cmd_status(svc: Services, a: argparse.Namespace) -> int:
             "queued_requests": len(pending_requests(store)),
             "github_pending": len(lg.pending()) if lg else None,
             "usage_note": replacement.USAGE_NOTE}
+    au = _account_usage(store)
+    data["account_usage"] = au["usage"]
     text = (f"Main: {sid or 'none'} [{main.get('status') or 'not started'}] pid={main.get('pid')} "
             f"authoritative={data['authoritative_main'] or 'none'}\n"
             f"context ratio: {_ev_text(pressure.get('ratio'))}\n"
+            f"account usage: {_usage_text(au)}\n"
             f"workers: {data['workers'] or 'none'}; blockers={data['open_blockers']} "
             f"queued_requests={data['queued_requests']}\nlock: {data['lock']}")
     _print(svc, data, a.json, text)
@@ -632,7 +664,8 @@ def cmd_handoff(svc: Services, a: argparse.Namespace) -> int:
     _sess, pressure = main_observation(svc, sid)
     try:
         h = handoff.build_handoff(session_id=sid, role=MAIN_ROLE, workers=handoff.worker_entries(
-            WorkerRegistry(store).list()), context=pressure, **facts)
+            WorkerRegistry(store).list()), context=pressure,
+            **({"usage": _usage_evidence(_account_usage(store))} if "usage" not in facts else {}), **facts)
     except handoff.HandoffError as e:
         _print(svc, {"ok": False, "error": str(e)}, a.json, f"refused: {e}")
         return EXIT_FAIL
@@ -725,6 +758,7 @@ def cmd_snapshot(svc: Services, a: argparse.Namespace) -> int:
     cfg = svc.config
     store = svc.store(create=False)
     tele = telemetry.snapshot(cfg.sessions_directory(), cfg.projects_directory(), config=_pressure_config(cfg),
+                              usage_provider=telemetry.RateLimitEventProvider(store.directory / "logs"),
                               pid_alive=svc.pid_alive)
     reg, events = None, []
     if store.directory.is_dir():

@@ -113,7 +113,7 @@ Context pressure and account usage are different quantities and are tracked sepa
 
 - Allocation is by task criticality, capability, remaining quota, context pressure, deadline and concurrency, not fixed percentages: `python -B -m dev_supervisor route ...` prints an explained decision. Main gets the strongest model; routine implementation, mechanical tests and search go to cheaper routes; failed validation or repeated failure escalates.
 - OBSERVED benchmark (one run, one machine, one moment; `orchestrator/dev_supervisor/OMNIROUTE_BENCHMARK.md`): 2 of 7 routes answered (a Gemini lite route 5 of 5 tasks, a Gemini flash preview route 4 of 5); other Gemini routes returned not_found, rate_limited, timeout or upstream_error; both Groq routes returned auth_error (cause not investigated). Not tested: long contexts, concurrency, multi-turn tool use, authenticated requests, Claude Code itself through OmniRoute.
-- Account usage and reset windows are UNAVAILABLE: no source was found. The headless worker stream carries a `rate_limit_event`; no code parses it yet. Reading it is a PROPOSED lead, shape not inspected. A statusline payload ingestor exists but has not been fed a real Claude Code payload.
+- Account usage and reset windows come from the `rate_limit_event` that Claude Code writes into every headless worker's stream-json log (`<STATE_DIR>/logs/<worker>/run-<n>.stream.jsonl`). `RateLimitEventProvider` reads the newest one: 5-hour and 7-day utilization (as a percentage), reset times and status, labelled OBSERVED and timestamped with the log's last write time. `status`, `snapshot` and `handoff` use it. Interactive Main writes no stream-json, so the figure is only as fresh as the last worker run; with no worker run yet it is UNAVAILABLE with that reason. The statusline payload ingestor still exists but has not been fed a real Claude Code payload.
 - A fresh session does not replenish usage. When the account is exhausted the options are to wait for the reset, switch the launcher to OmniRoute (a human action), or stop. The supervisor records provider switches; it does not hide them.
 - Provider and model identity are recorded per worker; actual token usage is reported only where the provider exposes it.
 
@@ -166,8 +166,8 @@ Labels: IMPLEMENTED (code exists), TESTED (offline tests pass), OBSERVED (seen o
 |---|---|---|
 | Evidence model and telemetry (sessions, context pressure) | IMPLEMENTED, TESTED (offline), OBSERVED | 90 offline tests; one live read: 2 sessions, 1 pressure computed, 1 UNAVAILABLE (model not in window table) |
 | Context windows and thresholds | IMPLEMENTED, TESTED (offline), OBSERVED | 5-family windows 1M; live `compact-check` on a supervisor-launched Main reported 6.4% [INFERRED] on 2026-11-18 (issue #58); thresholds remain configuration |
-| Account usage and reset windows | NOT TESTED | UNAVAILABLE: no source found; statusline ingestor never fed a real payload |
-| Parsing `rate_limit_event` from the worker stream | PROPOSED | Event seen in one headless run; shape not inspected |
+| Account usage and reset windows (`rate_limit_event`) | IMPLEMENTED, TESTED (offline), OBSERVED | Shape inspected in a real `claude -p --output-format stream-json --verbose` run on 2026-11-18; the provider read a real log end to end (5-hour 21%, 7-day 41%, OBSERVED). Freshness is limited to the last worker run. Not yet seen through the running supervisor loop |
+| Statusline usage ingestor | IMPLEMENTED, NOT TESTED | never fed a real payload |
 | Crash-safe state store and worker registry | IMPLEMENTED, TESTED (offline) | 88 offline tests (lifecycle) |
 | Worker lifecycle (assign, spawn, monitor, restart, stop, recover) | IMPLEMENTED, TESTED (offline) | fake launcher and clock; no real worker run by the lane |
 | Headless worker command | OBSERVED | One run: exit 0, 8.5 s, init/assistant/rate_limit_event/result events; fails without `--verbose` |
@@ -177,8 +177,9 @@ Labels: IMPLEMENTED (code exists), TESTED (offline tests pass), OBSERVED (seen o
 | Compaction decision | IMPLEMENTED, TESTED (offline) | decision and refusal rules only |
 | Main replacement and heartbeat | IMPLEMENTED, TESTED (offline), NOT TESTED | no real heartbeat or retirer observed |
 | Routing scheduler | IMPLEMENTED, TESTED (offline) | 70 offline tests; weights are PROPOSED, not calibrated |
-| OmniRoute benchmark | OBSERVED | 2 of 7 routes answered; Groq auth_error; one run |
-| Claude Code through OmniRoute | NOT TESTED | open item |
+| OmniRoute benchmark | OBSERVED | Two runs (2026-11-18): 2 of 7 routes answered both times (gemini-3.1-flash-lite 5/5, gemini-3-flash-preview 4/5). Groq fails with HTTP 403 Cloudflare error 1010 (client signature blocked at Groq's edge; the provider connection test passes), not a login problem |
+| Claude Code through OmniRoute | OBSERVED (partial) | `claude -p` with the local gateway on gemini-3.1-flash-lite answers text; tool use fails (`400 Function call is missing a thought_signature`), so file-editing workers stay on Claude Pro |
+| OmniRoute text-only workers (`dev_supervisor.text_worker`) | IMPLEMENTED, TESTED (offline), OBSERVED | 49 offline tests; live: summarise, classify, extract_json and review_notes CHECKED on the free Gemini route, plus Groq-to-Gemini fallback; output labelled REPORTED until a deterministic checker passes, then CHECKED and never promoted further |
 | Paid API route | NOT TESTED | none exists; excluded unless `allow_paid_api` |
 | Resolve discovery (MATCH/MISMATCH/UNCONFIGURED/UNAVAILABLE) | IMPLEMENTED, TESTED (offline), OBSERVED | 60 offline tests; live read-only run gave MISMATCH and UNCONFIGURED as described |
 | Resolve bridge start from outside | NOT TESTED | the user must run `resolve_bridge`; raw bridge reply untested |
@@ -188,7 +189,12 @@ Labels: IMPLEMENTED (code exists), TESTED (offline tests pass), OBSERVED (seen o
 | Orbit Electron window and IPC | NOT TESTED | electron not installed in the lane |
 | Command line (`python -B -m dev_supervisor`) | IMPLEMENTED, TESTED (offline), OBSERVED | `doctor` ran live: required checks passed, Resolve UNCONFIGURED warning |
 | Reusable onboarding to a second repository | PROPOSED | checklist in section 12 never run on another repository |
-| End-to-end autonomous overnight run | NOT TESTED | no end-to-end run |
+| Autonomy loop (`dev_supervisor.autonomy next/wait/stop-hook/main-settings`) | IMPLEMENTED, TESTED (offline), OBSERVED | 104 offline tests; a real Claude Code session with the generated `--settings` file was kept working by the Stop hook (blocked once, continued, then allowed); not yet wired into the supervisor's Main launch (PROPOSED) |
+| Operation snapshot and Orbit views (next actions, waiting on others, blocked, idle reason, per-worker context, supervisor health, handoff) | IMPLEMENTED, TESTED (offline), OBSERVED | rendered from the real supervisor state; `cli snapshot` still uses the older builder (PROPOSED switch to `build_full_snapshot`) |
+| Supervisor state repair (`dev_supervisor.repair`) | IMPLEMENTED, TESTED (offline), OBSERVED | applied once to the real state: retired a stale duplicate authoritative Main record |
+| Worker waves run by Main | OBSERVED | waves w04, w05 and w06 (8 lanes) were implemented by worker subagents, verified independently by Main (including live checks that found and returned defects), closed and merged by Main as the Repository Coordinator |
+| End-to-end autonomy acceptance harness (`dev_supervisor.acceptance`) | IMPLEMENTED, TESTED (offline), OBSERVED | 13/13 steps PASS in default mode and with `--real-worker` (a real haiku worker); handoff checkers, Main replacement and the context threshold are MOCKED or SIMULATED there |
+| Supervisor-spawned real worker and unattended multi-cycle run | NOT TESTED | needs a supervisor restart with `worker_permission_mode` configured; workers so far were Claude Code subagents of Main |
 
 ## 15. Safety summary
 

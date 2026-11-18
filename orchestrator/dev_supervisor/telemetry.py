@@ -1,7 +1,7 @@
 """Telemetry for Claude Code sessions: session files, context pressure, usage-provider interface.
 
 IMPORTANT: nothing here is an account-usage reading (plan limits, reset windows) unless a UsageProvider
-supplies one. With no provider, usage is UNAVAILABLE with the reason. Context pressure is a per-session
+supplies one (RateLimitEventProvider reads Claude Code's own stream-json ``rate_limit_event`` from worker logs). With no provider, usage is UNAVAILABLE with the reason. Context pressure is a per-session
 figure computed from the last assistant usage record in the transcript against a configured model window;
 it is not an account figure. No transcript text is ever returned: only token counts and the model id.
 
@@ -324,6 +324,101 @@ class StatuslineProvider(UsageProvider):
             if isinstance(rs, (int, float, str)) and not isinstance(rs, bool) and rs != "":
                 out[name + "_resets_at"] = reported(rs, "statusline", ts)
         return out or None
+
+
+RATE_LIMIT_WINDOWS = (("five_hour", "five_hour"), ("seven_day", "weekly"))
+
+
+def _epoch_iso(v) -> Optional[str]:
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(v, tz=timezone.utc).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def parse_rate_limit_event(event, source: str = "rate_limit_event", observed_at: Optional[str] = None) -> Optional[dict]:
+    """Account usage from one Claude Code stream-json ``rate_limit_event`` (``claude -p --output-format stream-json``).
+
+    Shape observed 2026-11-18 (claude 2.1.x): {"type": "rate_limit_event", "rate_limit_info": {"status", "resetsAt",
+    "rateLimitType", "unifiedWindows": {"five_hour": {"utilization": 0.17, "resetsAt": <epoch s>, "status"},
+    "seven_day": {...}}}}. Values are OBSERVED (machine-readable output of Claude Code itself), timestamped with
+    ``observed_at`` (when the event was written), so the snapshot's freshness rules apply. Only keys present and
+    well-typed are returned; anything else yields None. Utilization is converted to a percentage."""
+    if not isinstance(event, dict) or event.get("type") != "rate_limit_event":
+        return None
+    info = event.get("rate_limit_info")
+    if not isinstance(info, dict):
+        return None
+    ts = observed_at or now_iso()
+    out = {}
+    windows = info.get("unifiedWindows")
+    if isinstance(windows, dict):
+        for key, name in RATE_LIMIT_WINDOWS:
+            w = windows.get(key)
+            if not isinstance(w, dict):
+                continue
+            u = w.get("utilization")
+            if isinstance(u, (int, float)) and not isinstance(u, bool) and 0 <= u <= 10:
+                out[name + "_used_percentage"] = observed(round(u * 100, 1), source, ts)
+            rs = _epoch_iso(w.get("resetsAt"))
+            if rs:
+                out[name + "_resets_at"] = observed(rs, source, ts)
+            st = w.get("status")
+            if isinstance(st, str) and st:
+                out[name + "_status"] = observed(st, source, ts)
+    st = info.get("status")
+    if out and isinstance(st, str) and st:
+        out["status"] = observed(st, source, ts)
+    return out or None
+
+
+class RateLimitEventProvider(UsageProvider):
+    """Latest ``rate_limit_event`` found in the supervisor's worker stream-json logs (``<state>/logs/<worker>/
+    run-<n>.stream.jsonl``). Reads only the tail of the most recently written logs, never transcript text, and keeps
+    only the parsed usage fields. Interactive Main emits no stream-json, so usage is only as fresh as the last worker
+    run: the evidence timestamp is the log's last write time."""
+    name = "rate_limit_event"
+
+    def __init__(self, logs_dir, max_files: int = 20, tail_bytes: int = TAIL_BYTES):
+        self.logs_dir = Path(logs_dir) if logs_dir else None
+        self.max_files, self.tail_bytes = max_files, tail_bytes
+        self.reason = "no rate_limit_event in worker stream-json logs (no worker has run yet)"
+
+    def _candidates(self):
+        if self.logs_dir is None or not self.logs_dir.is_dir():
+            return []
+        files = []
+        for f in self.logs_dir.glob("*/*.stream.jsonl"):
+            try:
+                files.append((f.stat().st_mtime, f))
+            except OSError:
+                continue
+        files.sort(key=lambda t: t[0], reverse=True)
+        return files[: self.max_files]
+
+    def get_usage(self):
+        for mtime, f in self._candidates():
+            try:
+                with open(f, "rb") as fh:
+                    size = fh.seek(0, os.SEEK_END)
+                    fh.seek(max(0, size - self.tail_bytes))
+                    lines = fh.read().splitlines()
+            except OSError:
+                continue
+            for line in reversed(lines):
+                if b'"rate_limit_event"' not in line:
+                    continue
+                try:
+                    ev_ = json.loads(line.decode("utf-8", "replace"))
+                except ValueError:
+                    continue
+                at = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+                u = parse_rate_limit_event(ev_, "rate_limit_event:%s/%s" % (f.parent.name, f.name), at)
+                if u:
+                    return u
+        return None
 
 
 def account_usage(provider: Optional[UsageProvider]) -> dict:
