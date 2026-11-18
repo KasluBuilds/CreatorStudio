@@ -2303,7 +2303,7 @@
         {
           "id": "S-DEV-010-00",
           "title": "Step 0: claim",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-DEV-010 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
             "AGR-GOV-REGISTRY-01 extended and AGR-DEV-FIXES-01 added; no other task's record is edited",
@@ -2313,13 +2313,24 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main 2cfc78c; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change. Retroactive: the implementation branch already exists (see integration_notes)."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #60 merged to main as 7feb86b81bf3 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff 178fd22b8b681f32); claim PR #61 merged earlier."
             }
-          ]
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
         },
         {
           "id": "S-DEV-010-01",
           "title": "Step 1: implementation on task/dev-supervisor-launch-env",
-          "status": "PLANNED",
+          "status": "IN_PROGRESS",
           "acceptance_criteria": [
             "main contains provider_env.child_env and launch/lifecycle use it",
             "dev_supervisor tests and the full suite pass",
