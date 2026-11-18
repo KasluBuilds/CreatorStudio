@@ -1,0 +1,16 @@
+{
+  "lane": "L2",
+  "status": "DONE",
+  "summary": "IMPLEMENTED dev_supervisor/review.py: strict dev-review v1 marker parser (first line only), diff_hash, pure review_status (latest valid review wins; statuses CURRENT_APPROVED/STALE/CHANGES_REQUESTED/MISSING/INVALID; rejects other-PR markers, malformed or misplaced markers and reviewer id equal to a PR author id), injected git/gh runners, packet command (diff.patch, files.txt, task.md, reviewer-prompt.md) and check command. TESTED by 69 offline tests with fake runners. OBSERVED live: check on PR 60 returned MISSING, then INVALID (the shared GitHub account made the commenter login equal the PR author; the login comparison was removed and only the marker reviewer id is compared), then CURRENT_APPROVED for the reviewer worker's real comment. NOT TESTED: live packet command, live run on a PR with CHANGES_REQUESTED or STALE. Not VERIFIED.",
+  "commands": [
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_review.py", "result": "Ran 69 tests: OK"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"", "result": "Ran 887 tests: OK"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests", "result": "Ran 2421 tests in 369.853s: OK (skipped=2)"},
+    {"command": "cd orchestrator && python -B -m dev_supervisor.review check 60", "result": "CURRENT_APPROVED pr=60 current=178fd22b8b681f32 review=178fd22b8b681f32 verdict=APPROVE reviewer=independent-reviewer-worker valid=1/1 files=4"}
+  ],
+  "unresolved": [
+    "integrate.py should pass worker ids of the PR author (not only the GitHub login) as author_ids, because every worker posts through one shared GitHub account so the login cannot prove independence.",
+    "A reviewer id is self-declared in the marker; nothing stops a worker from choosing any id. Independence rests on the orchestration, not on this check."
+  ],
+  "changelog": "dev_supervisor.review: review packets and dev-review v1 marker validation (CURRENT_APPROVED/STALE/CHANGES_REQUESTED/MISSING/INVALID) for autonomous integration (T-DEV-022)."
+}
