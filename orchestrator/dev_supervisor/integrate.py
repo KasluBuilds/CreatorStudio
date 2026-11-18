@@ -422,6 +422,9 @@ def _author_ids(pr: Dict[str, Any], owners: List[str]) -> set:
 
 
 def _gate_review(c: _Ctx, comments: Optional[List[Dict[str, Any]]], owners: List[str], n: int) -> Gate:
+    if (c.files and all(f in REGISTRY_FILES for f in c.files)
+            and not str(c.pr.get("headRefName", "")).startswith("wave/")):
+        return Gate(5, "review", PASS, "registry-only record: no code review required (protocol section 18 gate 4)")
     if comments is None:
         return Gate(5, "review", UNKNOWN, "comments not readable")
     if not c.diff_sha:

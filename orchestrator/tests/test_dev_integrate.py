@@ -353,6 +353,25 @@ class GateFive(unittest.TestCase):
         self.assertEqual(status(g, "review"), I.FAIL)
 
 
+class RegistryOnlyReview(unittest.TestCase):
+    def review(self, files, head=TASK_BRANCH, wave=None):
+        gh = FakeGh(pr=pr_json(headRefName=head), comments=[])
+        g, _ = run_eval(gh, FakeGit(files=files, wave=wave, reg=registry(branch="task/none")))
+        return next(x for x in g if x.name == "review")
+
+    def test_registry_only_exempt(self):
+        g = self.review(["ACTIVE_TASKS.json", "DEVELOPMENT_TRACKER.json", "SESSION_HANDOFF.md"])
+        self.assertEqual(g.status, I.PASS)
+        self.assertIn("registry-only record: no code review required (protocol section 18 gate 4)", g.detail)
+
+    def test_registry_plus_code_file_needs_review(self):
+        self.assertEqual(self.review(["ACTIVE_TASKS.json", "orchestrator/x.py"]).status, I.FAIL)
+
+    def test_wave_pr_still_needs_review(self):
+        w = {"lanes": [{"owner": "claude:c", "owned_paths": ["orchestrator/a.py"]}]}
+        self.assertEqual(self.review(["ACTIVE_TASKS.json", "CHANGELOG.md"], "wave/w01-x", w).status, I.FAIL)
+
+
 class GatesSixSeven(unittest.TestCase):
     def test_clean_lines_pass(self):
         g, _ = run_eval()
