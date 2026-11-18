@@ -372,9 +372,11 @@ class PressureTests(Base):
         self.assertEqual(self.lvl(920)["level"].value, "replace")
 
     def test_over_window(self):
+        # More tokens than the window means the window table is wrong; never REPLACE on it (replacement loops, #58).
         r = self.lvl(5000)
-        self.assertEqual(r["level"].value, "replace")
-        self.assertEqual(r["ratio"].value, 5.0)
+        self.assertIsNone(r["level"].value)
+        self.assertIsNone(r["ratio"].value)
+        self.assertIn("exceed configured window", r["level"].reason)
 
     def test_custom_thresholds(self):
         c = self.cfg(thresholds={"warn": 0.1, "compact": 0.2, "replace": 0.3})
@@ -415,6 +417,18 @@ class PressureTests(Base):
         t = tl.DEFAULT_THRESHOLDS
         self.assertTrue(0 < t["warn"] < t["compact"] < t["replace"] <= 1)
         self.assertIn("claude-sonnet-5-5", tl.DEFAULT_CONTEXT_WINDOWS)
+        # The Main model (``--model opus`` resolves to claude-opus-5-5) must have a window, or a launched Main's
+        # context pressure is UNAVAILABLE (observed on Main 46f52067 after the #58 transcript fix).
+        # Claude 5 family windows are 1M; 200K made sessions past 200K compute ratio > 1 and be judged REPLACE.
+        for m in ("claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"):
+            self.assertEqual(tl.DEFAULT_CONTEXT_WINDOWS[m], 1_000_000)
+
+    def test_tokens_above_window_is_unavailable_not_replace(self):
+        p = self.transcript([asst(model="claude-opus-4-5", i=250_000)])
+        res = tl.context_pressure(p)
+        self.assertEqual(res["level"].label.value if hasattr(res["level"].label, "value") else res["level"].label,
+                         "UNAVAILABLE")
+        self.assertIn("exceed configured window", res["level"].reason)
 
     def test_default_config_not_shared(self):
         a, b = tl.PressureConfig(), tl.PressureConfig()

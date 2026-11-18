@@ -1,0 +1,33 @@
+{
+  "lane": "L1",
+  "status": "DONE",
+  "summary": "IMPLEMENTED dev_supervisor/acceptance.py: a 13-step scripted autonomy scenario in a fresh temp state dir and temp git repository (two eligible tasks, one blocked; autonomy next; worker via lifecycle.Supervisor with a fake launcher or one bounded real `claude -p --model haiku --allowedTools Write` run in a cleaned environment; REPORTED then VERIFIED by reading the output file back; task COMPLETED then second task selected; synthetic transcript at 0.93 context ratio, compaction defers then allows after a verified handoff; replacement with fake launcher/heartbeat; replacement Main sees only the second task; Stop hook blocks then allows). Report lists each step with PASS/FAIL, REAL/SIMULATED/MOCKED and timings. TESTED: 40 offline tests (every failure injection fails exactly its step, isolation checks, report shape). OBSERVED: one default-mode run and one --real-worker run, both 13/13 PASS (real run: haiku exit 0, 10 stream lines, 1 result event, 0 errors). NOT TESTED: other models, Linux/macOS, interactive Main, real Resolve. Harness result on synthetic data is not a VERIFIED claim about the project.",
+  "commands": [
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_acceptance.py",
+      "result": "Ran 40 tests: OK"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+      "result": "Ran 769 tests: OK"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+      "result": "Ran 2303 tests in 307.035s: OK (skipped=2)"
+    },
+    {
+      "command": "cd orchestrator && python -B -m dev_supervisor.acceptance --out <temp>/mocked.json",
+      "result": "OBSERVED overall PASS 13/13 steps, 1.694s, mode mocked"
+    },
+    {
+      "command": "cd orchestrator && python -B -m dev_supervisor.acceptance --out <temp>/real.json --real-worker",
+      "result": "OBSERVED overall PASS 13/13 steps, 13.905s, mode real-worker (worker_run REAL 12.66s)"
+    }
+  ],
+  "unresolved": [
+    "Real-worker mode adds --allowedTools Write through a substituted popen in the harness because lifecycle.build_claude_argv has no extra-args hook; a first-class hook would need a lifecycle.py change (not in this lane).",
+    "Handoff reference checks use injected set-based checkers (MOCKED); GitRefChecker against the temp repo was not used.",
+    "Stop hook is exercised through autonomy.main with a fake read-only git runner; the real Claude Code hook invocation is NOT TESTED."
+  ],
+  "changelog": "Add dev_supervisor.acceptance: isolated 13-step end-to-end autonomy acceptance harness (mocked and one bounded real haiku worker mode) with 40 offline tests (T-DEV-018, #70)."
+}
