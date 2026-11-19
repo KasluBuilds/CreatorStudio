@@ -196,6 +196,16 @@
         "orchestrator/dev_supervisor/session_policy.py",
         "orchestrator/dev_supervisor/SESSION_POLICY.md"
       ]
+    },
+    "AGR-DEV-LIVE-AUTONOMY-01": {
+      "description": "Lukas's execution directive of 2026-11-19 (section 4: prove real autonomous development with a genuine unattended multi-cycle run) directly assigns T-DEV-026. Under that direct assignment T-DEV-026 may ADD new files inside orchestrator/dev_supervisor/ (package owner claude:repository-coordinator). It may not edit any existing module. The run happens in a throwaway local sandbox outside this repository; no real footage, no paid API, no network service other than the configured Claude provider. REPORTED: the directive was pasted into the session by Lukas; the owner has not separately acknowledged it.",
+      "task_ids": [
+        "T-DEV-026"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/live_autonomy.py",
+        "orchestrator/dev_supervisor/LIVE_AUTONOMY.md"
+      ]
     }
   },
   "tasks": [
@@ -1577,6 +1587,43 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Authorised by Lukas's mission messages of 2026-11-19. Adds new files only inside the Coordinator-owned dev_supervisor package under AGR-DEV-AUTHORITY-01. Completed 2026-11-19: PR #92 merged as 473b63005100 through dev_supervisor.integrate (8 gates PASS; independent review APPROVE for diff 24ffe75440efeaaf after one CHANGES_REQUESTED round that found verification matched text instead of JSON and weak path quoting). Evidence: UNIT_ISOLATED (20 offline tests) plus OBSERVED live probes with a real headless haiku session (force push blocked, git status allowed, also after --resume). NOT DONE: launch.py does not call session_policy yet, so no supervisor-launched Main or worker has the hook. Known doc nit: SESSION_POLICY.md says 16 tests, actual 20."
+    },
+    {
+      "id": "T-DEV-026",
+      "title": "dev_supervisor: live unattended multi-cycle autonomy harness in a throwaway local sandbox",
+      "description": "New module live_autonomy.py: builds a throwaway local git sandbox (bare origin, integration checkout, worktrees, synthetic backlog with dependencies and one unsatisfiable task), gives a real headless claude Main a CLI toolset (next/claim/dispatch/status/verify/review/integrate/recover) and runs it unattended while a harness injects real failures (worker kill with identity proof, out-of-scope change, Main kill and resume, supervisor-loop restart). Integration uses a LOCAL gate implementation that mirrors the production gate semantics; it is labelled as such and is not the production gh path. Results are recorded in LIVE_AUTONOMY.md with every capability labelled unit-tested / simulated / integration-tested / live-tested / demonstrated unattended.",
+      "owner": "claude:autonomy-engineer",
+      "branch": "task/t-dev-026-live-autonomy",
+      "worktree": "../CreatorStudio-worktrees/t-dev-026-live-autonomy",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-19T18:00:00+00:00",
+        "expires": "2026-11-20T18:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01",
+        "AGR-DEV-LIVE-AUTONOMY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/live_autonomy.py",
+        "orchestrator/dev_supervisor/LIVE_AUTONOMY.md",
+        "orchestrator/tests/test_dev_live_autonomy.py"
+      ],
+      "acceptance_criteria": [
+        "Sandbox builder creates a throwaway repo, backlog with satisfied/unsatisfied dependencies and an unsatisfiable task; never touches this repository, the real supervisor state or any real footage",
+        "ctl commands next/claim/dispatch/status/verify/review/integrate/recover/stop-hook work offline with injected process launchers (unit tests) and with real claude processes (opt-in live run)",
+        "Local gates: registered task, tests pass on the exact head, scope inside owned paths, independent review bound to the diff hash from a different reviewer id, secret scan, serialized merge with read-back; each gate has a failing test",
+        "Worker identity proof (pid, exe, command line marker, parent) is verified before any worker kill; a PID alone is refused (reuses authority.decide)",
+        "Opt-in live run records timestamps, task ids, process identities, test results and integration outcomes for at least three consecutive cycles plus worker-kill recovery, a blocked task, a gate failure repaired, and Main kill + resume; anything not demonstrated is recorded as NOT DEMONSTRATED",
+        "Does not edit any existing module"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_live_autonomy.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Authorised by Lukas's execution directive of 2026-11-19. New files only inside the Coordinator-owned dev_supervisor package under AGR-DEV-LIVE-AUTONOMY-01."
     }
   ]
 }
