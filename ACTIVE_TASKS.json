@@ -1595,12 +1595,9 @@
       "owner": "claude:autonomy-engineer",
       "branch": "task/t-dev-026-live-autonomy",
       "worktree": "../CreatorStudio-worktrees/t-dev-026-live-autonomy",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-19T18:00:00+00:00",
-        "expires": "2026-11-20T18:00:00+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01",
@@ -1623,7 +1620,7 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_live_autonomy.py",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Authorised by Lukas's execution directive of 2026-11-19. New files only inside the Coordinator-owned dev_supervisor package under AGR-DEV-LIVE-AUTONOMY-01."
+      "integration_notes": "Authorised by Lukas's execution directive of 2026-11-19. New files only inside the Coordinator-owned dev_supervisor package under AGR-DEV-LIVE-AUTONOMY-01. Completed 2026-11-19: PR #95 merged as 3e80d0781450 through dev_supervisor.integrate (8 gates PASS; independent review APPROVE for diff 4d8bfc078bfcac21 after two CHANGES_REQUESTED rounds that found real defects: a test gate that ran the working tree instead of the committed tree (two bypass forms), an overclaiming doc, lock and identity-proof weaknesses; all fixed with regression tests). Evidence: INTEGRATION-TESTED (35 offline tests with real git) plus five OBSERVED live runs of a real haiku Main in a throwaway local sandbox (final code: run5, 484 s, 4 consecutive integrations, worker kill + re-dispatch, stray-file repair, Main kill + same-session resume, supervisor kill + restart, one task BLOCKED). NOT DEMONSTRATED: context-pressure handoff, replacement without duplicate Main, the production gh/dev_supervisor start path, live review rejection, integrate-gate refusal in a live run, Stop-hook continuation. Known doc nit: LIVE_AUTONOMY.md says 33 offline tests, actual 35."
     }
   ]
 }
