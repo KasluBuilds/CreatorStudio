@@ -2484,11 +2484,17 @@
         {
           "id": "S-GOV-008-01",
           "title": "Step 1: policy text in sections 18/19 and CLAUDE.md",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Per the task acceptance criteria"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "pull_request",
+              "commit": "6274b9e8ec672731b51203547675f7228250ccea",
+              "summary": "Implementation delivered in PR #77 (merge commit 6274b9e8ec672731b51203547675f7228250ccea); record caught up at closeout."
+            }
+          ]
         }
       ]
     },
