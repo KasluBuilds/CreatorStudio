@@ -173,7 +173,8 @@ class VerifyAndGates(Base):
         self.assertFalse(la.integrate(self.lay, "L-001", apply=False)["gates_all_pass"])
 
     def test_secret_in_diff_fails_gate(self):
-        self.work("L-001", source=GOOD["L-001"] + "KEY = 'AKIAABCDEFGHIJKLMNOP'\n")
+        fake_key = "AK" + "IA" + "A" * 16          # built at runtime: no credential-shaped literal in the diff
+        self.work("L-001", source=GOOD["L-001"] + "KEY = '%s'\n" % fake_key)
         self.approve("L-001")
         r = la.integrate(self.lay, "L-001", apply=False)
         self.assertFalse(next(x for x in r["gates"] if x["gate"] == "secrets")["ok"])
