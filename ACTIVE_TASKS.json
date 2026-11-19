@@ -1505,12 +1505,9 @@
       "owner": "claude:autonomy-engineer",
       "branch": "task/t-dev-024-authority-policy",
       "worktree": "../CreatorStudio-worktrees/t-dev-024-authority-policy",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-19T16:30:00+00:00",
-        "expires": "2026-11-20T16:30:00+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01",
@@ -1535,7 +1532,7 @@
         "cd orchestrator && python -B -m governance validate --against origin/main",
         "cd orchestrator && python -B -m governance scope --base origin/main"
       ],
-      "integration_notes": "Authorised by Lukas's mission message of 2026-11-19 (delegated autonomy, mission part 2). Package owner of orchestrator/dev_supervisor/ is claude:repository-coordinator; this task adds new files only and touches no existing module. Integrates through the section 18 gates with an independent review."
+      "integration_notes": "Authorised by Lukas's mission message of 2026-11-19 (delegated autonomy, mission part 2). Package owner of orchestrator/dev_supervisor/ is claude:repository-coordinator; this task adds new files only and touches no existing module. Integrates through the section 18 gates with an independent review. Completed 2026-11-19: PR #88 merged as e77c94455a05 through dev_supervisor.integrate (8 gates PASS; independent review APPROVE for diff ba8bf47853aee74e after two CHANGES_REQUESTED rounds that found real bypasses, all fixed). Evidence level: UNIT_ISOLATED (58 offline tests). The hook is NOT installed in any session and NOT live-tested."
     }
   ]
 }
