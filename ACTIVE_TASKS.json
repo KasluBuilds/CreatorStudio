@@ -1343,29 +1343,17 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/dev-supervisor-rate-limit-usage",
       "worktree": "../CreatorStudio-worktrees/dev-supervisor-rate-limit-usage",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-011"
       ],
-      "lease": {
-        "acquired": "2026-11-18T12:53:44+00:00",
-        "expires": "2026-11-19T12:53:44+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01",
         "AGR-DEV-FIXES-01"
       ],
-      "owned_paths": [
-        "orchestrator/dev_supervisor/cli.py",
-        "orchestrator/dev_supervisor/telemetry.py",
-        "orchestrator/tests/test_dev_telemetry.py",
-        "DEVELOPMENT_OPERATING_SYSTEM.md",
-        "ACTIVE_TASKS.json",
-        "DEVELOPMENT_TRACKER.json",
-        "SESSION_HANDOFF.md",
-        "CHANGELOG.md"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "Account usage is OBSERVED from a real rate_limit_event, else UNAVAILABLE with the reason",
         "No transcript or prompt text is read into the result",
@@ -1379,7 +1367,7 @@
         "cd orchestrator && python -B -m governance scope --base origin/main",
         "python -B dashboard/tracker_check.py --against origin/main"
       ],
-      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges."
+      "integration_notes": "Standalone post-wave fix for issue #44, owned by the Repository Coordinator (package owner of orchestrator/dev_supervisor/). The implementation was written before this claim (the previous Main opened the PR without registering a task; found by governance scope on 2026-11-18). This claim registers it retroactively; Lukas merges, Main never self-merges. Completed 2026-11-19: merged to main by the Repository Coordinator through dev_supervisor.integrate (PR #62, merge commit 3b51dc096b79; all 8 section-18 gates PASS, independent review bound to the diff hash)."
     },
     {
       "id": "T-GOV-008",
