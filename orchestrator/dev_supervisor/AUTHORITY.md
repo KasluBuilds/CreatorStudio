@@ -28,7 +28,7 @@ merge **only** with every gate PASS plus an independent review and no admin bypa
 - `python -B -m dev_supervisor.authority check --kind paid_api` evaluates one action (exit 2 unless ALLOW).
 
 ## Limits (read these)
-- A bare `git push` (no refspec) while on `main` cannot be recognised from command text; rely on branch protection and the
+- A bare `git push` or `git push origin HEAD` while on `main`, and `git push --repo=origin main`, cannot be recognised from command text; rely on branch protection and the
   merge gates for that case. `authority_grants.json` is only a path the policy refuses to write; nothing reads it yet.
 - Commands wrapped by `&`, `cmd /c`, `bash -c`, `env X=1 ...` are not unwrapped (only `rtk` is); quoted text containing
   `;` or `|` is split like a command; `git reset --hard`, `git branch -D` and `gh api --method DELETE` are not classified.

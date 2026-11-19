@@ -277,7 +277,7 @@ def enforce(action: Action, ctx: PolicyContext = PolicyContext()) -> Decision:
 _SPLIT = re.compile(r"\s*(?:&&|\|\||;|\||\r?\n)\s*")
 _TOKEN = re.compile(r"""("[^"]*"|'[^']*'|\S+)""")
 _RM = re.compile(r"^(rm|del|erase|rd|rmdir|remove-item|ri)$", re.I)
-_MV = re.compile(r"^(mv|move|move-item|mi|ren|rename|rename-item|cp|copy|copy-item|set-content|out-file|tee)$", re.I)
+_MV = re.compile(r"^(mv|move|move-item|mi|ren|rename|rename-item|cp|copy|copy-item|set-content|add-content|clear-content|sc|ac|out-file|tee)$", re.I)
 _READERS = re.compile(r"^(cat|type|get-content|gc|less|more|head|tail|bat|cp|copy|copy-item|xxd|strings)$", re.I)
 _KILLERS = re.compile(r"^(taskkill|stop-process|kill|pkill|killall|spps)$", re.I)
 _PAID_HOSTS = re.compile(r"(api\.anthropic\.com|api\.openai\.com|generativelanguage\.googleapis\.com|api\.cohere\.|api\.mistral\.ai)", re.I)
@@ -366,7 +366,15 @@ def classify_command(command: str) -> List[Action]:
             continue
         if _MV.match(head):
             ps = _paths(tok)
-            for p in (ps[-1:] if head in ("cp", "copy", "copy-item") else ps):
+            if head in ("cp", "copy", "copy-item"):      # a copy only writes its destination; reading originals is fine
+                dest = set(ps[-1:])
+                for i2, t2 in enumerate(low):
+                    if t2 in ("-t", "--target-directory", "-destination", "-dest") and i2 + 1 < len(tok):
+                        dest.add(tok[i2 + 1])
+                    elif t2.startswith("--target-directory=") or t2.startswith("-destination:"):
+                        dest.add(tok[i2].split("=", 1)[-1].split(":", 1)[-1])
+                ps = [p for p in dict.fromkeys(ps + sorted(dest)) if p in dest]
+            for p in ps:
                 if "/incoming/" in "/" + _strip_dot(p).lower() + "/":
                     out.append(Action(ORIGINAL_MUTATION, p))
         if _KILLERS.match(head):
