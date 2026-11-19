@@ -257,14 +257,12 @@ class ReviewRegressions(unittest.TestCase):
         self.assertEqual(verdict("cp Incoming/a.mp4 tmp/").verdict, ALLOW)       # reading originals is fine
 
     def test_copy_destination_forms_and_content_writers(self):
-        bad = (r"Copy-Item -Destination Incoming.mp4 -Path x.mp4 -Force", "cp -t Incoming/ x.mp4",
-               "cp --target-directory=Incoming/ x.mp4", r"Add-Content Incoming
-otes.txt hi", r"Set-Content Incoming
-.txt hi")
+        bad = (r"Copy-Item -Destination Incoming\a.mp4 -Path x.mp4 -Force", "cp -t Incoming/ x.mp4",
+               "cp --target-directory=Incoming/ x.mp4", r"Add-Content Incoming\notes.txt hi", r"Set-Content Incoming\n.txt hi")
         for c in bad:
             with self.subTest(c):
                 self.assertEqual(verdict(c).rule, "originals-immutable")
-        self.assertEqual(verdict(r"Copy-Item -Path Incoming.mp4 -Destination tmp.mp4").verdict, ALLOW)
+        self.assertEqual(verdict(r"Copy-Item -Path Incoming\a.mp4 -Destination tmp\a.mp4").verdict, ALLOW)
 
     def test_fail_closed_paths(self):
         self.assertEqual(au.evaluate_tool_call("Write", {}, CTX).rule, "missing-path")
