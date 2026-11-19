@@ -178,14 +178,21 @@
       ]
     },
     "AGR-DEV-AUTHORITY-01": {
-      "description": "Lukas's mission message of 2026-11-19 ('MISSION: MAKE CREATORSTUDIO AUTONOMOUS') directly assigns the engineering agent to implement a machine-enforced authority policy for the development supervisor. Under that direct assignment, T-DEV-024 may ADD new files inside orchestrator/dev_supervisor/ (package owner claude:repository-coordinator). It may not edit any existing module of that package. REPORTED: the assignment text was pasted into the session by Lukas; the owner session has not separately acknowledged it. Extended 2026-11-19 to T-DEV-025 (session policy installer) under Lukas's second mission message of the same day (execution directive, section 2: integrate the authority hook into launched sessions). launch.py, cli.py, config.py are NOT covered: they carry another session's uncommitted main-host work and need the package owner.",
+      "description": "Lukas's mission message of 2026-11-19 ('MISSION: MAKE CREATORSTUDIO AUTONOMOUS') directly assigns the engineering agent to implement a machine-enforced authority policy for the development supervisor. Under that direct assignment, T-DEV-024 may ADD new files inside orchestrator/dev_supervisor/ (package owner claude:repository-coordinator). It may not edit any existing module of that package. REPORTED: the assignment text was pasted into the session by Lukas; the owner session has not separately acknowledged it.",
       "task_ids": [
-        "T-DEV-024",
-        "T-DEV-025"
+        "T-DEV-024"
       ],
       "paths": [
         "orchestrator/dev_supervisor/authority.py",
-        "orchestrator/dev_supervisor/AUTHORITY.md",
+        "orchestrator/dev_supervisor/AUTHORITY.md"
+      ]
+    },
+    "AGR-DEV-SESSION-POLICY-01": {
+      "description": "Lukas's execution directive of 2026-11-19 (section 2: integrate the authority hook into launched sessions) directly assigns T-DEV-025. Under that direct assignment T-DEV-025 may ADD new files inside orchestrator/dev_supervisor/ (package owner claude:repository-coordinator). It may not edit any existing module; launch.py, cli.py and config.py carry another session's uncommitted main-host work and need the package owner. REPORTED: the directive was pasted into the session by Lukas; the owner has not separately acknowledged it.",
+      "task_ids": [
+        "T-DEV-025"
+      ],
+      "paths": [
         "orchestrator/dev_supervisor/session_policy.py",
         "orchestrator/dev_supervisor/SESSION_POLICY.md"
       ]
@@ -1553,7 +1560,7 @@
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01",
-        "AGR-DEV-AUTHORITY-01"
+        "AGR-DEV-SESSION-POLICY-01"
       ],
       "owned_paths": [
         "orchestrator/dev_supervisor/session_policy.py",
