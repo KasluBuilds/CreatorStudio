@@ -26,8 +26,9 @@
   `argv_with_policy`; `LaunchSpec.env` carries `inst.env` and `ClaudeCliLauncher` merges it over `provider_env.child_env()`.
   A `PolicyInstallError` makes `_launch` fail the worker (status FAILED, signature `policy_install_failed`, normal
   backoff/BLOCKED rules); nothing is launched, there is no unhooked fallback.
-- Main: `InteractiveMainLauncher.open_main` installs with role `main`, roots = repo root and the sibling
-  `CreatorStudio-worktrees` folder, inserts `--settings`, and passes `inst.env` to `Terminal.open(..., env=)`
+- Main: `InteractiveMainLauncher.open_main` installs with role `main`, roots = exactly: repo root, the sibling
+  `CreatorStudio-worktrees` folder, the supervisor store directory, and `~/.claude/projects/<slug>` (slug = repo root
+  path with every non-alphanumeric character replaced by `-`, so Main can read supervisor state and its own memory), inserts `--settings`, and passes `inst.env` to `Terminal.open(..., env=)`
   (`NewConsoleTerminal` merges it over the child env). Installation failure raises `LaunchError`; Main is not opened.
 - Both paths take an injectable installer (`Services.policy_install`) so tests never start a hook process.
 - NOT TESTED live: a supervisor-launched interactive Main and a supervisor-launched worker actually running the hook.

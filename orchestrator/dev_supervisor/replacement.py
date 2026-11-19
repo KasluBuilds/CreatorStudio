@@ -135,6 +135,11 @@ def _set(store: StateStore, doc: Dict[str, Any], sid: str, **fields: Any) -> Non
 def register_session(store: StateStore, session_id: str, role: str) -> Dict[str, Any]:
     """Record a running session as ACTIVE and authoritative (for example the current Main)."""
     doc = load_sessions(store)
+    if role == "main":                   # only one Main is authoritative
+        for sid, rec in doc["sessions"].items():
+            if sid != session_id and rec.get("role") == "main" and rec.get("authoritative"):
+                rec["authoritative"] = False
+                rec["status"] = SessionStatus.EXITED
     _set(store, doc, session_id, role=role, status=SessionStatus.ACTIVE, authoritative=True)
     store.append_event("session_registered", session_id=session_id, role=role)
     return doc["sessions"][session_id]

@@ -368,6 +368,10 @@ class SupervisorLoop:
         if main.get("session_id") and main.get("status") == "RUNNING" and self.main_alive(main):
             self.store.append_event("main_observed_existing", session_id=main["session_id"], pid=main.get("pid"))
             return main
+        old_sid = main.get("session_id")
+        if old_sid:                      # a recorded Main that is no longer running must lose authority (R3)
+            replacement.mark_exited(self.store, old_sid)
+            self.store.append_event("main_exited", session_id=old_sid)
         sid = str(uuid.UUID(str(self.svc.session_factory())))
         write_main_fresh(self.store, session_id=sid, status="STARTING", pid=None, model=self.cfg.model(MAIN_ROLE))
         self.store.append_event("main_launch_begin", session_id=sid)
@@ -500,8 +504,14 @@ class SupervisorLoop:
         body = {"pid": os.getpid(), "tick": self.ticks, "utc": utc_iso(self.svc.clock()),
                 "main_alive": bool(main_alive), "main_session_id": main_session_id, "worker_count": worker_count,
                 "poll_interval_s": float(self.cfg.poll_interval_s)}
-        self.store.atomic_write_bytes(self.store.directory / HEARTBEAT_FILE,
-                                      (json.dumps(body, sort_keys=True) + "\n").encode("utf-8"))
+        try:
+            self.store.atomic_write_bytes(self.store.directory / HEARTBEAT_FILE,
+                                          (json.dumps(body, sort_keys=True) + "\n").encode("utf-8"))
+        except (OSError, StoreError) as e:    # a diagnostic file must never stop the loop it reports on
+            try:
+                self.store.append_event("heartbeat_write_failed", tick=self.ticks, error=e.__class__.__name__)
+            except (OSError, StoreError):
+                pass
 
     def run(self, max_ticks: Optional[int] = None) -> int:
         while True:

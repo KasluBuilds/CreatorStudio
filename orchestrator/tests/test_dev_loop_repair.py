@@ -5,16 +5,18 @@ Offline: no claude, no network, no real hook subprocess (the installer runs with
 from __future__ import annotations
 
 import json
+import os
 import sys
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import test_dev_cli as base  # noqa: E402
-from dev_supervisor import cli, launch, replacement, session_policy  # noqa: E402
+from dev_supervisor import cli, launch, lifecycle, provider_env, replacement, session_policy  # noqa: E402
 from dev_supervisor.session_policy import PolicyInstallError  # noqa: E402
 from dev_supervisor.workers import WorkerStatus  # noqa: E402
 
@@ -48,7 +50,21 @@ class WorkerHook(Loop):
         self.assertEqual(spec.argv[1], "--settings")
         self.assertEqual(spec.argv[2], str(session_policy.settings_path(store.directory, "worker", w.session_id)))
         self.assertEqual(spec.env["CS_AUTHORITY_REPO_ROOT"], str(env.repo).replace("\\", "/"))
-        self.assertIn(str(env.wt / "w").replace("\\", "/"), spec.env["CS_AUTHORITY_ROOTS"])
+        self.assertEqual(spec.env["CS_AUTHORITY_ROOTS"], str(env.wt / "w").replace("\\", "/"))
+
+    def test_worker_restart_keeps_settings_and_env(self):
+        env, store, loop = self.make()
+        w = self.assign(env, loop)
+        w.status = WorkerStatus.STOPPED
+        w.next_restart_not_before = None
+        loop.sup.registry.update(w)
+        w2 = loop.sup.restart(w.worker_id)
+        self.assertEqual(w2.status, WorkerStatus.RUNNING)
+        spec = env.worker_launcher.specs[-1]
+        self.assertEqual(len(env.worker_launcher.specs), 2)
+        self.assertEqual(spec.argv[1], "--settings")
+        self.assertIn(w2.session_id, spec.argv[2])
+        self.assertEqual(spec.env["CS_AUTHORITY_ROOTS"], str(env.wt / "w").replace("\\", "/"))
 
     def test_install_failure_blocks_launch(self):
         env, store, loop = self.make()
@@ -87,8 +103,62 @@ class MainHook(Loop):
         self.assertEqual(opened["argv"][1], "--settings")
         self.assertTrue(Path(opened["argv"][2]).name.startswith("main-"))
         self.assertEqual(opened["env"]["CS_AUTHORITY_REPO_ROOT"], str(env.repo.resolve()).replace("\\", "/"))
-        roots = opened["env"]["CS_AUTHORITY_ROOTS"]
-        self.assertIn("CreatorStudio-worktrees", roots)
+        repo = env.repo.resolve()
+        expected = [str(repo), str(repo.parent / "CreatorStudio-worktrees"), str(store.directory),
+                    str(Path.home() / ".claude" / "projects" / launch.claude_project_slug(repo))]
+        self.assertEqual(opened["env"]["CS_AUTHORITY_ROOTS"].split(os.pathsep),
+                         [p.replace("\\", "/") for p in expected])
+
+    def test_main_roots_exact_and_slug(self):
+        self.assertEqual(launch.claude_project_slug(r"C:\Users\Korisnik\CreatorStudio"), "C--Users-Korisnik-CreatorStudio")
+        roots = launch.main_roots(Path("/r/CreatorStudio"), "/r/state", home=Path("/h"))
+        self.assertEqual(roots, [str(Path("/r/CreatorStudio")), str(Path("/r/CreatorStudio-worktrees")),
+                                 str(Path("/r/state")), str(Path("/h/.claude/projects/-r-CreatorStudio"))])
+
+    def test_replacement_path_has_settings_and_env(self):
+        env, store, loop = self.make()
+        sid = str(uuid.uuid4())
+        spec = lifecycle.LaunchSpec(argv=["claude", "--model", "opus", "--session-id", sid], cwd=str(env.repo),
+                                    stdin_path=str(env.tmp / "resume.txt"), stdout_path="o", stderr_path="e",
+                                    max_runtime_s=1)
+        (env.tmp / "resume.txt").write_text("resume", encoding="utf-8")
+        loop.main_launcher.launch(spec)
+        opened = env.terminal.opened[-1]
+        self.assertEqual(opened["argv"][1], "--settings")
+        self.assertIn(sid, opened["argv"][2])
+        self.assertIn("CS_AUTHORITY_REPO_ROOT", opened["env"])
+        self.assertEqual(len(opened["env"]["CS_AUTHORITY_ROOTS"].split(os.pathsep)), 4)
+
+    def test_parent_authority_env_not_inherited(self):
+        poisoned = {"CS_AUTHORITY_GRANTS": "resolve_mutation,paid_api", "CS_AUTHORITY_OWNED_PATHS": "[\"x\"]",
+                    "cs_authority_other": "1", "PATH": "p"}
+        child = provider_env.child_env(poisoned)
+        self.assertEqual([k for k in child if k.upper().startswith("CS_AUTHORITY_")], [])
+        self.assertEqual(child["PATH"], "p")
+        seen = {}
+        t = launch.NewConsoleTerminal(which=lambda n: "C:/bin/claude.exe",
+                                      popen=lambda argv, **kw: seen.update(kw) or object(), os_name="nt")
+        with mock.patch.dict(os.environ, poisoned):
+            t.open(["claude"], "C:/x", env={"CS_AUTHORITY_REPO_ROOT": "R"})
+            self.assertEqual({k for k in seen["env"] if k.upper().startswith("CS_AUTHORITY_")}, {"CS_AUTHORITY_REPO_ROOT"})
+            captured = {}
+
+            def run(cmd, **kw):
+                captured.update(kw["env"])
+                raise OSError("stop")
+            with self.assertRaises(PolicyInstallError):
+                session_policy.verify_hook("x", {"CS_AUTHORITY_REPO_ROOT": "R"}, "R", run)
+        self.assertNotIn("CS_AUTHORITY_GRANTS", captured)
+        self.assertNotIn("CS_AUTHORITY_OWNED_PATHS", captured)
+
+    def test_install_wraps_oserror(self):
+        env, store, loop = self.make()
+        with mock.patch.object(session_policy, "_atomic_write", side_effect=OSError("disk")):
+            with self.assertRaises(PolicyInstallError):
+                session_policy.install(store.directory, str(uuid.uuid4()), "main", str(env.repo))
+        with mock.patch.object(session_policy.json, "loads", side_effect=ValueError("bad")):
+            with self.assertRaises(PolicyInstallError):
+                session_policy.install(store.directory, str(uuid.uuid4()), "main", str(env.repo), verify=False)
 
     def test_main_refused_when_install_fails(self):
         env, store, loop = self.make()
@@ -134,7 +204,46 @@ class Heartbeat(Loop):
         self.assertIn("heartbeat: STALE", env.out.getvalue())
 
 
+class HeartbeatFailure(Loop):
+    def test_failed_heartbeat_write_does_not_raise(self):
+        env, store, loop = self.make()
+        loop.ensure_main()
+        real = store.atomic_write_bytes
+
+        def flaky(path, data, *a, **k):
+            if Path(path).name == "supervisor_heartbeat.json":
+                raise PermissionError("held open")
+            return real(path, data, *a, **k)
+        with mock.patch.object(store, "atomic_write_bytes", flaky):
+            loop.tick()
+        self.assertEqual(loop.ticks, 1)
+        events = (store.directory / "events.jsonl")
+        if events.exists():
+            self.assertIn("heartbeat_write_failed", events.read_text(encoding="utf-8"))
+
+
 class ExitedMain(Loop):
+    def test_dead_main_at_start_is_demoted_before_new_main(self):
+        env, store, loop = self.make()
+        old = str(uuid.uuid4())
+        launch.write_main(store, session_id=old, status="RUNNING", pid=99999)
+        replacement.register_session(store, old, "main")
+        main = loop.ensure_main()
+        recs = replacement.load_sessions(store)["sessions"]
+        self.assertFalse(recs[old]["authoritative"])
+        self.assertEqual(recs[old]["status"], replacement.SessionStatus.EXITED)
+        self.assertEqual(cli._authoritative_main(store), main["session_id"])
+
+    def test_register_main_demotes_other_authoritative_main(self):
+        env, store, loop = self.make()
+        a, b = str(uuid.uuid4()), str(uuid.uuid4())
+        replacement.register_session(store, a, "main")
+        replacement.register_session(store, b, "main")
+        recs = replacement.load_sessions(store)["sessions"]
+        self.assertFalse(recs[a]["authoritative"])
+        self.assertTrue(recs[b]["authoritative"])
+
+
     def test_exited_main_loses_authority(self):
         env, store, loop = self.make()
         loop.ensure_main()

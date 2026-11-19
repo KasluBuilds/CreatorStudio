@@ -110,7 +110,7 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def _run_hook(command: str, env: Dict[str, str], stdin: str, run: Callable[..., Any]) -> Tuple[int, str]:
-    full = dict(os.environ)
+    full = {k: v for k, v in os.environ.items() if not k.upper().startswith("CS_AUTHORITY_")}
     full.update(env)
     r = run(command, input=stdin, capture_output=True, text=True, shell=True, env=full, timeout=30)
     return r.returncode, r.stdout or ""
@@ -155,8 +155,11 @@ def install(state_dir: os.PathLike, session_id: str, role: str, repo_root: str, 
     path = settings_path(state_dir, role, session_id)
     cmd = hook_command(python)
     env = policy_env(repo_root, roots, owned_paths, grants)
-    _atomic_write(path, json.dumps(build_settings(cmd), indent=2) + "\n")
-    back = json.loads(path.read_text(encoding="utf-8"))      # read the file back: it must say what we meant
+    try:
+        _atomic_write(path, json.dumps(build_settings(cmd), indent=2) + "\n")
+        back = json.loads(path.read_text(encoding="utf-8"))  # read the file back: it must say what we meant
+    except (OSError, ValueError) as exc:
+        raise PolicyInstallError(f"settings file could not be written or read back: {exc.__class__.__name__}") from None
     if back != build_settings(cmd):
         raise PolicyInstallError("settings file read-back differs from what was written")
     if verify:

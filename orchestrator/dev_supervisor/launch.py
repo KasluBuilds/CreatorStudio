@@ -194,6 +194,18 @@ class NewConsoleTerminal:
 
 # ------------------------------------------------------------------ the interactive Main launcher
 
+def claude_project_slug(repo_root: os.PathLike) -> str:
+    """Claude Code's project folder name: the path with every non-alphanumeric character replaced by "-"."""
+    return re.sub(r"[^A-Za-z0-9]", "-", str(repo_root))
+
+
+def main_roots(repo: Path, store_dir: os.PathLike, home: Optional[Path] = None) -> List[str]:
+    """Paths a hooked Main may read and write: repo, sibling worktrees, supervisor state, its Claude project folder."""
+    home = Path(home) if home is not None else Path.home()
+    return [str(repo), str(repo.parent / "CreatorStudio-worktrees"), str(Path(store_dir)),
+            str(home / ".claude" / "projects" / claude_project_slug(repo))]
+
+
 class InteractiveMainLauncher:
     """Implements the L2 ``ProcessLauncher`` protocol for Main, so L3 ``replace_session`` can relaunch Main.
 
@@ -214,7 +226,7 @@ class InteractiveMainLauncher:
         prompt = write_main_prompt(self.store, session_id, verified=verified, resume_prompt_file=resume_prompt_file)
         argv = build_main_argv(profile, session_id, prompt)
         repo = Path(self.cwd).resolve()
-        roots = [str(repo), str(repo.parent / "CreatorStudio-worktrees")]
+        roots = main_roots(repo, self.store.directory)
         try:
             inst = self.policy_install(self.store.directory, _uuid(session_id), "main", str(repo), roots=roots)
             argv = session_policy.argv_with_policy(argv, inst)
