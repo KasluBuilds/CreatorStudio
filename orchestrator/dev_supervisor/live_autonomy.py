@@ -43,6 +43,9 @@ except ImportError:  # pragma: no cover
 PY = sys.executable
 MAX_ATTEMPTS = 2
 STALL_SECONDS = 150
+LOCK_STALE_SECONDS = 300          # longer than the longest lock hold (tests run up to 120 s)
+SUPERVISOR_MARKER = "dev_supervisor.live_autonomy supervise"
+MARKER_PREFIX = "cs-live-"        # fixed by the harness; a ledger record cannot widen it
 SECRET_RX = re.compile(r"(AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|ghp_[A-Za-z0-9]{30,})")
 FORBIDDEN_RX = re.compile(r"(^|/)(\.env|\.claude/|.*\.pem$|.*\.key$)")
 
@@ -145,6 +148,16 @@ class Ledger:
 
     def __init__(self, lay: Layout, timeout: float = 20.0) -> None:
         self.lay, self.timeout = lay, timeout
+        self.token = f"{os.getpid()}-{uuid.uuid4().hex}"        # identifies THIS holder
+
+    def _take_over(self) -> None:
+        """Remove a stale lock by atomically renaming it away first, so two waiters cannot both unlink a fresh lock."""
+        gone = self.lay.lock_path.with_name(f"ledger.lock.stale-{uuid.uuid4().hex}")
+        try:
+            os.replace(str(self.lay.lock_path), str(gone))
+            gone.unlink()
+        except OSError:
+            pass
 
     def __enter__(self) -> "Ledger":
         deadline = now() + self.timeout
@@ -152,13 +165,13 @@ class Ledger:
         while True:
             try:
                 fd = os.open(str(self.lay.lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.write(fd, str(os.getpid()).encode())
+                os.write(fd, self.token.encode())
                 os.close(fd)
                 break
             except FileExistsError:
-                try:
-                    if now() - self.lay.lock_path.stat().st_mtime > 30:     # stale after 30s
-                        self.lay.lock_path.unlink()
+                try:                                  # stale only well beyond the longest hold (tests run up to 120 s)
+                    if now() - self.lay.lock_path.stat().st_mtime > LOCK_STALE_SECONDS:
+                        self._take_over()
                         continue
                 except OSError:
                     pass
@@ -173,8 +186,9 @@ class Ledger:
             if exc[0] is None:
                 write_atomic(self.lay.ledger_path, json.dumps(self.data, indent=1, sort_keys=True))
         finally:
-            try:
-                self.lay.lock_path.unlink()
+            try:                                      # release only a lock we still own
+                if self.lay.lock_path.read_text(encoding="utf-8") == self.token:
+                    self.lay.lock_path.unlink()
             except OSError:
                 pass
 
@@ -256,14 +270,20 @@ def proc_identity(pid: int) -> Optional[Dict[str, Any]]:
 
 def same_process(rec: Dict[str, Any], live: Optional[Dict[str, Any]]) -> bool:
     """PID-reuse protection: pid AND creation time AND command line marker must all match the recorded identity."""
-    return bool(live) and live["pid"] == rec["pid"] and abs(float(live["create_time"]) - float(rec["create_time"])) < 1.5 \
-        and rec["marker"] in str(live["cmdline"])
+    if not live or live["pid"] != rec["pid"] or rec["marker"] not in str(live["cmdline"]):
+        return False
+    try:
+        return abs(float(live["create_time"]) - float(rec["create_time"])) < 1.5
+    except (TypeError, ValueError):                     # the PowerShell fallback reports a date string
+        return str(live["create_time"]) == str(rec["create_time"])
 
 
 def kill_with_proof(rec: Dict[str, Any], supervisor_pid: int, protected: Sequence[int] = (),
                     info: Callable[[int], Optional[Dict[str, Any]]] = proc_identity,
                     killer: Optional[Callable[[int], None]] = None) -> Tuple[bool, str]:
     """Terminate a recorded process only with full identity proof, via authority.decide. Returns (done, reason)."""
+    if not (str(rec.get("marker", "")).startswith(MARKER_PREFIX) or rec.get("marker") == SUPERVISOR_MARKER):
+        return False, "marker is not one the harness issues; refusing (ledger record may have been altered)"
     live = info(rec["pid"])
     if live is None:
         return False, "process already gone"
@@ -272,7 +292,7 @@ def kill_with_proof(rec: Dict[str, Any], supervisor_pid: int, protected: Sequenc
     act = authority.Action(authority.TERMINATE_PROCESS, attrs={
         "pid": live["pid"], "exe": live["exe"], "cmdline": live["cmdline"], "parent_pid": live["parent_pid"],
         "session_id": rec.get("session_id") or rec.get("worker_id"), "owned_marker": rec["marker"],
-        "owned_parent_pids": [supervisor_pid, rec.get("parent_pid")], "protected_pids": list(protected)})
+        "owned_parent_pids": [supervisor_pid], "protected_pids": list(protected)})
     d = authority.decide(act, authority.PolicyContext())
     if not d.allowed:
         return False, f"authority policy: {d.rule}"
@@ -337,8 +357,17 @@ def changed_files(lay: Layout, tid: str) -> List[str]:
     return [x for x in out.splitlines() if x]
 
 
+def worktree_dirty(lay: Layout, tid: str) -> str:
+    """Tracked changes (staged or not) in the task worktree; untracked files are ignored. '' when clean."""
+    return git(["status", "--porcelain", "--untracked-files=no"], lay.wt / tid)
+
+
 def run_tests(lay: Layout, tid: str, timeout: int = 120) -> Tuple[bool, str]:
+    """Run the task's tests against the COMMITTED tree: a dirty worktree is a failure, never a pass."""
     wt = lay.wt / tid
+    dirty = worktree_dirty(lay, tid)
+    if dirty:
+        return False, "uncommitted changes in the worktree (tests must run on the committed tree): " + dirty[:120].replace("\n", "; ")
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
     r = subprocess.run([PY, "-B", "-m", "unittest", test_module(tid)], cwd=str(wt), capture_output=True, text=True,
@@ -387,6 +416,7 @@ def evaluate_gates(lay: Layout, tid: str, data: Dict[str, Any]) -> List[Gate]:
 
 def integrate(lay: Layout, tid: str, apply: bool) -> Dict[str, Any]:
     with Ledger(lay) as L:
+        tested_head = git(["rev-parse", branch_name(tid)], lay.wt / tid)
         gates = evaluate_gates(lay, tid, L.data)
         ok = all(x.ok for x in gates)
         table = [{"gate": x.name, "ok": x.ok, "detail": x.detail} for x in gates]
@@ -398,13 +428,16 @@ def integrate(lay: Layout, tid: str, apply: bool) -> Dict[str, Any]:
         except FileExistsError:
             return {"task": tid, "merged": False, "gates_all_pass": False, "gates": table, "error": "merge lock held"}
         try:
-            head = git(["rev-parse", branch_name(tid)], lay.wt / tid)
+            head = tested_head                      # merge exactly the sha the gates evaluated, never a re-read branch tip
+            if git(["rev-parse", branch_name(tid)], lay.wt / tid) != head or worktree_dirty(lay, tid):
+                return {"task": tid, "merged": False, "gates_all_pass": False, "gates": table,
+                        "error": "branch moved or worktree became dirty after the gates ran; re-verify"}
             git(["fetch", "-q", str(lay.wt / tid), branch_name(tid)], lay.main)
             git(["merge", "--no-ff", "-q", "-m", f"Merge {branch_name(tid)} ({tid})", head], lay.main)
             git(["push", "-q", "origin", "main"], lay.main)
-            read_back = subprocess.run(["git", "merge-base", "--is-ancestor", head, "main"], cwd=str(lay.main)).returncode == 0
+            read_back = subprocess.run(["git", "merge-base", "--is-ancestor", head, "origin/main"], cwd=str(lay.main)).returncode == 0
             if not read_back:
-                return {"task": tid, "merged": False, "error": "read-back failed", "gates": table}
+                return {"task": tid, "merged": False, "error": "read-back against origin/main failed", "gates": table}
             L.data["tasks"][tid]["status"] = "INTEGRATED"
             L.data["tasks"][tid]["integrated_at"] = iso()
             L.data["tasks"][tid]["merge_commit"] = git(["rev-parse", "main"], lay.main)[:12]
@@ -645,7 +678,10 @@ def supervise(lay: Layout, claude: str, model: str, stop: Callable[[], bool] = l
             except (OSError, ValueError):
                 continue
             rp.unlink(missing_ok=True)
-            launch_request(lay, req, claude, model, procs, sup_pid)
+            try:
+                launch_request(lay, req, claude, model, procs, sup_pid)
+            except Exception as exc:  # noqa: BLE001 - one bad request must not take the supervisor down
+                event(lay, "request_rejected", request=rp.name, error=str(exc)[:200])
         with Ledger(lay) as L:
             t = now()
             for wid, rec in L.data["workers"].items():
@@ -804,7 +840,7 @@ def run_live(lay: Layout, a: argparse.Namespace) -> int:  # pragma: no cover - n
 
     started = now()
     sup = start_supervisor()
-    sup_rec = {"pid": sup.pid, "marker": "dev_supervisor.live_autonomy", "parent_pid": os.getpid(), "session_id": "supervisor",
+    sup_rec = {"pid": sup.pid, "marker": SUPERVISOR_MARKER, "parent_pid": os.getpid(), "session_id": "supervisor",
                "create_time": (proc_identity(sup.pid) or {"create_time": now()})["create_time"]}
     done = {"worker_kill": False, "pid_only_refused": False, "stray": False, "main_kill": False, "supervisor_restart": False}
     protected = [p for p in (os.getppid(),)]

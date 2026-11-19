@@ -303,5 +303,98 @@ class LoopControl(Base):
         self.assertIn("dry run", buf.getvalue())
 
 
+class ReviewRegressions(Base):
+    """Findings of the independent review of PR #95."""
+
+    def test_uncommitted_fix_cannot_pass_the_tests_on_head_gate(self):
+        # the reviewer's reproduction: a wrong clamp is COMMITTED, a correct one sits uncommitted in the worktree
+        self.work("L-003", source="def clamp(x, lo, hi):\n    return x\n")
+        (self.lay.wt / "L-003" / "clamp.py").write_text(GOOD["L-003"], encoding="utf-8")
+        self.assertIn("clamp.py", la.worktree_dirty(self.lay, "L-003"))
+        ok, why = la.run_tests(self.lay, "L-003")
+        self.assertFalse(ok)
+        self.assertIn("uncommitted", why)
+        v = ctl(self.lay, "verify", "L-003")
+        self.assertEqual((v["tests_pass"], v["status"]), (False, "CHANGES_NEEDED"))
+        self.set_status("L-003", "REVIEWED")
+        self.approve("L-003")
+        res = la.integrate(self.lay, "L-003", apply=True)
+        self.assertFalse(res["merged"])
+        self.assertFalse(next(x for x in res["gates"] if x["gate"] == "tests_on_head")["ok"])
+        self.assertIn("NotImplementedError", la.git(["show", "main:clamp.py"], self.lay.main))   # main still has the stub
+
+    def test_committed_wrong_code_fails_the_gate_and_correct_committed_code_passes(self):
+        self.work("L-003", source="def clamp(x, lo, hi):\n    return x\n")
+        self.approve("L-003")
+        self.assertFalse(la.integrate(self.lay, "L-003", apply=False)["gates_all_pass"])
+
+    def test_branch_that_moves_after_the_gates_is_not_merged(self):
+        self.work("L-001")
+        self.approve("L-001")
+        real = la.evaluate_gates
+
+        def moving(lay, tid, data):
+            gates = real(lay, tid, data)
+            (lay.wt / tid / "slugify.py").write_text(GOOD["L-001"] + "\n# late edit\n", encoding="utf-8")
+            la.git(["add", "slugify.py"], lay.wt / tid)
+            la.git(["commit", "-q", "-m", "late commit"], lay.wt / tid)
+            return gates
+        la.evaluate_gates = moving
+        self.addCleanup(setattr, la, "evaluate_gates", real)
+        res = la.integrate(self.lay, "L-001", apply=True)
+        self.assertFalse(res["merged"])
+        self.assertIn("moved", res["error"])
+        self.assertNotIn("late edit", la.git(["show", "main:slugify.py"], self.lay.main))
+
+    def test_ledger_lock_is_released_only_by_its_owner(self):
+        with la.Ledger(self.lay):
+            self.lay.lock_path.write_text("someone-else", encoding="utf-8")   # another holder took over
+        self.assertTrue(self.lay.lock_path.exists())                          # we must not delete their lock
+        self.lay.lock_path.unlink()
+        with la.Ledger(self.lay):
+            self.assertTrue(self.lay.lock_path.exists())
+        self.assertFalse(self.lay.lock_path.exists())
+
+    def test_fresh_lock_is_not_taken_over_but_a_stale_one_is(self):
+        self.lay.lock_path.write_text("x")
+        with self.assertRaises(TimeoutError):
+            with la.Ledger(self.lay, timeout=0.3):
+                pass
+        import os
+        os.utime(self.lay.lock_path, (1, 1))
+        with la.Ledger(self.lay, timeout=2):
+            pass
+
+    def test_identity_proof_does_not_trust_ledger_supplied_markers_or_parents(self):
+        killed = []
+        live = {"pid": 4242, "exe": "claude.exe", "cmdline": "notepad.exe [anything]", "parent_pid": 999, "create_time": 1000.0}
+        rec = {"pid": 4242, "marker": "anything", "create_time": 1000.0, "parent_pid": 999, "worker_id": "w1"}
+        ok, why = la.kill_with_proof(rec, 7, info=lambda pid: live, killer=killed.append)
+        self.assertFalse(ok)
+        self.assertIn("marker", why)
+        rec["marker"] = "cs-live-w1"
+        live["cmdline"] = "x [cs-live-w1]"
+        ok, why = la.kill_with_proof(rec, 7, info=lambda pid: live, killer=killed.append)   # parent 999 != supervisor 7
+        self.assertFalse(ok)
+        self.assertIn("authority policy", why)
+        self.assertEqual(killed, [])
+
+    def test_create_time_may_be_a_string(self):
+        rec = {"pid": 1, "marker": "cs-live-x", "create_time": "2026-11-19T12:00:00"}
+        live = {"pid": 1, "cmdline": "a cs-live-x", "create_time": "2026-11-19T12:00:00"}
+        self.assertTrue(la.same_process(rec, live))
+        self.assertFalse(la.same_process(rec, dict(live, create_time="2026-11-19T12:00:01")))
+
+    def test_supervisor_survives_a_malformed_request(self):
+        with la.Ledger(self.lay) as L:
+            L.data["main"] = {"pid": 1, "status": "STOPPED"}              # keep the loop from starting a real Main
+        la.write_atomic(self.lay.requests / "bad.json", json.dumps({"kind": "worker", "worker_id": "w-x", "task": "L-999"}))
+        ticks = []
+        la.supervise(self.lay, "claude", "haiku", stop=lambda: (ticks.append(1), len(ticks) > 1)[1], tick=0.01)   # run exactly one iteration
+        kinds = [json.loads(line)["kind"] for line in self.lay.events_path.read_text(encoding="utf-8").splitlines()]
+        self.assertIn("request_rejected", kinds)
+        self.assertFalse((self.lay.requests / "bad.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
