@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -368,11 +369,21 @@ def run_tests(lay: Layout, tid: str, timeout: int = 120) -> Tuple[bool, str]:
     dirty = worktree_dirty(lay, tid)
     if dirty:
         return False, "uncommitted changes in the worktree (tests must run on the committed tree): " + dirty[:120].replace("\n", "; ")
-    env = dict(os.environ)
-    env.pop("PYTHONPATH", None)
-    r = subprocess.run([PY, "-B", "-m", "unittest", test_module(tid)], cwd=str(wt), capture_output=True, text=True,
-                       timeout=timeout, env=env)
-    return r.returncode == 0, ((r.stdout or "") + (r.stderr or ""))[-400:]
+    # Test a FRESH detached checkout of the exact commit: untracked files (for example a shadowing package directory)
+    # and anything else that is not in the commit cannot influence the result.
+    sha = git(["rev-parse", branch_name(tid)], wt)
+    tmp = lay.state / "tmp" / f"{tid}-{uuid.uuid4().hex[:8]}"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    git(["worktree", "add", "-q", "--detach", str(tmp), sha], wt)
+    try:
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
+        r = subprocess.run([PY, "-B", "-m", "unittest", test_module(tid)], cwd=str(tmp), capture_output=True, text=True,
+                           timeout=timeout, env=env)
+        return r.returncode == 0, ((r.stdout or "") + (r.stderr or ""))[-400:]
+    finally:
+        git(["worktree", "remove", "--force", str(tmp)], wt, check=False)
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # ------------------------------------------------------------------ local gates (mirror the production gate semantics)

@@ -323,6 +323,30 @@ class ReviewRegressions(Base):
         self.assertFalse(next(x for x in res["gates"] if x["gate"] == "tests_on_head")["ok"])
         self.assertIn("NotImplementedError", la.git(["show", "main:clamp.py"], self.lay.main))   # main still has the stub
 
+    def test_untracked_shadowing_package_cannot_make_wrong_committed_code_pass(self):
+        # the reviewer's round-2 reproduction: committed clamp.py is wrong; an UNTRACKED clamp/ package holds a correct one
+        # and Python would import the package instead of the module
+        self.work("L-003", source="def clamp(x, lo, hi):\n    return x\n")
+        pkg = self.lay.wt / "L-003" / "clamp"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text(GOOD["L-003"], encoding="utf-8")
+        self.assertEqual(la.worktree_dirty(self.lay, "L-003"), "")          # untracked files do not show as dirty...
+        ok, _ = la.run_tests(self.lay, "L-003")
+        self.assertFalse(ok)                                                  # ...but the fresh checkout never sees them
+        self.approve("L-003")
+        res = la.integrate(self.lay, "L-003", apply=True)
+        self.assertFalse(res["merged"])
+        self.assertFalse(next(x for x in res["gates"] if x["gate"] == "tests_on_head")["ok"])
+        self.assertIn("NotImplementedError", la.git(["show", "main:clamp.py"], self.lay.main))
+
+    def test_correct_commit_passes_in_a_fresh_checkout_and_no_checkout_is_left_behind(self):
+        self.work("L-003")
+        ok, why = la.run_tests(self.lay, "L-003")
+        self.assertTrue(ok, why)
+        tmp = self.lay.state / "tmp"
+        self.assertEqual(list(tmp.iterdir()) if tmp.exists() else [], [])
+        self.assertNotIn("L-003-", la.git(["worktree", "list"], self.lay.wt / "L-003"))
+
     def test_committed_wrong_code_fails_the_gate_and_correct_committed_code_passes(self):
         self.work("L-003", source="def clamp(x, lo, hi):\n    return x\n")
         self.approve("L-003")

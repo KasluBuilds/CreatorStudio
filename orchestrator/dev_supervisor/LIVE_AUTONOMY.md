@@ -10,7 +10,10 @@ Run: `cd orchestrator && python -B -m dev_supervisor.live_autonomy run --root <e
 (uses the configured Claude provider with the haiku model; no paid API; no real footage; nothing outside the sandbox).
 
 ## Which run is evidence for what
-- **run4 (568 s, OBSERVED 2026-11-19) ran the final code of this PR** and is the evidence below.
+- **run4 (568 s, OBSERVED 2026-11-19) is the evidence below.** It ran the code before the last review fix (tests now run in a
+  fresh detached checkout of the tested commit). **run5 (484 s) re-ran the final code**: same outcome (4 integrations, L-005
+  BLOCKED, L-006 untouched, all five chaos injections landed), 0 rejected requests, 0 refused merges, no leftover checkouts.
+  Only those points were re-checked for run5; the per-call details (50 `ctl` calls, 0 errors, session id) are run4's.
 - run3 (421 s) had the same outcome on the code before the review hardening (clean-tree test gate, merge of the tested sha,
   lock owner token, identity proof that does not trust ledger markers/parents). run1 and run2 were earlier runs: run1's Main hit
   2 tool errors from a `$CS_CTL` quoting bug, run2's worker-kill and stray-file injections missed their window; both fixed.
@@ -29,7 +32,7 @@ Run: `cd orchestrator && python -B -m dev_supervisor.live_autonomy run --root <e
 | Kill refused without identity proof | LIVE-TESTED | `authority.decide` refused a PID-only kill (`process-identity`) before each identity-proven kill |
 | Out-of-scope change caught and repaired | LIVE-TESTED at the `verify` step | harness committed `stray.txt` on L-003; `verify` reported it; Main dispatched a repair worker; re-verify clean; L-003 integrated |
 | Main killed unexpectedly -> same session resumed and loop continues | LIVE-TESTED | killed with identity proof (exit 15, recorded not clean); resumed 4 s later with the same session id (all 190 log lines carry one session id); Main claimed the next task |
-| Supervisor killed and restarted -> state recovered | LIVE-TESTED | killed with identity proof; the new supervisor served the request queued meanwhile |
+| Supervisor killed and restarted -> state recovered | LIVE-TESTED | killed with identity proof; the new supervisor adopted the running Main (no second Main was started) and then served the later L-004, L-005 and reviewer requests (nothing was queued during the gap itself) |
 | Blocked task: attempts exhausted -> BLOCKED, dependants stay unstarted | LIVE-TESTED | L-005 (contradictory test) BLOCKED after 2 attempts; L-006 never started |
 | Local gate set (registered, tests on the committed head, scope, review bound to the diff hash and not the worker, secrets, forbidden files, up to date, merge lock; merges exactly the tested sha) | INTEGRATION-TESTED (33 offline tests with real git; each gate has a failing case, including the dirty-worktree bypass the review found) and used by the live runs | a gate refusing a merge was NOT observed live |
 | Authority hook in every launched session | INSTALLED AND VERIFIED per session by `session_policy.install`; no protected action was attempted in the runs, so no live block was observed in them | live blocking was observed separately by `session_policy live-probe` (T-DEV-025) |
@@ -43,6 +46,7 @@ Run: `cd orchestrator && python -B -m dev_supervisor.live_autonomy run --root <e
 - Clean-exit classification of an adopted process (no exit code is available, so it is recorded as not clean).
 - More than one concurrent worker; any model other than haiku; runs longer than ~10 minutes; stalled-worker handling (implemented and unit-tested, no worker stalled).
 - Offline tests do not cover `launch_request`, `start_main`, the supervisor tick beyond one malformed-request iteration, or the `run_live` cleanup; the process tests use injected identity/kill fakes, not real psutil.
+- Processes adopted by a restarted supervisor can no longer be killed with identity proof (their recorded parent is the dead supervisor), so the policy refuses and they may be left running: the safe direction, but a limit. The ledger lock takeover can still race if two waiters see the same stale lock.
 - Chaos is injected by the harness: the failures are real (real kills, real commits) but chosen, not spontaneous.
 
 ## run4 timeline (UTC, from `state/events.jsonl`)
