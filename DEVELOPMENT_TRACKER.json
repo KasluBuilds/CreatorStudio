@@ -2484,7 +2484,7 @@
         {
           "id": "S-GOV-008-01",
           "title": "Step 1: policy text in sections 18/19 and CLAUDE.md",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Per the task acceptance criteria"
           ],
@@ -2493,8 +2493,19 @@
               "type": "pull_request",
               "commit": "6274b9e8ec672731b51203547675f7228250ccea",
               "summary": "Implementation delivered in PR #77 (merge commit 6274b9e8ec672731b51203547675f7228250ccea); record caught up at closeout."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #77 merged to main as 6274b9e8ec67 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff f723f04e7b52b0de, reserved paths under Lukas's recorded direct word, issue #44 comment 6981997602); claim PR #76 merged earlier"
             }
-          ]
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
         }
       ]
     },
