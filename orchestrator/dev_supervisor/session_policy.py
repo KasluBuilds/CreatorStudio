@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -55,14 +56,20 @@ def _posix(p: str) -> str:
     return str(p).replace("\\", "/")
 
 
+_SAFE_PATH = re.compile(r"^[A-Za-z0-9_./:+~@ ()\-]+$")
+
+
 def _quote(s: str) -> str:
-    return '"' + s.replace('"', '\\"') + '"' if (" " in s or "(" in s) else s
+    """Always double-quote; refuse any character that a shell could interpret (so cmd and bash agree)."""
+    if not _SAFE_PATH.match(s):
+        raise PolicyInstallError(f"unsafe characters in hook path {s!r}; use a plain install path")
+    return '"' + s + '"'
 
 
 def hook_command(python: Optional[str] = None, script: Optional[str] = None) -> str:
     py = _posix(python or sys.executable)
     sc = _posix(script or authority.__file__)
-    return f"{_quote(py)} -B {_quote(sc)} hook"
+    return f"{_quote(py)} -I -B {_quote(sc)} hook"
 
 
 def settings_path(state_dir: os.PathLike, role: str, session_id: str) -> Path:
@@ -109,22 +116,37 @@ def _run_hook(command: str, env: Dict[str, str], stdin: str, run: Callable[..., 
     return r.returncode, r.stdout or ""
 
 
+def _decision(out: str) -> Optional[str]:
+    """permissionDecision of a hook's stdout when it is exactly one valid PreToolUse JSON object, else None."""
+    try:
+        d = json.loads(out)
+        h = d["hookSpecificOutput"]
+        if h.get("hookEventName") == "PreToolUse" and isinstance(h.get("permissionDecision"), str):
+            return h["permissionDecision"]
+    except (ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return None
+
+
 def verify_hook(command: str, env: Dict[str, str], repo_root: str, run: Callable[..., Any] = subprocess.run) -> None:
     """Execute the exact hook command: it must deny a force push, deny malformed input, and stay silent on git status."""
     def payload(cmd: str) -> str:
         return json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}, "cwd": repo_root})
     try:
         rc, out = _run_hook(command, env, payload(DENY_PROBE), run)
-        if rc != 0 or '"permissionDecision": "deny"' not in out:
-            raise PolicyInstallError(f"hook did not deny the force-push probe (exit {rc}, output {out[:120]!r})")
+        if rc != 0 or _decision(out) != "deny":
+            raise PolicyInstallError(f"hook did not deny the force-push probe with valid JSON (exit {rc}, output {out[:120]!r})")
         rc, out = _run_hook(command, env, payload(ALLOW_PROBE), run)
         if rc != 0 or out.strip():
             raise PolicyInstallError(f"hook did not allow the routine probe (exit {rc}, output {out[:120]!r})")
         rc, out = _run_hook(command, env, "not json", run)
-        if rc != 0 or '"permissionDecision": "deny"' not in out:
+        if rc != 0 or _decision(out) != "deny":
             raise PolicyInstallError("hook did not fail closed on malformed input")
     except (OSError, subprocess.SubprocessError) as exc:
         raise PolicyInstallError(f"hook command could not be executed: {exc}") from exc
+
+
+_VERIFIED: set = set()      # (settings path, hook command) pairs that install() verified in this process
 
 
 def install(state_dir: os.PathLike, session_id: str, role: str, repo_root: str, roots: Sequence[str] = (),
@@ -139,19 +161,25 @@ def install(state_dir: os.PathLike, session_id: str, role: str, repo_root: str, 
         raise PolicyInstallError("settings file read-back differs from what was written")
     if verify:
         verify_hook(cmd, env, repo_root, run)
+    if verify:
+        _VERIFIED.add((str(path), cmd))
     return PolicyInstall(str(path), cmd, env, str(uuid.UUID(str(session_id))), role, verified=bool(verify))
 
 
 def argv_with_policy(argv: Sequence[str], inst: PolicyInstall) -> List[str]:
     """``argv`` with ``--settings <file>`` inserted after the executable; refuses an unverified installation."""
-    if not inst.verified:
-        raise PolicyInstallError("policy installation was not verified; refusing to launch without it")
+    if not inst.verified or (inst.settings_path, inst.hook_command) not in _VERIFIED:
+        raise PolicyInstallError("policy installation was not verified by install() in this process; refusing to launch")
     if not argv:
         raise PolicyInstallError("empty argv")
     if any(a == "--settings" or a.startswith("--settings=") for a in argv):
         raise PolicyInstallError("argv already carries --settings; merge it explicitly instead")
-    if not Path(inst.settings_path).is_file():
-        raise PolicyInstallError("settings file is missing")
+    try:
+        on_disk = json.loads(Path(inst.settings_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise PolicyInstallError("settings file is missing or unreadable") from None
+    if on_disk != build_settings(inst.hook_command):
+        raise PolicyInstallError("settings file content changed since verification")
     return [argv[0], "--settings", inst.settings_path, *argv[1:]]
 
 
@@ -162,6 +190,9 @@ def check_resume(inst: PolicyInstall, argv: Sequence[str]) -> bool:
 
 
 # ------------------------------------------------------------------ live probe (real claude, opt-in)
+
+_FORCE = re.compile(r"\bpush\b.*(--force|--force-with-lease|\s-f\b)")
+
 
 def parse_probe_transcript(lines: Sequence[str]) -> Dict[str, Any]:
     """From stream-json lines: did git status run, and was git push --force blocked by the hook?"""
@@ -183,9 +214,9 @@ def parse_probe_transcript(lines: Sequence[str]) -> Dict[str, Any]:
             elif b.get("type") == "tool_result":
                 results[b.get("tool_use_id", "")] = (json.dumps(b.get("content")), bool(b.get("is_error")))
     status_ok = any("git status" in c and not results.get(i, ("", True))[1] for i, c in uses.items())
-    blocked = any("push --force" in c and results.get(i, ("", False))[1] and "authority policy" in results[i][0]
+    blocked = any(_FORCE.search(c) and results.get(i, ("", False))[1] and "authority policy" in results[i][0]
                   for i, c in uses.items())
-    forced_ran = any("push --force" in c and i in results and not results[i][1] for i, c in uses.items())
+    forced_ran = any(_FORCE.search(c) and i in results and not results[i][1] for i, c in uses.items())
     return {"status_ran": status_ok, "force_push_blocked": blocked, "force_push_ran": forced_ran,
             "tool_uses": len(uses)}
 

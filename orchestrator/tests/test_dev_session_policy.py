@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dev_supervisor import session_policy as sp  # noqa: E402
 
 SID = str(uuid.uuid4())
-DENY = '{"hookSpecificOutput": {"permissionDecision": "deny"}}\n'
+DENY = '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny"}}\n'
 
 
 def good_run(cmd, **kw):
@@ -117,6 +117,34 @@ class VerificationFailsLoudly(unittest.TestCase):
     def test_all_three_probes_pass(self):
         sp.verify_hook("cmd", {}, "r", self.fake([(0, DENY), (0, ""), (0, DENY)]))
 
+    def test_deny_text_that_is_not_the_json_decision_does_not_pass(self):
+        fakes = ['WARN "permissionDecision": "deny"\n', '{"permissionDecision": "deny"}\n',
+                 '{"hookSpecificOutput": {"permissionDecision": "deny"}}\n',
+                 '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}\n']
+        for bad in fakes:
+            with self.subTest(bad), self.assertRaises(sp.PolicyInstallError):
+                sp.verify_hook("cmd", {}, "r", self.fake([(0, bad), (0, ""), (0, bad)]))
+
+    def test_unsafe_hook_paths_are_refused_and_safe_ones_always_quoted(self):
+        for bad in ("C:/a;b/python.exe", "C:/a$b/python.exe", "C:/it's/python.exe", "C:/a&b/p.exe", "C:/a`b/p.exe", "C:/a%b/p.exe"):
+            with self.subTest(bad), self.assertRaises(sp.PolicyInstallError):
+                sp.hook_command(python=bad)
+        cmd = sp.hook_command(python="C:/Program Files (x86)/Python/python.exe", script="C:/x/authority.py")
+        self.assertEqual(cmd, '"C:/Program Files (x86)/Python/python.exe" -I -B "C:/x/authority.py" hook')
+
+    def test_forged_verified_flag_and_tampered_settings_are_refused(self):
+        import dataclasses
+        with tempfile.TemporaryDirectory() as td:
+            state, repo = Path(td) / "state", str(Path(td) / "repo")
+            inst = sp.install(state, SID, "main", repo, verify=False)
+            forged = dataclasses.replace(inst, verified=True)
+            with self.assertRaises(sp.PolicyInstallError):
+                sp.argv_with_policy(["claude"], forged)
+            good = sp.install(state, SID, "main", repo, run=good_run)
+            Path(good.settings_path).write_text("{}", encoding="utf-8")
+            with self.assertRaises(sp.PolicyInstallError):
+                sp.argv_with_policy(["claude"], good)
+
     def test_unrunnable_command_raises(self):
         def boom(*a, **k):
             raise OSError("no such file")
@@ -147,6 +175,10 @@ class ProbeTranscript(unittest.TestCase):
                  res("2", True, "PreToolUse hook error: authority policy [force-push]: x"), "garbage line"]
         r = sp.parse_probe_transcript(lines)
         self.assertEqual((r["status_ran"], r["force_push_blocked"], r["force_push_ran"]), (True, True, False))
+
+    def test_short_force_flag_is_detected(self):
+        r = sp.parse_probe_transcript([use("2", "git push -f origin x"), res("2", False, "ok")])
+        self.assertTrue(r["force_push_ran"])
 
     def test_unblocked_force_push_is_detected(self):
         r = sp.parse_probe_transcript([use("2", "git push --force origin x"), res("2", False, "ok")])

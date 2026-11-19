@@ -26,3 +26,14 @@
 The integration is three lines per launch path (`install`, `argv_with_policy`, merge `env`), plus a startup check that
 refuses to launch when `PolicyInstallError` is raised. `launch.py`, `cli.py` and `config.py` currently carry another
 session's uncommitted `main-host` changes (worktree `dev-supervisor-main-terminal-host`), so editing them now would collide.
+
+## Review round 1 changes and remaining limits
+- Verification now parses the hook output as JSON (`hookSpecificOutput.hookEventName == PreToolUse`, `permissionDecision`)
+  instead of matching text. The hook command uses `python -I -B` and every path is double-quoted; paths containing
+  shell-significant characters (`; $ ' & ` % ...`) are refused so cmd.exe (used for verification) and Git Bash agree.
+- `argv_with_policy` only accepts an installation that `install()` verified in the same process and re-reads the
+  settings file, so a forged `verified=True` or a tampered file is refused.
+- Limits: the env additions are returned, not bound to the argv: a launcher that forgets to merge `inst.env` loses the
+  owned-paths limit (the hook still enforces the unconditional rules). `--settings` is inserted after `argv[0]`, which
+  assumes the executable is `claude` itself, not `node cli.js`. Verification runs in cmd.exe; Claude Code's own hook shell
+  was observed to run the same command successfully (live probe) but that shell was not independently identified.
