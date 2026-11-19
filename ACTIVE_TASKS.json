@@ -176,6 +176,16 @@
         "orchestrator/tests/test_dev_telemetry.py",
         "DEVELOPMENT_OPERATING_SYSTEM.md"
       ]
+    },
+    "AGR-DEV-AUTHORITY-01": {
+      "description": "Lukas's mission message of 2026-11-19 ('MISSION: MAKE CREATORSTUDIO AUTONOMOUS') directly assigns the engineering agent to implement a machine-enforced authority policy for the development supervisor. Under that direct assignment, T-DEV-024 may ADD new files inside orchestrator/dev_supervisor/ (package owner claude:repository-coordinator). It may not edit any existing module of that package. REPORTED: the assignment text was pasted into the session by Lukas; the owner session has not separately acknowledged it.",
+      "task_ids": [
+        "T-DEV-024"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/authority.py",
+        "orchestrator/dev_supervisor/AUTHORITY.md"
+      ]
     }
   },
   "tasks": [
@@ -1487,6 +1497,45 @@
         "python -B dashboard/tracker_check.py --against origin/main"
       ],
       "integration_notes": "Claimed by Main (Repository Coordinator, package owner of orchestrator/dev_supervisor/). Integrated under PROJECT_OPERATING_PROTOCOL.md section 18 gates. Completed 2026-11-19: merged to main by the Repository Coordinator through dev_supervisor.integrate (PR #81, merge commit 13202fc1b15a; all 8 section-18 gates PASS, independent review bound to the diff hash)."
+    },
+    {
+      "id": "T-DEV-024",
+      "title": "dev_supervisor: machine-enforced authority policy (autonomous vs protected actions) and PreToolUse hook",
+      "description": "Lukas's mission of 2026-11-19 (delegated autonomy) requires the boundary between autonomous and protected actions to be enforced by code, not prompts. New module dev_supervisor/authority.py: a pure, default-deny policy engine (classify an action, return ALLOW / DENY / REQUIRE_AUTHORIZATION with a rule id) plus a Claude Code PreToolUse hook entry point that screens Bash/Write/Edit calls of supervised sessions. Authority comes from the user's mission text, recorded here; it is not an inferred agreement.",
+      "owner": "claude:autonomy-engineer",
+      "branch": "task/t-dev-024-authority-policy",
+      "worktree": "../CreatorStudio-worktrees/t-dev-024-authority-policy",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-19T16:30:00+00:00",
+        "expires": "2026-11-20T16:30:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01",
+        "AGR-DEV-AUTHORITY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/authority.py",
+        "orchestrator/dev_supervisor/AUTHORITY.md",
+        "orchestrator/tests/test_dev_authority.py"
+      ],
+      "acceptance_criteria": [
+        "authority.decide(Action) is default-deny for unknown kinds and returns a Decision(verdict, rule, reason)",
+        "Autonomous kinds (read, run_tests, edit owned file, create branch/worktree, dispatch/recover worker, restart owned process, resume main, routine git, create PR, integrate PR only with all gates passed, update records) are ALLOWED",
+        "Protected kinds are DENIED or REQUIRE_AUTHORIZATION: paid API, secret disclosure, destructive op on originals/Incoming, production Resolve mutation, irrecoverable delete, security-control bypass, force push, push/commit to main, history rewrite, action outside the project environment, process termination without full identity proof (pid + exe + cmdline marker + parent + session; a PID alone is rejected)",
+        "Bash/PowerShell command classifier recognises the protected patterns above; PreToolUse hook prints a deny decision for them and nothing for allowed calls; fails closed on malformed input for protected tools",
+        "Tests prove authorized operations pass and protected operations are rejected; no network, no real processes killed, synthetic data only",
+        "Does not edit any other module; the hook is not installed into any settings file by this task"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_authority.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests",
+        "cd orchestrator && python -B -m governance validate --against origin/main",
+        "cd orchestrator && python -B -m governance scope --base origin/main"
+      ],
+      "integration_notes": "Authorised by Lukas's mission message of 2026-11-19 (delegated autonomy, mission part 2). Package owner of orchestrator/dev_supervisor/ is claude:repository-coordinator; this task adds new files only and touches no existing module. Integrates through the section 18 gates with an independent review."
     }
   ]
 }
