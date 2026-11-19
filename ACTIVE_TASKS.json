@@ -1551,12 +1551,9 @@
       "owner": "claude:autonomy-engineer",
       "branch": "task/t-dev-025-session-policy",
       "worktree": "../CreatorStudio-worktrees/t-dev-025-session-policy",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-19T17:00:00+00:00",
-        "expires": "2026-11-20T17:00:00+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01",
@@ -1579,7 +1576,7 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_session_policy.py",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Authorised by Lukas's mission messages of 2026-11-19. Adds new files only inside the Coordinator-owned dev_supervisor package under AGR-DEV-AUTHORITY-01."
+      "integration_notes": "Authorised by Lukas's mission messages of 2026-11-19. Adds new files only inside the Coordinator-owned dev_supervisor package under AGR-DEV-AUTHORITY-01. Completed 2026-11-19: PR #92 merged as 473b63005100 through dev_supervisor.integrate (8 gates PASS; independent review APPROVE for diff 24ffe75440efeaaf after one CHANGES_REQUESTED round that found verification matched text instead of JSON and weak path quoting). Evidence: UNIT_ISOLATED (20 offline tests) plus OBSERVED live probes with a real headless haiku session (force push blocked, git status allowed, also after --resume). NOT DONE: launch.py does not call session_policy yet, so no supervisor-launched Main or worker has the hook. Known doc nit: SESSION_POLICY.md says 16 tests, actual 20."
     }
   ]
 }
