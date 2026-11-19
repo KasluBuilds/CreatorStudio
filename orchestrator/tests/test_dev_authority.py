@@ -225,6 +225,57 @@ class CommandClassifier(unittest.TestCase):
             self.assertEqual(verdict(c).verdict, ALLOW)
 
 
+class ReviewRegressions(unittest.TestCase):
+    """Bypasses found by the independent review of PR #88."""
+
+    def test_git_global_options_do_not_hide_the_subcommand(self):
+        self.assertEqual(verdict("git -C ../wt push --force origin task/x").rule, "force-push")
+        self.assertEqual(verdict("git -C ../wt commit --no-verify -m x").rule, "security-bypass")
+        self.assertEqual(verdict("git -c core.hooksPath=/dev/null commit -m x").rule, "security-bypass")
+        self.assertEqual(verdict("git -C ../wt add -A").rule, "stage-explicit-files")
+        self.assertEqual(verdict("git -C ../wt push origin main").rule, "push-main")
+        self.assertEqual(verdict("git -C ../wt push -u origin task/x").verdict, ALLOW)
+        self.assertEqual(verdict("git -C ../wt status").verdict, ALLOW)
+
+    def test_every_pushed_ref_is_checked_for_main(self):
+        for c in ("git push origin main task/x", "git push origin task/x main", "git push origin --all",
+                  "git push origin task/x:main", "git push origin +task/x:refs/heads/main"):
+            with self.subTest(c):
+                self.assertIn(verdict(c).rule, ("push-main", "force-push"))
+
+    def test_delete_grant_does_not_lift_path_rules(self):
+        g = PolicyContext(roots=(ROOT,), repo_root=ROOT, grants=frozenset({au.IRRECOVERABLE_DELETE}))
+        for c in ("rm -rf C:/Windows/System32", "rm -rf ../../..", "rm .env", "rm -rf Incoming/x"):
+            with self.subTest(c):
+                self.assertEqual(verdict(c, ctx=g).verdict, DENY)
+        self.assertEqual(verdict("rm -rf build", ctx=g).verdict, ALLOW)
+
+    def test_redirection_into_incoming(self):
+        for c in ("echo hi > Incoming/a.mp4", "echo hi >> 'Incoming/x/a.mp4'", "cp x.txt Incoming/"):
+            self.assertEqual(verdict(c).rule, "originals-immutable")
+        self.assertEqual(verdict("echo hi > out.txt").verdict, ALLOW)
+        self.assertEqual(verdict("cp Incoming/a.mp4 tmp/").verdict, ALLOW)       # reading originals is fine
+
+    def test_fail_closed_paths(self):
+        self.assertEqual(au.evaluate_tool_call("Write", {}, CTX).rule, "missing-path")
+
+        class Deep:
+            def read(self):
+                return "[" * 200000
+        out = io.StringIO()
+        self.assertEqual(au.run_hook(Deep(), out, {}), 0)
+        self.assertIn('"deny"', out.getvalue())
+        env = {"CS_AUTHORITY_ROOTS": ROOT, "CS_AUTHORITY_REPO_ROOT": ROOT, "CS_AUTHORITY_OWNED_PATHS": '{"a": 1}'}
+        out = io.StringIO()
+        au.run_hook(io.StringIO(json.dumps({"tool_name": "Write", "tool_input": {"file_path": "a/x"}, "cwd": ROOT})), out, env)
+        self.assertIn("not-owned", out.getvalue())
+
+    def test_launcher_read_and_config_reads(self):
+        self.assertEqual(au.evaluate_tool_call("Read", {"file_path": "pro.ps1"}, CTX).rule, "no-secret-disclosure")
+        self.assertEqual(verdict("git config --get core.hooksPath").verdict, ALLOW)
+        self.assertEqual(verdict("git cherry-pick -n abc").verdict, ALLOW)
+
+
 class ToolCalls(unittest.TestCase):
     def test_write_and_edit(self):
         e = lambda tool, p: au.evaluate_tool_call(tool, {"file_path": p}, CTX)

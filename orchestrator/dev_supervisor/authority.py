@@ -194,11 +194,14 @@ def decide(action: Action, ctx: PolicyContext = PolicyContext()) -> Decision:
         return Decision(ALLOW, "resolve-granted", "explicit production authorisation") if RESOLVE_MUTATION in ctx.grants \
             else Decision(ASK, "resolve-production", "Resolve mutation needs a validated plan and explicit authorisation")
     if k == IRRECOVERABLE_DELETE:
-        if a.get("recoverable") is True and not a.get("original"):
-            g = _path_gate(action, ctx, mutating=True)
-            return g or Decision(ALLOW, "recoverable-delete", "deletion has a recovery path")
-        return Decision(ASK if IRRECOVERABLE_DELETE not in ctx.grants else ALLOW, "irrecoverable-delete",
-                        "deleting data without a recovery path needs explicit authorisation")
+        g = _path_gate(action, ctx, mutating=True)       # never lifted by a grant: originals, secrets, outside env
+        if g:
+            return g
+        if a.get("original"):
+            return _deny("originals-immutable", "original footage is never deleted")
+        if a.get("recoverable") is True or IRRECOVERABLE_DELETE in ctx.grants:
+            return Decision(ALLOW, "delete-ok", "deletion has a recovery path or an explicit grant")
+        return Decision(ASK, "irrecoverable-delete", "deleting data without a recovery path needs explicit authorisation")
 
     # ---- autonomous kinds, each with the guard that keeps it routine
     if k in (READ, RUN_TESTS, CREATE_BRANCH, CREATE_WORKTREE, DISPATCH_WORKER, RECOVER_WORKER, RESUME_MAIN,
@@ -213,6 +216,8 @@ def decide(action: Action, ctx: PolicyContext = PolicyContext()) -> Decision:
             return _deny("resume-only-owned", "only a Main recorded as owned by this supervisor may be resumed")
         return Decision(ALLOW, "autonomous", f"{k} is a routine delegated action")
     if k == EDIT_FILE:
+        if not action.target:
+            return _deny("missing-path", "edit without a target path cannot be evaluated; failing closed")
         g = _path_gate(action, ctx, mutating=True)
         if g:
             return g
@@ -302,28 +307,47 @@ def classify_command(command: str) -> List[Action]:
                 continue
             head = tok[0].lower().replace(".exe", "")
         low = [t.lower() for t in tok]
+        for m in re.finditer(r">>?\s*(\"[^\"]+\"|'[^']+'|[^\s;&|]+)", seg):
+            tgt = m.group(1).strip("\"'")
+            if "/incoming/" in "/" + _strip_dot(tgt).lower() + "/":
+                out.append(Action(ORIGINAL_MUTATION, tgt))
         if head == "git" and len(tok) > 1:
-            sub = next((t.lower() for t in tok[1:] if not t.startswith("-")), "")
-            flags = [t for t in low[1:] if t.startswith("-")]
-            if sub in ("commit", "merge", "rebase", "cherry-pick", "am", "push") and                     any(f in ("--no-verify", "-n", "--no-gpg-sign") for f in flags) and not (sub == "push" and "-n" in flags and "--no-verify" not in flags):
+            gflags: List[str] = []
+            i = 1
+            takes_arg = ("-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path")
+            while i < len(tok) and tok[i].startswith("-"):      # git global options come before the subcommand
+                gflags.append(low[i])
+                if tok[i] in takes_arg and i + 1 < len(tok):
+                    gflags.append(low[i + 1])
+                    i += 1
+                i += 1
+            sub = low[i] if i < len(tok) else ""
+            rest = tok[i + 1:]
+            flags = [t.lower() for t in rest if t.startswith("-")]
+            if any("hookspath" in g or "gpgsign" in g for g in gflags):
+                out.append(Action(SECURITY_BYPASS))
+            if sub == "commit" and any(f in ("--no-verify", "-n", "--no-gpg-sign") for f in flags):
+                out.append(Action(SECURITY_BYPASS))
+            elif sub in ("merge", "rebase", "cherry-pick", "am", "push") and any(f in ("--no-verify", "--no-gpg-sign") for f in flags):
                 out.append(Action(SECURITY_BYPASS))
             elif sub == "push":
                 force = any(f in ("-f", "--force", "--force-with-lease", "--mirror", "--delete", "-d") or f.startswith("--force") for f in flags)
-                refs = [t for t in tok[2:] if not t.startswith("-")]
-                branch = ""
-                for r in refs[1:] if refs else []:
-                    branch = r.split(":")[-1].replace("refs/heads/", "")
-                if "+" in "".join(refs):
+                refs = [t for t in rest if not t.startswith("-")]
+                specs = refs[1:]
+                if any(t.startswith("+") for t in specs):
                     force = True
-                out.append(Action(FORCE_PUSH if force else GIT_PUSH, attrs={"branch": branch, "force": force}))
-            elif sub == "add" and any(t in (".", "-A", "--all", "-a") for t in tok[2:]):
+                dsts = [r.split(":")[-1].replace("refs/heads/", "").lstrip("+") for r in specs]
+                if "--all" in flags or "--mirror" in flags:
+                    dsts.append("main")        # may include main: not delegated
+                main_hit = next((d for d in dsts if d.lower() in ("main", "master")), "")
+                out.append(Action(FORCE_PUSH if force else GIT_PUSH, attrs={"branch": main_hit or (dsts[-1] if dsts else ""), "force": force}))
+            elif sub == "add" and any(t in (".", "-A", "--all", "-a") for t in rest):
                 out.append(Action(STAGE_ALL))
-            elif sub in ("filter-branch", "filter-repo") or (sub == "reflog" and "expire" in low) or \
-                    (sub == "update-ref" and "-d" in low):
+            elif sub in ("filter-branch", "filter-repo") or (sub == "reflog" and "expire" in low) or                     (sub == "update-ref" and "-d" in low):
                 out.append(Action(HISTORY_REWRITE))
-            elif sub == "config" and any("hookspath" in t or "gpgsign" in t for t in low):
+            elif sub == "config" and any(("hookspath" in t or "gpgsign" in t) for t in low) and "--get" not in low and "--get-all" not in low and "--list" not in low:
                 out.append(Action(SECURITY_BYPASS))
-            elif sub == "clean" and any("f" in f.lstrip("-") for f in flags if not f.startswith("--")):
+            elif sub == "clean" and any(("f" in f.lstrip("-") and not f.startswith("--")) or f == "--force" for f in flags):
                 out.append(Action(IRRECOVERABLE_DELETE, attrs={"recoverable": False}))
             continue
         if head == "gh" and "merge" in low and "--admin" in low:
@@ -338,10 +362,11 @@ def classify_command(command: str) -> List[Action]:
                 if _starts(_strip_dot(p), ORIGINALS_PREFIXES) or "/incoming/" in _norm(p).lower() + "/" or _norm(p).lower().endswith("/incoming"):
                     out.append(Action(ORIGINAL_MUTATION, p))
                 else:
-                    out.append(Action(IRRECOVERABLE_DELETE, p, {"recoverable": False, "recursive": any(x in ("-r", "-rf", "-fr", "/s", "-recurse") for x in low)}))
+                    out.append(Action(IRRECOVERABLE_DELETE, p, {"recoverable": False}))
             continue
         if _MV.match(head):
-            for p in _paths(tok):
+            ps = _paths(tok)
+            for p in (ps[-1:] if head in ("cp", "copy", "copy-item") else ps):
                 if "/incoming/" in "/" + _strip_dot(p).lower() + "/":
                     out.append(Action(ORIGINAL_MUTATION, p))
         if _KILLERS.match(head):
@@ -368,7 +393,10 @@ def classify_tool_call(tool: str, tool_input: Dict[str, Any]) -> List[Action]:
         path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
         return [Action(EDIT_FILE, path)]
     if t == "Read":
-        return [Action(READ, str(tool_input.get("file_path", "")))]
+        path = str(tool_input.get("file_path", ""))
+        if _norm(path).lower().rsplit("/", 1)[-1] in ("pro.ps1", "backup.ps1"):
+            return [Action(SECRET_DISCLOSURE, path)]
+        return [Action(READ, path)]
     if t.startswith("mcp__davinci-resolve__"):
         verb = str(tool_input.get("action") or tool_input.get("method") or "")
         return [] if _RESOLVE_READ.match(verb) else [Action(RESOLVE_MUTATION, t, {"production": True, "verb": verb})]
@@ -390,8 +418,6 @@ def evaluate_tool_call(tool: str, tool_input: Dict[str, Any], ctx: PolicyContext
 
 # ------------------------------------------------------------------ PreToolUse hook
 
-GUARDED = ("Bash", "PowerShell", "Write", "Edit", "NotebookEdit", "MultiEdit", "Read")
-
 
 def context_from_env(env: Dict[str, str], cwd: str) -> PolicyContext:
     roots = tuple(r for r in env.get("CS_AUTHORITY_ROOTS", "").split(os.pathsep) if r) or ((cwd,) if cwd else ())
@@ -400,7 +426,7 @@ def context_from_env(env: Dict[str, str], cwd: str) -> PolicyContext:
         raw = env.get("CS_AUTHORITY_OWNED_PATHS")
         if raw:
             v = json.loads(raw)
-            owned = tuple(str(x) for x in v) if isinstance(v, list) else None
+            owned = tuple(str(x) for x in v) if isinstance(v, list) else ()   # not a list: nothing owned
     except ValueError:
         owned = ()   # unparseable ownership: nothing is owned (fail closed)
     return PolicyContext(roots=roots, owned_paths=owned, allow_paid_api=False,
@@ -429,7 +455,7 @@ def run_hook(stdin: TextIO, out: TextIO, env: Optional[Dict[str, str]] = None) -
         if not isinstance(tin, dict):
             raise ValueError("tool_input is not an object")
         decision = evaluate_tool_call(tool, tin, context_from_env(env, str(payload.get("cwd") or os.getcwd())))
-    except (ValueError, TypeError) as exc:
+    except Exception as exc:  # noqa: BLE001 - any failure must fail closed (RecursionError, OSError, ...)
         decision = Decision(DENY, "hook-malformed-input", f"could not evaluate the call ({exc}); failing closed")
     res = hook_output(decision)
     if res is not None:
