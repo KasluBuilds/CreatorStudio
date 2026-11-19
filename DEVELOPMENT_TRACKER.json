@@ -2453,7 +2453,7 @@
         {
           "id": "S-DEV-012-01",
           "title": "Step 1: implementation on task/dev-supervisor-rate-limit-usage",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "Account usage is OBSERVED from a real rate_limit_event, else UNAVAILABLE with the reason",
             "No transcript or prompt text is read into the result",
@@ -2464,8 +2464,19 @@
               "type": "pull_request",
               "commit": "3b51dc096b7980b47c9555cc454fd12a80d5fee8",
               "summary": "Implementation delivered in PR #62 (merge commit 3b51dc096b7980b47c9555cc454fd12a80d5fee8); record caught up at closeout."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #62 merged to main as 3b51dc096b79 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff d8c62ad414a8602a); claim PR #61 merged earlier"
             }
-          ]
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
         }
       ]
     },
