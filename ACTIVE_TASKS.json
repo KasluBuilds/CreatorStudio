@@ -178,13 +178,16 @@
       ]
     },
     "AGR-DEV-AUTHORITY-01": {
-      "description": "Lukas's mission message of 2026-11-19 ('MISSION: MAKE CREATORSTUDIO AUTONOMOUS') directly assigns the engineering agent to implement a machine-enforced authority policy for the development supervisor. Under that direct assignment, T-DEV-024 may ADD new files inside orchestrator/dev_supervisor/ (package owner claude:repository-coordinator). It may not edit any existing module of that package. REPORTED: the assignment text was pasted into the session by Lukas; the owner session has not separately acknowledged it.",
+      "description": "Lukas's mission message of 2026-11-19 ('MISSION: MAKE CREATORSTUDIO AUTONOMOUS') directly assigns the engineering agent to implement a machine-enforced authority policy for the development supervisor. Under that direct assignment, T-DEV-024 may ADD new files inside orchestrator/dev_supervisor/ (package owner claude:repository-coordinator). It may not edit any existing module of that package. REPORTED: the assignment text was pasted into the session by Lukas; the owner session has not separately acknowledged it. Extended 2026-11-19 to T-DEV-025 (session policy installer) under Lukas's second mission message of the same day (execution directive, section 2: integrate the authority hook into launched sessions). launch.py, cli.py, config.py are NOT covered: they carry another session's uncommitted main-host work and need the package owner.",
       "task_ids": [
-        "T-DEV-024"
+        "T-DEV-024",
+        "T-DEV-025"
       ],
       "paths": [
         "orchestrator/dev_supervisor/authority.py",
-        "orchestrator/dev_supervisor/AUTHORITY.md"
+        "orchestrator/dev_supervisor/AUTHORITY.md",
+        "orchestrator/dev_supervisor/session_policy.py",
+        "orchestrator/dev_supervisor/SESSION_POLICY.md"
       ]
     }
   },
@@ -1533,6 +1536,43 @@
         "cd orchestrator && python -B -m governance scope --base origin/main"
       ],
       "integration_notes": "Authorised by Lukas's mission message of 2026-11-19 (delegated autonomy, mission part 2). Package owner of orchestrator/dev_supervisor/ is claude:repository-coordinator; this task adds new files only and touches no existing module. Integrates through the section 18 gates with an independent review. Completed 2026-11-19: PR #88 merged as e77c94455a05 through dev_supervisor.integrate (8 gates PASS; independent review APPROVE for diff ba8bf47853aee74e after two CHANGES_REQUESTED rounds that found real bypasses, all fixed). Evidence level: UNIT_ISOLATED (58 offline tests). The hook is NOT installed in any session and NOT live-tested."
+    },
+    {
+      "id": "T-DEV-025",
+      "title": "dev_supervisor: automatic, verified installation of the authority hook into launched Main and worker sessions",
+      "description": "New module session_policy.py: writes a per-session Claude Code settings file holding the authority PreToolUse hook, returns the argv/env additions that make a launched or resumed session use it, and verifies the installation by executing the exact hook command against probe payloads (installation fails loudly, never silently). Includes an opt-in live probe that runs a real headless claude session and checks the transcript. launch.py wiring is a separate coordinated change.",
+      "owner": "claude:autonomy-engineer",
+      "branch": "task/t-dev-025-session-policy",
+      "worktree": "../CreatorStudio-worktrees/t-dev-025-session-policy",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-19T17:00:00+00:00",
+        "expires": "2026-11-20T17:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01",
+        "AGR-DEV-AUTHORITY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/session_policy.py",
+        "orchestrator/dev_supervisor/SESSION_POLICY.md",
+        "orchestrator/tests/test_dev_session_policy.py"
+      ],
+      "acceptance_criteria": [
+        "install(...) writes a per-session settings file atomically under <state>/policy/, deterministic path per session id so resume reuses it",
+        "verify(...) executes the exact hook command and requires a deny for a force-push probe and silence for a git status probe; any failure raises PolicyInstallError",
+        "argv_with_policy inserts --settings <file> for fresh and resume launches and refuses to return an argv when verification has not passed",
+        "Environment additions carry CS_AUTHORITY_ROOTS/REPO_ROOT/OWNED_PATHS and never CS_AUTHORITY_GRANTS unless explicitly passed",
+        "Opt-in live probe (real headless claude, throwaway repo, no remote) records OBSERVED evidence; unit tests need no network and start no claude",
+        "Does not edit launch.py, cli.py or config.py"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_session_policy.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Authorised by Lukas's mission messages of 2026-11-19. Adds new files only inside the Coordinator-owned dev_supervisor package under AGR-DEV-AUTHORITY-01."
     }
   ]
 }
