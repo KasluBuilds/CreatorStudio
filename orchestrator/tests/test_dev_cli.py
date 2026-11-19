@@ -21,7 +21,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dev_supervisor import cli, compaction, handoff, launch, replacement  # noqa: E402
+from dev_supervisor import cli, compaction, handoff, launch, replacement, session_policy  # noqa: E402
 from dev_supervisor import config as cfgmod  # noqa: E402
 from dev_supervisor.lifecycle import LaunchHandle, LaunchSpec, build_claude_argv  # noqa: E402
 from dev_supervisor.omniroute import TransportError  # noqa: E402
@@ -68,9 +68,9 @@ class FakeTerminal:
         self.handles = {}
         self.write_session_file = True
 
-    def open(self, argv, cwd):
+    def open(self, argv, cwd, env=None):
         pid = self.env.next_pid()
-        self.opened.append({"argv": list(argv), "cwd": cwd, "pid": pid})
+        self.opened.append({"argv": list(argv), "cwd": cwd, "pid": pid, "env": dict(env or {})})
         h = FakeHandle(pid)
         self.handles[pid] = h
         if self.write_session_file:
@@ -138,6 +138,20 @@ class FakeGhRunner:
         return set()
 
 
+_DENY = '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny"}}'
+_HOOK_OUT = (_DENY, "", _DENY)
+
+
+def fake_policy_install(*args, **kw):
+    """The real installer with the hook subprocess faked (writes the settings file, no process started)."""
+    n = [0]
+
+    def run(cmd, **k):
+        n[0] += 1
+        return mock.Mock(returncode=0, stdout=_HOOK_OUT[(n[0] - 1) % 3])
+    return session_policy.install(*args, run=run, **kw)
+
+
 class Env:
     """Temp directories plus a Services object built only from fakes."""
 
@@ -172,7 +186,8 @@ class Env:
             worktree_checker=lambda wt, br: (True, "ok"), ref_checkers_factory=lambda c, r: self.checkers,
             run=self.run, which=lambda name: "/fake/bin/" + name, omniroute_transport=self.transport,
             resolve_discover=lambda identity: {"verdict": "UNCONFIGURED"}, gh_runner_factory=lambda c: self.gh,
-            pid_alive=lambda pid: pid in self.alive, sleep=lambda s: None, out=self.out, env={})
+            pid_alive=lambda pid: pid in self.alive, sleep=lambda s: None, out=self.out, env={},
+            policy_install=fake_policy_install)
 
     # -- helpers
     def next_pid(self):
@@ -407,7 +422,8 @@ class LaunchTests(Offline):
         store = env.store()
         resume = env.tmp / "resume.txt"
         resume.write_text("read handoff h-000000000000 hash sha256:abc\n", encoding="utf-8")
-        ml = launch.InteractiveMainLauncher(store, env.terminal, launch.MainProfile(model="opus"), str(env.repo))
+        ml = launch.InteractiveMainLauncher(store, env.terminal, launch.MainProfile(model="opus"), str(env.repo),
+                                            policy_install=fake_policy_install)
         spec = LaunchSpec(argv=build_claude_argv("sonnet", self.SID), cwd=str(env.repo), stdin_path=str(resume),
                           stdout_path="o", stderr_path="e", max_runtime_s=10)
         pid = ml.launch(spec).pid
@@ -425,7 +441,8 @@ class LaunchTests(Offline):
     def test_heartbeat_idle_and_retirer(self):
         env = Env(self)
         store = env.store()
-        ml = launch.InteractiveMainLauncher(store, env.terminal, launch.MainProfile(model="opus"), str(env.repo))
+        ml = launch.InteractiveMainLauncher(store, env.terminal, launch.MainProfile(model="opus"), str(env.repo),
+                                            policy_install=fake_policy_install)
         pid, _argv, _p = ml.open_main(self.SID)
         from dev_supervisor import telemetry
         hb = launch.SessionFileHeartbeat(env.sessions, telemetry.read_sessions, lambda p: p in env.alive)
@@ -528,7 +545,7 @@ class CliTests(Offline):
         self.assertIn("tick 2", out)                                  # no Main is not a reason to stop here
         self.assertEqual(env.terminal.opened, [])
         spec = env.worker_launcher.specs[0]
-        self.assertEqual(spec.argv[:2], ["claude", "-p"])
+        self.assertEqual([spec.argv[0]] + spec.argv[3:4], ["claude", "-p"])
         self.assertEqual(spec.argv[spec.argv.index("--permission-mode") + 1], "acceptEdits")
         self.assertEqual(cli.pending_requests(env.store()), [])
         code, out = env.cli("workers", "--json")
@@ -782,7 +799,7 @@ class EndToEndTests(Offline):
 
         # two workers spawned headless through the L2 path (fake launcher)
         self.assertEqual(len(env.worker_launcher.specs), 2)
-        self.assertTrue(all(s.argv[1] == "-p" for s in env.worker_launcher.specs))
+        self.assertTrue(all(s.argv[1] == "--settings" and s.argv[3] == "-p" for s in env.worker_launcher.specs))
         # Main launched twice: the original and its replacement, both interactive
         self.assertEqual(len(env.terminal.opened), 2)
         first, second = env.terminal.opened

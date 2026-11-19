@@ -44,12 +44,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
 from . import compaction, config as config_mod, handoff, replacement, routing, telemetry
-from . import github_log, omniroute, provider_env, resolve_discovery
+from . import github_log, omniroute, provider_env, resolve_discovery, session_policy
 from .config import Config, ConfigError
 from .evidence import Evidence, unavailable
 from .launch import (MAIN_ROLE, InteractiveMainLauncher, LaunchError, MainProfile, NewConsoleTerminal,
                      OwnedMainRetirer, SessionFileHeartbeat, Terminal, build_main_argv, find_session, idle_evidence,
-                     read_main, write_main)
+                     read_main, write_main, write_main_fresh)
 from .lifecycle import (ClaudeCliLauncher, GitWorktreeChecker, LifecycleError, ProcessLauncher, Supervisor,
                         SupervisorPolicy, build_claude_argv, pid_alive)
 from .state_store import (LOCK_FILE, LockHeldError, StateStore, StoreError, UnsafeStoreLocation, check_location,
@@ -103,6 +103,7 @@ class Services:
     session_factory: Callable[[], str] = lambda: str(uuid.uuid4())
     out: TextIO = field(default_factory=lambda: sys.stdout)
     env: Optional[Dict[str, str]] = None
+    policy_install: Callable[..., Any] = session_policy.install
 
     def store(self, create: bool = True) -> StateStore:
         root = self.config.repository_root()
@@ -133,15 +134,24 @@ class ConfiguredSupervisor(Supervisor):
     """The L2 ``Supervisor`` with the worker permission mode from the machine-local config (L2 extension point:
     ``build_spec`` is overridden; the argv is still built by L2 ``build_claude_argv``)."""
 
-    def __init__(self, *a: Any, permission_mode: Optional[str] = None, **kw: Any) -> None:
+    def __init__(self, *a: Any, permission_mode: Optional[str] = None, repo_root: Optional[Path] = None,
+                 policy_install: Callable[..., Any] = session_policy.install, **kw: Any) -> None:
         self.permission_mode = permission_mode
+        self.repo_root, self.policy_install = repo_root, policy_install
         super().__init__(*a, **kw)
 
     def build_spec(self, w):  # type: ignore[override]
+        """Raises ``PolicyInstallError`` if the authority hook cannot be installed; ``_launch`` then fails the worker."""
         spec = super().build_spec(w)
         if self.permission_mode is not None:
             spec.argv = build_claude_argv(w.model, w.session_id or "", executable=self.executable,
                                           permission_mode=self.permission_mode)
+        if self.repo_root is None:
+            raise session_policy.PolicyInstallError("repository root unknown; refusing an unhooked worker launch")
+        inst = self.policy_install(self.store.directory, w.session_id, "worker", str(self.repo_root),
+                                   roots=[w.worktree])
+        spec.argv = session_policy.argv_with_policy(spec.argv, inst)
+        spec.env = dict(inst.env)
         return spec
 
 
@@ -271,6 +281,30 @@ def _repo_root(cfg: Config) -> Path:
     return root
 
 
+HEARTBEAT_FILE = "supervisor_heartbeat.json"
+
+
+def heartbeat_view(store: StateStore, now: float) -> Dict[str, Any]:
+    """Persisted supervisor heartbeat with its age: MISSING (absent/unreadable), STALE (> 3 x poll), else FRESH."""
+    try:
+        hb = json.loads((store.directory / HEARTBEAT_FILE).read_text(encoding="utf-8"))
+        ts = parse_iso(hb["utc"])
+        interval = float(hb["poll_interval_s"])
+        if ts is None:
+            raise ValueError("bad timestamp")
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"state": "MISSING"}
+    age = max(0.0, now - ts)
+    return {**hb, "state": "STALE" if age > 3 * interval else "FRESH", "age_s": round(age, 1)}
+
+
+def _heartbeat_text(hb: Dict[str, Any]) -> str:
+    if hb["state"] == "MISSING":
+        return "MISSING (no supervisor loop has written one)"
+    return (f"{hb['state']} age {hb['age_s']}s tick {hb.get('tick')} pid {hb.get('pid')} "
+            f"main_alive={hb.get('main_alive')} workers={hb.get('worker_count')}")
+
+
 def _authoritative_main(store: StateStore) -> Optional[str]:
     doc = replacement.load_sessions(store)
     for sid, rec in doc["sessions"].items():
@@ -308,9 +342,10 @@ class SupervisorLoop:
         self.sup = ConfiguredSupervisor(store, svc.worker_launcher_factory(), worktree_checker=svc.worktree_checker,
                                         clock=svc.clock, sleep=svc.sleep, policy=policy, pid_probe=svc.pid_alive,
                                         session_factory=svc.session_factory, executable=self.cfg.claude_executable,
-                                        permission_mode=self.cfg.worker_permission_mode)
+                                        permission_mode=self.cfg.worker_permission_mode, repo_root=self.root,
+                                        policy_install=svc.policy_install)
         self.main_launcher = InteractiveMainLauncher(store, svc.terminal, MainProfile.from_config(self.cfg),
-                                                     str(self.root))
+                                                     str(self.root), policy_install=svc.policy_install)
         self.last_action: Optional[str] = None
         self.ticks = 0
         self.watch_main = True       # False with start --no-main: the loop supervises workers only
@@ -334,7 +369,7 @@ class SupervisorLoop:
             self.store.append_event("main_observed_existing", session_id=main["session_id"], pid=main.get("pid"))
             return main
         sid = str(uuid.UUID(str(self.svc.session_factory())))
-        write_main(self.store, session_id=sid, status="STARTING", pid=None, model=self.cfg.model(MAIN_ROLE))
+        write_main_fresh(self.store, session_id=sid, status="STARTING", pid=None, model=self.cfg.model(MAIN_ROLE))
         self.store.append_event("main_launch_begin", session_id=sid)
         try:
             pid, _argv, prompt = self.main_launcher.open_main(sid)
@@ -455,8 +490,18 @@ class SupervisorLoop:
         if not alive and main.get("status") == "RUNNING":
             write_main(self.store, status="EXITED", ended_at=utc_iso(self.svc.clock()))
             self.store.append_event("main_exited", session_id=main.get("session_id"))
+            if main.get("session_id"):
+                replacement.mark_exited(self.store, main["session_id"])
+        self.write_heartbeat(alive, main.get("session_id"), len(self.sup.registry.list()))
         return {"tick": self.ticks, "requests": requests, "workers": workers, "main_alive": alive,
                 "pressure": pressure}
+
+    def write_heartbeat(self, main_alive: bool, main_session_id: Optional[str], worker_count: int) -> None:
+        body = {"pid": os.getpid(), "tick": self.ticks, "utc": utc_iso(self.svc.clock()),
+                "main_alive": bool(main_alive), "main_session_id": main_session_id, "worker_count": worker_count,
+                "poll_interval_s": float(self.cfg.poll_interval_s)}
+        self.store.atomic_write_bytes(self.store.directory / HEARTBEAT_FILE,
+                                      (json.dumps(body, sort_keys=True) + "\n").encode("utf-8"))
 
     def run(self, max_ticks: Optional[int] = None) -> int:
         while True:
@@ -569,6 +614,7 @@ def cmd_status(svc: Services, a: argparse.Namespace) -> int:
                      "session_file_found": sess is not None, "idle": idle_evidence(sess),
                      "context_ratio": pressure.get("ratio"), "context_level": pressure.get("level")},
             "authoritative_main": _authoritative_main(store),
+            "heartbeat": heartbeat_view(store, svc.clock()),
             "lock": lock_holder(store, svc.pid_alive),
             "workers": {s: sum(1 for w in reg["workers"] if w["status"] == s) for s in WorkerStatus.ALL
                         if any(w["status"] == s for w in reg["workers"])},
@@ -583,7 +629,8 @@ def cmd_status(svc: Services, a: argparse.Namespace) -> int:
             f"context ratio: {_ev_text(pressure.get('ratio'))}\n"
             f"account usage: {_usage_text(au)}\n"
             f"workers: {data['workers'] or 'none'}; blockers={data['open_blockers']} "
-            f"queued_requests={data['queued_requests']}\nlock: {data['lock']}")
+            f"queued_requests={data['queued_requests']}\nlock: {data['lock']}\n"
+            f"supervisor heartbeat: {_heartbeat_text(data['heartbeat'])}")
     _print(svc, data, a.json, text)
     return EXIT_OK
 

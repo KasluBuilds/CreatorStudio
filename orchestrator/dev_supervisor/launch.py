@@ -41,9 +41,9 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Tuple
 
-from . import provider_env
+from . import provider_env, session_policy
 from .config import DANGEROUS_MODES, PERMISSION_MODES, Config
 from .evidence import Evidence, observed, unavailable
 from .lifecycle import LaunchHandle, LaunchSpec, LifecycleError, NotOwnedError
@@ -161,7 +161,7 @@ class TerminalHandle(Protocol):
 
 
 class Terminal(Protocol):
-    def open(self, argv: List[str], cwd: str) -> TerminalHandle: ...
+    def open(self, argv: List[str], cwd: str, env: Optional[Mapping[str, str]] = None) -> TerminalHandle: ...
 
 
 class NewConsoleTerminal:
@@ -181,7 +181,7 @@ class NewConsoleTerminal:
                               "install the native claude executable")
         return path
 
-    def open(self, argv: List[str], cwd: str) -> Any:
+    def open(self, argv: List[str], cwd: str, env: Optional[Mapping[str, str]] = None) -> Any:
         if self.os_name != "nt":
             raise LaunchError("an interactive Main in a new terminal window is implemented for Windows only")
         if not argv or any(not isinstance(a, str) for a in argv):
@@ -189,7 +189,7 @@ class NewConsoleTerminal:
         exe = self.resolve(argv[0])
         flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x10)
         return self._popen([exe] + list(argv[1:]), cwd=cwd, shell=False, close_fds=True, creationflags=flags,
-                           env=provider_env.child_env())
+                           env={**provider_env.child_env(), **(env or {})})
 
 
 # ------------------------------------------------------------------ the interactive Main launcher
@@ -201,8 +201,10 @@ class InteractiveMainLauncher:
     resume prompt that points at the verified handoff) as extra prompt text, and opens an INTERACTIVE session instead.
     """
 
-    def __init__(self, store: StateStore, terminal: Terminal, profile: MainProfile, cwd: str) -> None:
+    def __init__(self, store: StateStore, terminal: Terminal, profile: MainProfile, cwd: str,
+                 policy_install: Callable[..., Any] = session_policy.install) -> None:
         self.store, self.terminal, self.profile, self.cwd = store, terminal, profile, cwd
+        self.policy_install = policy_install
         self._handles: Dict[int, Any] = {}
         self.launched: List[Dict[str, Any]] = []
 
@@ -211,7 +213,14 @@ class InteractiveMainLauncher:
         profile = self.profile if model is None else MainProfile(**{**self.profile.__dict__, "model": model})
         prompt = write_main_prompt(self.store, session_id, verified=verified, resume_prompt_file=resume_prompt_file)
         argv = build_main_argv(profile, session_id, prompt)
-        handle = self.terminal.open(argv, cwd or self.cwd)
+        repo = Path(self.cwd).resolve()
+        roots = [str(repo), str(repo.parent / "CreatorStudio-worktrees")]
+        try:
+            inst = self.policy_install(self.store.directory, _uuid(session_id), "main", str(repo), roots=roots)
+            argv = session_policy.argv_with_policy(argv, inst)
+        except session_policy.PolicyInstallError as e:
+            raise LaunchError(f"authority policy could not be installed; Main not opened: {str(e)[:200]}") from None
+        handle = self.terminal.open(argv, cwd or self.cwd, env=inst.env)
         pid = int(handle.pid)
         self._handles[pid] = handle
         self.launched.append({"session_id": _uuid(session_id), "pid": pid})
@@ -313,6 +322,14 @@ def read_main(store: StateStore) -> Dict[str, Any]:
 def write_main(store: StateStore, **fields: Any) -> Dict[str, Any]:
     doc = read_main(store)
     doc.update(fields)
+    doc["updated_at"] = utc_iso(store.clock())
+    store.write(MAIN_DOC, doc)
+    return doc
+
+
+def write_main_fresh(store: StateStore, **fields: Any) -> Dict[str, Any]:
+    """Write main.json for a NEW Main launch: no field of the previous record is carried over."""
+    doc = dict(fields)
     doc["updated_at"] = utc_iso(store.clock())
     store.write(MAIN_DOC, doc)
     return doc
