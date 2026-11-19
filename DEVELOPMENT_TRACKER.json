@@ -2453,13 +2453,19 @@
         {
           "id": "S-DEV-012-01",
           "title": "Step 1: implementation on task/dev-supervisor-rate-limit-usage",
-          "status": "IN_PROGRESS",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Account usage is OBSERVED from a real rate_limit_event, else UNAVAILABLE with the reason",
             "No transcript or prompt text is read into the result",
             "Tests and validators pass"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "pull_request",
+              "commit": "3b51dc096b7980b47c9555cc454fd12a80d5fee8",
+              "summary": "Implementation delivered in PR #62 (merge commit 3b51dc096b7980b47c9555cc454fd12a80d5fee8); record caught up at closeout."
+            }
+          ]
         }
       ]
     },
