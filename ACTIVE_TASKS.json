@@ -1827,7 +1827,9 @@
         "orchestrator/tests/test_dev_telemetry.py",
         "orchestrator/tests/test_dev_cli.py",
         "orchestrator/tests/test_dev_session_policy.py",
-        "orchestrator/tests/test_dev_loop_repair.py"
+        "orchestrator/tests/test_dev_loop_repair.py",
+        "orchestrator/dev_supervisor/config.py",
+        "orchestrator/tests/test_dev_handoff.py"
       ],
       "acceptance_criteria": [
         "Context usage OBSERVED from statusLine context_window data when available, transcript estimate labelled INFERRED otherwise, UNAVAILABLE reported honestly",
@@ -1841,7 +1843,7 @@
       "test_requirements": [
         "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_context_management.py"
       ],
-      "integration_notes": "Requested by Lukas on 2026-11-20 (context-pressure and token-usage management). Owner is the dev_supervisor package owner (Main as Repository Coordinator). The running Main is not killed or replaced to test this."
+      "integration_notes": "Requested by Lukas on 2026-11-20 (context-pressure and token-usage management). Owner is the dev_supervisor package owner (Main as Repository Coordinator). The running Main is not killed or replaced to test this. Scope widened 2026-11-20 (registry-only, before the code PR): config.py for configurable thresholds/compact_tokens and test_dev_handoff.py for the new threshold defaults."
     }
   ]
 }
