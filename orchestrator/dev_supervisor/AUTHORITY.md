@@ -37,7 +37,8 @@ prompt. New autonomous kinds: `spawn_subagent`, `web_read`. New protected kinds:
 - Claude Code sessions: `python -B -m dev_supervisor.authority settings` prints a `hooks.PreToolUse` fragment (matcher
   `.*`) that runs `python -B <path>/authority.py hook`. Context via env: `CS_AUTHORITY_ROOTS`, `CS_AUTHORITY_REPO_ROOT`,
   `CS_AUTHORITY_OWNED_PATHS` (JSON list), `CS_AUTHORITY_GRANTS` (comma list; cannot contain unconditional denials),
-  `CS_AUTHORITY_MODE` (`advisory` default / `authoritative`), `CS_AUTHORITY_ROLE`, `CS_AUTHORITY_APPROVALS_DIR`.
+  `CS_AUTHORITY_MODE` (`advisory` default / `authoritative`), `CS_AUTHORITY_ROLE`, `CS_AUTHORITY_APPROVALS_DIR`,
+  `CS_AUTHORITY_BOUNDARY_PATHS` (hook script, live authority code, user settings; never written or named in shell).
 - `python -B -m dev_supervisor.authority approvals --dir <state>/approvals list|approve <id>`: list is read-only;
   approve is for a human terminal only (refused when `CS_AUTHORITY_MODE` is set or stdin is not a TTY).
 - `python -B -m dev_supervisor.authority check --kind paid_api` evaluates one action (exit 2 unless ALLOW).
@@ -49,9 +50,14 @@ prompt. New autonomous kinds: `spawn_subagent`, `web_read`. New protected kinds:
   `;` or `|` is split like a command; `git reset --hard`, `git branch -D` and `gh api --method DELETE` are not classified.
 - Reads of secrets via `printenv KEY`, a bare `$env:KEY`, `grep` on `.env` or the `Grep` tool are not caught in
   advisory mode (in authoritative mode a worker shell segment naming a secret file is refused).
-- Shell text is open-world: in advisory mode (Main) the hook is a deny-list over recognised patterns, not a sandbox;
-  in authoritative mode (workers) it is an allowlist of command heads, still parsed from text. Obfuscated commands,
-  scripts that do the protected thing internally, and tools it does not classify are not caught.
+- Shell text is open-world: in advisory mode (Main) the hook is a deny-list over recognised patterns, not a sandbox
+  (since review round 1 it also catches abbreviated `--no-verify`/`--no-gpg-sign`/`--force`/`--mirror`/`--delete`/
+  `--all` and root pathspecs such as `./`, `:`, `:/`, `x/..` for `git add`). In authoritative mode (workers) it is a
+  closed allowlist: command, subcommand, exact options and path arguments (STANDING_AUTONOMY.md), still parsed from
+  text. Scripts that do the protected thing internally (for example test code run by the allowed `python -m
+  unittest`) are not caught.
 - A session that can write its own hook settings or env can switch the hook off; the hook protects against mistakes
   and shortcuts, and must be installed by the supervisor into settings the session does not control.
-- Resolve MCP verbs are classified by name prefix (`get/list/...` read, everything else mutation): NOT TESTED against live tool names.
+- Resolve MCP tools are classified by their NAME (`get_*/list_*/...` read, everything else mutation). A neutrally
+  named tool whose `action`/`method` field names a read is silent in advisory mode and denied for workers. NOT TESTED
+  against live tool names.

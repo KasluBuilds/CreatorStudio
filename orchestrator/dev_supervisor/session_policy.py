@@ -38,6 +38,8 @@ MATCHER = ".*"          # every tool: authority.py classifies the closed tool ta
 MODES = {"main": "advisory", "worker": "authoritative", "reviewer": "authoritative"}
 SETTING_SOURCES = "project,local"   # the user's settings are merged into the derived file instead (not loaded twice)
 COPIED_USER_KEYS = ("hooks", "autoMode", "modelSettings", "model", "statusLine", "permissions")
+DROPPED_PERMISSION_KEYS = ("defaultMode", "additionalDirectories", "allow")   # never widened from the user file
+PROJECT_SETTINGS = ("settings.json", "settings.local.json")   # loaded by --setting-sources project,local
 DENY_PROBE = "git push --force origin task/policy-probe"
 ALLOW_PROBE = "git status --short"
 
@@ -54,6 +56,7 @@ class PolicyInstall:
     session_id: str
     role: str
     verified: bool = False
+    project_dir: str = ""       # launch cwd whose .claude/settings*.json must carry no hooks (checked again at launch)
 
 
 def _posix(p: str) -> str:
@@ -90,8 +93,19 @@ def default_user_settings() -> Path:
     return Path.home() / ".claude" / "settings.json"
 
 
+_FIRST_WORD = re.compile(r"""^\s*(?:"([^"]*)"|'([^']*)'|(\S+))""")
+
+
 def _is_rtk(hook: Any) -> bool:
-    return isinstance(hook, dict) and str(hook.get("command", "")).lstrip().startswith("rtk ")
+    """A command hook whose executable is rtk (``rtk``, ``rtk.exe``, any path, quoted or not, any case). The RTK
+    rewrite hook is ``rtk hook ...``; every other rtk invocation is dropped as well (a superset, never fewer)."""
+    if not isinstance(hook, dict):
+        return False
+    m = _FIRST_WORD.match(str(hook.get("command", "")))
+    if not m:
+        return False
+    exe = next(g for g in m.groups() if g is not None).replace("\\", "/").rsplit("/", 1)[-1].lower()
+    return exe in ("rtk", "rtk.exe")
 
 
 def _strip_rtk(hooks: Any) -> Dict[str, Any]:
@@ -127,7 +141,31 @@ def load_user_settings(path: Optional[os.PathLike] = None) -> Dict[str, Any]:
     out = {k: raw[k] for k in COPIED_USER_KEYS if k in raw}
     if "hooks" in out:
         out["hooks"] = _strip_rtk(out["hooks"])
+    if "permissions" in out:
+        perms = out.pop("permissions")
+        perms = {k: v for k, v in perms.items() if k not in DROPPED_PERMISSION_KEYS} if isinstance(perms, dict) else {}
+        if perms:
+            out["permissions"] = perms
     return out
+
+
+def check_project_settings(project_dir: str) -> None:
+    """Refuse (PolicyInstallError) when the launch cwd's ``.claude/settings.json`` or ``settings.local.json`` holds
+    ``disableAllHooks`` or any hooks, or cannot be read: ``--setting-sources project,local`` would load them."""
+    if not project_dir:
+        return
+    for name in PROJECT_SETTINGS:
+        p = Path(project_dir) / ".claude" / name
+        if not p.exists():
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise PolicyInstallError(f"project settings {p} cannot be read; refusing to launch") from None
+        if not isinstance(data, dict):
+            raise PolicyInstallError(f"project settings {p} is not a JSON object; refusing to launch")
+        if "disableAllHooks" in data or data.get("hooks"):
+            raise PolicyInstallError(f"project settings {p} sets disableAllHooks or hooks; refusing to launch")
 
 
 def build_settings(command: str, user: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -146,7 +184,7 @@ def approvals_dir(state_dir: os.PathLike) -> Path:
 
 def policy_env(repo_root: str, roots: Sequence[str] = (), owned_paths: Optional[Sequence[str]] = None,
                grants: Sequence[str] = (), role: str = "main",
-               approvals: Optional[os.PathLike] = None) -> Dict[str, str]:
+               approvals: Optional[os.PathLike] = None, boundary: Sequence[str] = ()) -> Dict[str, str]:
     if role not in ROLES:
         raise PolicyInstallError(f"unknown role {role!r}")
     env = {"CS_AUTHORITY_REPO_ROOT": _posix(repo_root),
@@ -158,7 +196,18 @@ def policy_env(repo_root: str, roots: Sequence[str] = (), owned_paths: Optional[
         env["CS_AUTHORITY_OWNED_PATHS"] = json.dumps(list(owned_paths))
     if grants:
         env["CS_AUTHORITY_GRANTS"] = ",".join(grants)
+    if boundary:
+        env[authority.BOUNDARY_ENV] = os.pathsep.join(_posix(str(b)) for b in boundary)
     return env
+
+
+def boundary_paths(script: Optional[str] = None, user_settings: Optional[os.PathLike] = None) -> List[str]:
+    """Files no session may write or name in a shell command: the hook script of the installed command, the live
+    authority.py and session_policy.py, and the user settings file the derived settings are built from."""
+    out = [_posix(os.path.abspath(script or authority.__file__)), _posix(os.path.abspath(authority.__file__)),
+           _posix(os.path.abspath(__file__)),
+           _posix(str(Path(user_settings) if user_settings is not None else default_user_settings()))]
+    return list(dict.fromkeys(out))
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -220,8 +269,10 @@ def install(state_dir: os.PathLike, session_id: str, role: str, repo_root: str, 
             run: Callable[..., Any] = subprocess.run, verify: bool = True,
             user_settings: Optional[os.PathLike] = None) -> PolicyInstall:
     path = settings_path(state_dir, role, session_id)
+    check_project_settings(repo_root)
     cmd = hook_command(python)
-    env = policy_env(repo_root, roots, owned_paths, grants, role=role, approvals=approvals_dir(state_dir))
+    env = policy_env(repo_root, roots, owned_paths, grants, role=role, approvals=approvals_dir(state_dir),
+                     boundary=boundary_paths(None, user_settings))
     wanted = build_settings(cmd, load_user_settings(user_settings))
     try:
         _atomic_write(path, json.dumps(wanted, indent=2) + "\n")
@@ -233,7 +284,8 @@ def install(state_dir: os.PathLike, session_id: str, role: str, repo_root: str, 
     if verify:
         verify_hook(cmd, env, repo_root, run)
         _VERIFIED[(str(path), cmd)] = wanted
-    return PolicyInstall(str(path), cmd, env, str(uuid.UUID(str(session_id))), role, verified=bool(verify))
+    return PolicyInstall(str(path), cmd, env, str(uuid.UUID(str(session_id))), role, verified=bool(verify),
+                         project_dir=str(repo_root))
 
 
 def argv_with_policy(argv: Sequence[str], inst: PolicyInstall) -> List[str]:
@@ -247,6 +299,7 @@ def argv_with_policy(argv: Sequence[str], inst: PolicyInstall) -> List[str]:
         raise PolicyInstallError("argv already carries --settings; merge it explicitly instead")
     if any(a == "--setting-sources" or a.startswith("--setting-sources=") for a in argv):
         raise PolicyInstallError("argv already carries --setting-sources; refusing to guess the merge")
+    check_project_settings(inst.project_dir)          # re-checked at launch: the files may have changed since install
     try:
         on_disk = json.loads(Path(inst.settings_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):

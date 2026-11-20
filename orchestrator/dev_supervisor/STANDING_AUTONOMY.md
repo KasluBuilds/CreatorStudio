@@ -1,6 +1,6 @@
 # Standing autonomy (T-DEV-028, issue #44)
 
-Status: **IMPLEMENTED, unit-tested offline (synthetic data).** Not live-tested with a supervisor-launched session.
+Status: **IMPLEMENTED, unit-tested offline (synthetic data); security review round 1 fixes applied.** Not live-tested with a supervisor-launched session.
 
 Source: Lukas's standing authority of 2026-11-20. Routine development needs no approval; a short list stays protected.
 This extends the existing authority architecture (`authority.py`, `session_policy.py`, `AUTHORITY.md`,
@@ -24,6 +24,10 @@ This extends the existing authority architecture (`authority.py`, `session_polic
 | Main | `CS_AUTHORITY_MODE=advisory` | Silence for ALLOW (the normal permission mode decides); deny for DENY; REQUIRE_AUTHORIZATION is queued and denied; an approved identical call gets `ask`. |
 | Workers / reviewers | `CS_AUTHORITY_MODE=authoritative` | Explicit `allow` only for non-shell ALLOW and for shell commands whose every segment head is on the routine allowlist; explicit deny for everything else ("not on the worker routine allowlist"). Protected actions are always denied. The result does not depend on the permission mode. |
 | Worker confinement | `ConfiguredSupervisor.build_spec` | `CS_AUTHORITY_REPO_ROOT` and `CS_AUTHORITY_ROOTS` are the worker's worktree, not the main checkout. Main keeps `main_roots`. |
+| Authority boundary (review B5) | `touches_boundary_path` / `touches_boundary_command` | Approvals dir, policy dir, grants file, `.claude/settings*.json`, and now the live `authority.py` and `session_policy.py` (the hook script of the running hook), plus `CS_AUTHORITY_BOUNDARY_PATHS` (hook script, user settings file) set by `session_policy`. Write/Edit to them and shell commands naming them (absolute, or relative to the cwd or the repo root) are `authority_change` in both modes. Reading them with the Read tool stays allowed. Writes into any `.git` directory are denied (`git-internals`). |
+| Read tools (review N2, N3) | `classify_tool_call` | `Read`/`NotebookRead` without a path are denied. Absolute `Glob` patterns are gated by their literal directory; `..`, `~`, drive-relative and provider patterns are outside the environment. A `Grep` `glob` that targets secret names (`.env*`, `*.pem`, `.*` ...) is secret disclosure. Drive-relative `C:x`, provider and `~` paths are denied everywhere. `SECRET_NAME` also covers `.git-credentials`, `.claude.json`, `gh/hosts.yml`. |
+| Resolve (review N4) | `resolve_name_is_read` | Read status comes from the tool NAME. A neutrally named tool whose `action` names a read is silent in advisory mode and denied for workers; a mutating name is a mutation whatever the input says. |
+| Project settings (review N6) | `session_policy.check_project_settings` | `install` and `argv_with_policy` refuse a launch cwd whose `.claude/settings.json` / `settings.local.json` holds `disableAllHooks` or hooks (or cannot be read). |
 | Pending approvals | hook + `<state>/approvals/pending/<id>.json` | id = first 16 hex of sha256(tool name + canonical input); atomic write; dedupe; fields `id, call_hash, created_utc, session_id, role, tool, input_summary` (redacted, truncated)`, rule, reason, status`. A write failure still denies. |
 | Human-only approve | `approvals approve <id>` | Refuses when `CS_AUTHORITY_MODE` is set (any hooked session) or stdin is not a TTY; asks to type `APPROVE`; records `APPROVED` + `approved_utc`. The hook denies Main's Write/Edit to the approvals dir, the policy settings dir, `authority_grants.json` and `.claude/settings*.json`, and any shell command that names them or runs `... approve`. |
 | Settings | `session_policy.install` | Derived per-session file = copy of `hooks, autoMode, modelSettings, model, statusLine, permissions` from `~/.claude/settings.json` with every `rtk ...` hook removed, plus the authority hook first. `env`, `apiKeyHelper`, `awsAuthRefresh`, `otelHeadersHelper` and every other key are never copied. Missing/unreadable user file: authority hook only. Launch argv: `--settings <file> --setting-sources project,local`. |
@@ -31,17 +35,45 @@ This extends the existing authority architecture (`authority.py`, `session_polic
 | Main prompt | `launch.write_main_prompt` | STANDING AUTHORITY section: routine list, protected list, never ask for routine work, protected actions queue, failing gate = stop and report. |
 
 ## Worker routine allowlist (authoritative mode)
-`git` status/diff/log/show/fetch/pull/rev-parse/ls-files/merge-base, branch (no delete/move/copy/force),
-checkout/switch (no force, `-B`, `--`, `.`), add (explicit paths only), commit (no `-a`, `--amend`, `--no-verify`),
-worktree list/add, stash list/show/push/apply, remote (`-v`, get-url), config `--get`; global options only `-C` and
-`--no-pager`. `gh pr|issue view/list/create/comment` (+ `pr checks/diff`), `gh api` GET only (no `-X` other than GET,
-no `-f/-F/--field/--input`). `python [-B] [-I] -m unittest|governance|dev_supervisor[.x]` (not `session_policy`,
-`live_autonomy` or `--yes`) and `creator_state` read commands. `ls dir pwd cd cat type head tail wc grep rg`
-(no `--pre`) `find` (no `-delete/-exec...`) `sort` (no `-o`) `uniq` (one operand) `diff echo mkdir` (inside the
-environment) `test true printf`, `sed -n` (no `-i`, no `w`/`e` commands). `rtk <allowed>` and `rtk bypass <allowed>`.
-Any redirection other than `2>&1` / `>/dev/null` / `>$null`, `&`, backticks, `$(`, `${`, `<(`, `>(` is refused.
-Secret files and launchers named in any segment are refused. Not on the list: `git push` (Main pushes), `gh pr merge`.
-Multi-line commit messages: use several `-m` or `git commit -F <file>`; `$(cat <<EOF ...)` is refused.
+Closed at every level since security review round 1 (B1-B4): command, then subcommand, then EXACT options (an
+unknown option or any abbreviation of a listed one is refused, because git, gh and PowerShell accept unambiguous
+prefixes), then path arguments. Source of truth: `GIT_SPECS`, `GH_SPECS`, `GOVERNANCE_SPECS`,
+`DEV_SUPERVISOR_SPECS`, `CREATOR_STATE_SPECS` and the per-command specs in `authority.py`.
+- **Working directory.** The payload cwd must be inside the roots, otherwise every shell command is denied (this also
+  covers a `cd` that persisted from an earlier call). `cd`/`pushd` take exactly one path that resolves inside the roots
+  (relative paths against the current cwd; `..` that leaves the roots, `~`, `-`, `C:` and `C:x` are refused); later
+  segments of the same command use the new cwd.
+- **Paths.** Every path argument is resolved against that cwd and must stay inside the roots (the temp dir does NOT
+  count for shell). Refused: `~`, drive-relative `C:x`, provider/URL forms (`env:X`, `HKLM:`), UNC/device paths, secret
+  and launcher names, globs that start with a glob character (could expand into options), dot-globs (`.*`), brace
+  expansion, and for writes (`mkdir`, `snapshot --out`) any `.git` component.
+- **Expansion.** Any unquoted or double-quoted `$`, PowerShell `@`/`(...)`, `--%`, backticks, `$(`, `${`, `<(`, `>(`
+  and any redirection other than `2>&1` / `>/dev/null` / `>$null` or `&` outside quotes is refused.
+- **git** (no global option at all: `-C`, `--git-dir`, `--work-tree`, `-c`, `--no-pager` ... are refused):
+  `status`, `diff`, `log`, `show` (no `--ext-diff`, `--textconv`, `--output`, `--no-index`), `rev-parse`, `ls-files`,
+  `merge-base` (positionals checked against the roots); `fetch`/`pull` with a small flag list, a remote NAME and
+  branch names only (no `--upload-pack`, `--receive-pack`, `-u`, `--exec`, `--config`, URLs, paths or refspecs with
+  `:`/`+`); `branch` list or create (no `-f/-d/-D/-m/-M/-c/-C/-u`); `checkout -b <new> [<start>]` only; `switch <b>`
+  or `switch -c <new> [<start>]`; `add` explicit paths (no `.`, `./`, `:`, `:/`, magic, git globs, `-A/-u/-f/-p`, no
+  pathspec equal to a root or the cwd); `commit` with `-m/--message/-F/--file` (inside the roots)/`--author`/`-q/-v/-s`
+  only, a message required, no pathspecs (never `--amend`, `--no-verify`, `-a`, `-n` or abbreviations); `worktree
+  list`; `stash list|show`; `remote [-v]`, `remote get-url <name>`; `config --get|--get-all` of `user.*`,
+  `remote.*.url|fetch`, `branch.*.remote|merge`, `init.defaultBranch`. `worktree add` is no longer allowed.
+- **gh:** `pr view|list|checks|diff|create|comment`, `issue view|list|create|comment` with per-verb option lists;
+  `--body-file`/`-F` must be inside the roots; `--repo` only on reads; `--jq`, `--template`, `--web` refused.
+  `gh api <endpoint>` GET only (`-X GET`, `--paginate`, `-i`, `--silent`); no fields, headers, `--hostname`,
+  `--jq` or `graphql`.
+- **python** `[-B] [-I] -m`: `unittest` (discover `-s/-t` inside the roots), `governance validate [--against REF]`,
+  `leases [--now]`, `handoff [--check]` (never `--write`), `wave submit [--attempts N]`, `wave status [id] [--json]`;
+  `dev_supervisor status|workers|doctor|report|compact-check|snapshot [--out inside]|route` (never `--yes` or
+  `--config`); `creator_state` read commands (`list check resume log checkpoints inventory ingest-status
+  verify-sources incoming-list incoming-inspect shots-plan shots-status shots-check`, no `--root/--ffprobe/--ffmpeg`).
+  Everything else (including `wave close`, `scope`, `score --write`, `start`, `assign`, `replace`) is denied.
+- **Simple commands** with exact option lists: `ls dir pwd cd pushd cat type head tail wc grep rg find sort uniq diff
+  echo printf true test mkdir` and `sed -n` with a line-range print script only (`1,80p`, `'1,$p'`). `rtk <allowed>`
+  and `rtk bypass <allowed>`.
+- Not on the list: `git push` (Main pushes), `gh pr merge`, anything else. Multi-line commit messages: several `-m`
+  or `git commit -F <file inside the roots>`.
 
 ## How Lukas approves
 1. `python -B -m dev_supervisor.authority approvals --dir <state>/approvals list` in his own terminal (not inside a
@@ -67,3 +99,25 @@ Multi-line commit messages: use several `-m` or `git commit -F <file>`; `$(cat <
 - Tools present in some Claude Code builds but not in the closed table (for example `EnterWorktree`, `ExitWorktree`,
   `BashOutput`, `KillShell`, `ReportFindings`) are denied until they are added to the table deliberately.
 - Approval records are reused: once APPROVED, every identical call gets `ask` (still confirmed natively each time).
+
+### Known limits accepted in review round 1 (left as they are)
+- **N5, temp dir:** the temp directory stays a writable root for every session's file tools (not for worker shell
+  path arguments). Claude scratchpads and dispatch prompt files live under `%TEMP%\claude\...`, so a worker could
+  rewrite another session's prompt file (a cross-session injection path). Not changed in this round.
+- **N8, approvals:** an APPROVED record is never consumed (every identical later call gets `ask` again). In advisory
+  mode the shell boundary is a substring deny-list: Main could still forge a record by building the path inside
+  `python -c` from `CS_AUTHORITY_APPROVALS_DIR`, or by calling `approve(..., isatty=True, env={})` directly. Impact is
+  limited because APPROVED only ever yields `ask`, never `allow`, and the native prompt still reaches the human
+  (INFERRED, not tested). `_APPROVE_CMD` also denies harmless text such as a commit message "authority: approve ...".
+
+### Other limits after round 1
+- Running code is running code: `python -m unittest`, `governance` and `dev_supervisor` import modules from the
+  worker's own worktree, so a worker that writes a test or edits those packages can make an allowed command do
+  anything. The allowlist constrains the command line, not what repository code does.
+- The boundary check on shell text matches the boundary paths absolutely or relative to the payload cwd or the repo
+  root; a path built at runtime, or a relative path after a `cd` inside the same command, is not recognised in
+  advisory mode. Workers are covered separately because the live files are outside their roots.
+- Shell parsing splits on `;`, `|`, `&&`, `||` and newlines even inside quotes; this only ever produces extra denials.
+- A recursive search inside the roots (`grep -r KEY .`, `rg`, the Grep tool without a glob) can still read a secret
+  file that happens to sit inside the worktree; only targeted names and globs are refused. The repository holds no
+  credentials by project rule.

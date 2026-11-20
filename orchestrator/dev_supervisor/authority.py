@@ -68,7 +68,13 @@ LAUNCHER_FILES = ("pro.ps1", "backup.ps1", ".mcp.json")
 LAUNCHER_PREFIXES = ("tools/",)
 GRANTS_FILE = "authority_grants.json"           # only a human edits this; the policy refuses writes to it
 SECRET_NAME = re.compile(r"(^|/)(\.env(\..*)?|\.netrc|id_(rsa|ed25519|ecdsa)|[^/]*\.(pem|key|pfx|p12)|"
-                         r"\.credentials?\.json|credentials(\.json)?|secrets?\.(json|ya?ml|toml))$", re.I)
+                         r"\.credentials?\.json|credentials(\.json)?|secrets?\.(json|ya?ml|toml)|"
+                         r"\.git-credentials|\.claude\.json|gh/hosts\.ya?ml)$", re.I)
+# canonical secret file names, used to test whether a search glob could select one (Grep ``glob``)
+SECRET_SAMPLES = (".env", ".env.local", ".netrc", "id_rsa", "id_ed25519", "id_ecdsa", "x.pem", "x.key", "x.pfx",
+                  "x.p12", ".credentials.json", "credentials.json", "credentials", "secrets.json", "secret.yaml",
+                  "secrets.toml", ".git-credentials", ".claude.json", "hosts.yml", "hosts.yaml")
+BOUNDARY_ENV = "CS_AUTHORITY_BOUNDARY_PATHS"   # extra boundary files (hook script, user settings), os.pathsep-joined
 
 
 @dataclass(frozen=True)
@@ -97,6 +103,7 @@ class PolicyContext:
     grants: FrozenSet[str] = frozenset()        # protected kinds a human explicitly authorised (never autonomous kinds)
     repo_root: str = ""
     approvals_dir: str = ""                     # <state>/approvals: pending approval records (human-only grants)
+    boundary_paths: Tuple[str, ...] = ()        # live authority code, hook script, user settings (never written)
 
 
 class AuthorityDenied(Exception):
@@ -162,6 +169,9 @@ def _path_gate(action: Action, ctx: PolicyContext, *, mutating: bool) -> Optiona
     t = action.target
     if not t:
         return None
+    tp = t.replace("\\", "/")
+    if re.match(r"^[A-Za-z]:(?!/)", tp) or (":" in tp and not _is_abs(tp)) or tp.startswith("~"):
+        return _deny("outside-environment", "drive-relative, provider or home path cannot be confined; use an absolute path")
     rel = relative_to_repo(t, ctx)
     leaf = _norm(t).rsplit("/", 1)[-1].lower()
     if SECRET_NAME.search(_norm(t)) and mutating:
@@ -238,6 +248,8 @@ def decide(action: Action, ctx: PolicyContext = PolicyContext()) -> Decision:
              CREATE_PR, UPDATE_RECORD, GIT_COMMIT):
         if k == READ and SECRET_NAME.search(_norm(action.target or "")):
             return _deny("no-secret-disclosure", "secret/credential files are not read into a session")
+        if k == READ and a.get("require_path") and not action.target:
+            return _deny("missing-path", "read without a target path cannot be evaluated; failing closed")
         mutating = k in (UPDATE_RECORD, GIT_COMMIT)
         g = _path_gate(action, ctx, mutating=mutating)
         if g:
@@ -251,6 +263,9 @@ def decide(action: Action, ctx: PolicyContext = PolicyContext()) -> Decision:
         g = _path_gate(action, ctx, mutating=True)
         if g:
             return g
+        if ".git" in [c.lower() for c in _norm(action.target).split("/")]:
+            return _deny("git-internals", "files under a .git directory (config, hooks, gitdir) are never written: "
+                                          "a crafted git config runs arbitrary commands")
         rel = relative_to_repo(action.target, ctx)
         if _launcher(rel) and EDIT_FILE not in ctx.grants:
             return Decision(ASK, "launcher-files", "launchers, .mcp.json and tools/ need a stated reason before editing")
@@ -315,6 +330,17 @@ _SECRET_ENV = re.compile(r"(\$env:|\$\{?env:|%|\$)\w*(API[_-]?KEY|TOKEN|SECRET|P
 _RESOLVE_READ = re.compile(r"^(get|list|is|read|find|search|describe|inspect|status|info|has|count|export_info)", re.I)
 
 
+def _short_has(tok: str, letters: str) -> bool:
+    """A bundle of short flags (``-am``) that contains any of ``letters``."""
+    return bool(re.match(r"^-[A-Za-z]+$", tok)) and any(c in tok[1:] for c in letters)
+
+
+def _abbr(tok: str, full: str, minlen: int) -> bool:
+    """``tok`` (an option, ``=value`` ignored) is ``full`` or an abbreviation of it at least ``minlen`` long."""
+    name = tok.split("=", 1)[0]
+    return name.startswith("--") and len(name) >= minlen and full.startswith(name)
+
+
 def _tokens(segment: str) -> List[str]:
     return [t.strip("\"'") for t in _TOKEN.findall(segment)]
 
@@ -356,23 +382,29 @@ def classify_command(command: str) -> List[Action]:
             flags = [t.lower() for t in rest if t.startswith("-")]
             if any("hookspath" in g or "gpgsign" in g for g in gflags):
                 out.append(Action(SECURITY_BYPASS))
-            if sub == "commit" and any(f in ("--no-verify", "-n", "--no-gpg-sign") for f in flags):
+            # git accepts unambiguous prefixes of long options (`--no-veri`, `--forc`): match abbreviations too
+            bypass = any(_abbr(f, "--no-verify", 5) or _abbr(f, "--no-gpg-sign", 5) for f in flags)
+            if sub == "commit" and (bypass or any(f == "-n" or _short_has(f, "n") for f in flags)):
                 out.append(Action(SECURITY_BYPASS))
-            elif sub in ("merge", "rebase", "cherry-pick", "am", "push") and any(f in ("--no-verify", "--no-gpg-sign") for f in flags):
+            elif sub in ("merge", "rebase", "cherry-pick", "am", "push") and bypass:
                 out.append(Action(SECURITY_BYPASS))
             elif sub == "push":
-                force = any(f in ("-f", "--force", "--force-with-lease", "--mirror", "--delete", "-d") or f.startswith("--force") for f in flags)
+                force = any(f in ("-f", "-d") or _short_has(f, "fd") or f.startswith("--force") or _abbr(f, "--force", 4)
+                            or _abbr(f, "--force-with-lease", 4) or _abbr(f, "--mirror", 4) or _abbr(f, "--delete", 4)
+                            for f in flags)
                 refs = [t for t in rest if not t.startswith("-")]
                 specs = refs[1:]
                 if any(t.startswith("+") for t in specs):
                     force = True
                 dsts = [r.split(":")[-1].replace("refs/heads/", "").lstrip("+") for r in specs]
-                if "--all" in flags or "--mirror" in flags:
+                if any(_abbr(f, "--all", 4) or _abbr(f, "--mirror", 4) for f in flags):
                     dsts.append("main")        # may include main: not delegated
                 main_hit = next((d for d in dsts if d.lower() in ("main", "master")), "")
                 out.append(Action(FORCE_PUSH if force else GIT_PUSH, attrs={"branch": main_hit or (dsts[-1] if dsts else ""), "force": force}))
-            elif sub == "add" and any(t in (".", "-A", "--all", "-a") for t in rest):
-                out.append(Action(STAGE_ALL))
+            elif sub == "add" and any(t in ("-A", "-a", "*") or _short_has(t, "A") or _abbr(t.lower(), "--all", 4)
+                                      or (not t.startswith("-") and (t.startswith(":") or _strip_dot(t) == ""))
+                                      for t in rest):
+                out.append(Action(STAGE_ALL))       # `.`, `./`, `x/..`, `:`, `:/`, `:!x`, `*`, `-A`, `--al(l)`
             elif sub in ("filter-branch", "filter-repo") or (sub == "reflog" and "expire" in low) or                     (sub == "update-ref" and "-d" in low):
                 out.append(Action(HISTORY_REWRITE))
             elif sub == "config" and any(("hookspath" in t or "gpgsign" in t) for t in low) and "--get" not in low and "--get-all" not in low and "--list" not in low:
@@ -449,6 +481,65 @@ def _read_actions(path: str) -> List[Action]:
     return [Action(READ, path)]
 
 
+_RESOLVE_MUTATING_NAME = re.compile(
+    r"(^|_)(delete|remove|create|add|set|update|import|render|apply|move|replace|clear|append|insert|save|close|open|"
+    r"switch|load|quit|restart|export|stop|start|play|grade|link|unlink|relink|sync|merge|split|cut|trim|write|"
+    r"duplicate|rename|edit|run|execute|enable|disable|reset|undo|redo|new)(_|$)", re.I)
+
+
+def resolve_name_is_read(tool: str) -> bool:
+    """A Resolve MCP tool whose NAME is a read verb (``get_*``, ``list_*`` ...)."""
+    return tool.startswith(RESOLVE_PREFIX) and bool(_RESOLVE_READ.match(tool[len(RESOLVE_PREFIX):]))
+
+
+def resolve_input_dependent(tool: str, tool_input: Dict[str, Any]) -> bool:
+    """A neutrally named Resolve tool (``timeline``) whose ``action``/``method`` field names a read verb: a read only
+    if the caller is honest. Mutating names (``delete_timeline``) are never input-dependent reads."""
+    if not tool.startswith(RESOLVE_PREFIX) or resolve_name_is_read(tool):
+        return False
+    verb = str(tool_input.get("action") or tool_input.get("method") or "")
+    return bool(verb) and bool(_RESOLVE_READ.match(verb)) and not _RESOLVE_MUTATING_NAME.search(tool[len(RESOLVE_PREFIX):])
+
+
+def _pattern_actions(pattern: str) -> List[Action]:
+    """A Glob ``pattern`` or Grep ``glob``: absolute patterns are gated by their literal directory prefix; home,
+    drive-relative, provider and ``..`` patterns are outside the environment."""
+    p = (pattern or "").replace("\\", "/")
+    if not p:
+        return []
+    if p.startswith("~") or re.match(r"^[A-Za-z]:(?!/)", p) or (":" in p and not re.match(r"^[A-Za-z]:/", p)) \
+            or ".." in p.split("/") or p.startswith("//"):
+        return [Action(OUTSIDE_ENVIRONMENT, pattern)]
+    if _is_abs(p):
+        m = re.search(r"[*?\[{]", p)
+        lit = p[:m.start()].rsplit("/", 1)[0] if m else p
+        return [Action(READ, lit if lit and _is_abs(lit + "/") else p)]
+    return []
+
+
+def _brace_alternatives(g: str) -> List[str]:
+    m = re.search(r"\{([^{}]*)\}", g)
+    if not m:
+        return [g]
+    return [x for alt in m.group(1).split(",") for x in _brace_alternatives(g[:m.start()] + alt + g[m.end():])][:64]
+
+
+_BENIGN_SAMPLES = ("x.py", "config.json", "x.yml", "x.yaml", "x.toml", "readme.md", "x.txt", "x.js", "x.ts", "x")
+
+
+def glob_may_select_secret(glob: str) -> bool:
+    """True when a search glob TARGETS secret files: it matches a canonical secret name (``.env*``, ``*.pem``,
+    ``.e?v``, ``.*``) and no ordinary file name. A generic glob (``*``, ``*.json``) is no narrower than searching
+    without a glob, which the path gate already governs."""
+    import fnmatch
+    for alt in _brace_alternatives(glob.replace("\\", "/")):
+        last = (alt.rsplit("/", 1)[-1] or alt).lower()
+        if any(fnmatch.fnmatchcase(s, last) for s in SECRET_SAMPLES) and \
+                not any(fnmatch.fnmatchcase(b, last) for b in _BENIGN_SAMPLES):
+            return True
+    return False
+
+
 def classify_tool_call(tool: str, tool_input: Dict[str, Any], cwd: str = "") -> List[Action]:
     """Closed-world: every known tool maps to its actions ([] = a session-internal tool); anything else is UNKNOWN_TOOL."""
     t = tool if isinstance(tool, str) else ""
@@ -463,7 +554,19 @@ def classify_tool_call(tool: str, tool_input: Dict[str, Any], cwd: str = "") -> 
         path = str(tool_input.get(READ_TOOLS[t]) or "")
         if not path and t in ("Glob", "Grep", "LS"):
             path = cwd                                  # no path: the tool searches the working directory
-        return _read_actions(path)
+        if t in ("Read", "NotebookRead"):
+            if not path:
+                return [Action(READ, "", {"require_path": True})]
+            return _read_actions(path)
+        acts = _read_actions(path)
+        if t == "Glob":
+            acts += _pattern_actions(str(tool_input.get("pattern") or ""))
+        if t == "Grep":
+            g = str(tool_input.get("glob") or "")
+            acts += _pattern_actions(g)
+            if g and glob_may_select_secret(g):
+                acts.append(Action(SECRET_DISCLOSURE, g))
+        return acts
     if t in INTERNAL_TOOLS:
         return []
     if t in SUBAGENT_TOOLS:
@@ -479,8 +582,13 @@ def classify_tool_call(tool: str, tool_input: Dict[str, Any], cwd: str = "") -> 
             return [Action(READ, "")]
         return [Action(PUBLISH, t)]
     if t.startswith(RESOLVE_PREFIX):
+        # The tool NAME decides (review N4). A read-named tool is a read. A tool whose read status would depend on a
+        # caller-supplied field (``action``/``method``) is an input-dependent read in advisory mode only; the
+        # authoritative hook denies it (``resolve_input_dependent``). Everything else is a production mutation.
         verb = str(tool_input.get("action") or tool_input.get("method") or "")
-        return [] if _RESOLVE_READ.match(verb) else [Action(RESOLVE_MUTATION, t, {"production": True, "verb": verb})]
+        if resolve_name_is_read(t) or resolve_input_dependent(t, tool_input):
+            return []
+        return [Action(RESOLVE_MUTATION, t, {"production": True, "verb": verb})]
     if t.startswith(IDE_PREFIX):
         name = t[len(IDE_PREFIX):]
         if name == "getDiagnostics":
@@ -504,22 +612,47 @@ def _boundary_dirs(ctx: PolicyContext) -> List[str]:
     return [a, a.rsplit("/", 1)[0] + "/policy"] if "/" in a else [a]
 
 
+def live_boundary_files() -> Tuple[str, ...]:
+    """The authority code this hook process runs: its own file (the hook script named in the installed hook command)
+    and the sibling session_policy.py that installs it."""
+    here = _norm(os.path.abspath(__file__))
+    return (here, here.rsplit("/", 1)[0] + "/session_policy.py")
+
+
+def _boundary_files(ctx: PolicyContext) -> List[str]:
+    return [_norm(p) for p in (*live_boundary_files(), *ctx.boundary_paths) if p]
+
+
 def touches_boundary_path(path: str, ctx: PolicyContext) -> bool:
-    """True for the approvals dir, the policy settings dir, the grants file and Claude Code settings files."""
+    """True for the approvals dir, the policy settings dir, the grants file, Claude Code settings files, the live
+    authority code (authority.py, session_policy.py, the hook script) and the user settings file."""
     if not path:
         return False
     n = _norm(path)
     if n.lower().rsplit("/", 1)[-1] == GRANTS_FILE or _HOOK_SETTINGS.search(n):
         return True
     p = path if _is_abs(path.replace("\\", "/")) else (ctx.repo_root.rstrip("/\\") + "/" + path if ctx.repo_root else path)
-    return any(_inside(p, d) for d in _boundary_dirs(ctx))
+    return any(_inside(p, d) for d in _boundary_dirs(ctx)) or any(_inside(p, f) for f in _boundary_files(ctx))
 
 
-def touches_boundary_command(command: str, ctx: PolicyContext) -> bool:
+def _rel_from(path: str, base: str) -> str:
+    a, b = _norm(path).lower(), _norm(base).rstrip("/").lower()
+    return a[len(b) + 1:] if b and a.startswith(b + "/") else ""
+
+
+def touches_boundary_command(command: str, ctx: PolicyContext, cwd: str = "") -> bool:
+    """A shell command that names a boundary path: absolute, or relative to the payload cwd or the repo root.
+    Substring match on the text (see STANDING_AUTONOMY.md for what this cannot catch)."""
     low = re.sub(r"/+", "/", (command or "").replace("\\", "/").lower())
     if GRANTS_FILE in low or ".claude/settings" in low or "approvals/pending" in low or _APPROVE_CMD.search(command or ""):
         return True
-    return any(d.lower() in low for d in _boundary_dirs(ctx))
+    if any(d.lower() in low for d in _boundary_dirs(ctx)):
+        return True
+    for f in _boundary_files(ctx):
+        forms = {f.lower(), _rel_from(f, cwd), _rel_from(f, ctx.repo_root)}
+        if any(x and x in low for x in forms):
+            return True
+    return False
 
 
 _ORDER = {ALLOW: 0, ASK: 1, DENY: 2}
@@ -527,11 +660,12 @@ _ORDER = {ALLOW: 0, ASK: 1, DENY: 2}
 
 def evaluate_tool_call(tool: str, tool_input: Dict[str, Any], ctx: PolicyContext, cwd: str = "") -> Decision:
     """Worst verdict across the actions implied by the call. Unknown tools are denied (closed world)."""
-    acts = classify_tool_call(tool, tool_input, cwd)
+    acts: List[Action] = []          # boundary first: on equal verdicts its rule is the one reported
     if tool in WRITE_TOOLS and touches_boundary_path(str(tool_input.get("file_path") or tool_input.get("notebook_path") or ""), ctx):
         acts.append(Action(AUTHORITY_CHANGE, str(tool_input.get("file_path") or "")))
-    if tool in SHELL_TOOLS and touches_boundary_command(str(tool_input.get("command", "")), ctx):
+    if tool in SHELL_TOOLS and touches_boundary_command(str(tool_input.get("command", "")), ctx, cwd):
         acts.append(Action(AUTHORITY_CHANGE, "shell"))
+    acts += classify_tool_call(tool, tool_input, cwd)
     worst = Decision(ALLOW, "no-protected-action", "no protected pattern recognised")
     for act in acts:
         d = decide(act, ctx)
@@ -541,160 +675,590 @@ def evaluate_tool_call(tool: str, tool_input: Dict[str, Any], ctx: PolicyContext
 
 
 # ------------------------------------------------------------------ worker routine allowlist (authoritative mode)
+# CLOSED at every level (T-DEV-028 security review round 1): command -> subcommand -> EXACT options -> path arguments.
+# Many tools (git, gh, PowerShell) accept unambiguous prefixes of long options; an option that is not exactly on the
+# list (an abbreviation included) is refused. Path arguments are resolved against the payload cwd (and any `cd` earlier
+# in the same command) and must stay inside the environment roots (not the temp dir). If in doubt, deny: an explicit
+# allow is a promise.
 
 _SAFE_REDIRECT = re.compile(r"\s*(2>&1|[12]?>\s*/dev/null|[12]?>\s*\$null)\s*", re.I)
-_GIT_ANY = ("status", "diff", "log", "show", "fetch", "pull", "rev-parse", "ls-files", "merge-base")
-_GH_VERBS = {"pr": ("view", "list", "create", "comment", "checks", "diff"), "issue": ("view", "list", "create", "comment")}
-_SIMPLE_HEADS = ("ls", "dir", "pwd", "cd", "cat", "type", "head", "tail", "wc", "grep", "diff", "echo", "test", "true",
-                 "printf")
-CREATOR_STATE_READ = ("list", "check", "resume", "log", "checkpoints", "inventory", "ingest-status", "verify-sources",
-                      "incoming-list", "incoming-inspect", "shots-plan", "shots-status", "shots-check", "--help", "-h")
-_SED_WRITE = re.compile(r"(^|[;{}/\d$!\s])[wWe](\s|$)")
+_PIECE = re.compile(r"\"[^\"]*\"|'[^']*'|[^\s\"']+")
+_BRACE_EXPANSION = re.compile(r"\{[^}]*(,|\.\.)[^}]*\}")
+_GLOB_CHARS = re.compile(r"[*?\[]")
 
 
-def _short_has(tok: str, letters: str) -> bool:
-    """A bundle of short flags (``-am``) that contains any of ``letters``."""
-    return bool(re.match(r"^-[A-Za-z]+$", tok)) and any(c in tok[1:] for c in letters)
+@dataclass(frozen=True)
+class _Tok:
+    text: str
+    expands: bool = False     # unquoted or double-quoted `$`, or a PowerShell `@`/`(` expression: the shell rewrites it
+    globs: bool = False       # unquoted glob, brace expansion or a leading `~`
 
 
-def _git_routine(tok: List[str]) -> bool:
-    i = 1
-    while i < len(tok) and tok[i].startswith("-"):
-        if tok[i] == "-C" and i + 1 < len(tok):
-            i += 2
-        elif tok[i] == "--no-pager":
+def shell_tokens(segment: str) -> Optional[List[_Tok]]:
+    """Shell-like words with quotes removed and expansion risk recorded; None for an unbalanced quote."""
+    toks: List[_Tok] = []
+    i, n = 0, len(segment)
+    while i < n:
+        if segment[i].isspace():
             i += 1
-        else:
-            return False                              # -c (config override) and every other global option
-    if i >= len(tok):
+            continue
+        parts: List[str] = []
+        expands = globs = False
+        first = True
+        while i < n and not segment[i].isspace():
+            m = _PIECE.match(segment, i)
+            if not m:
+                return None
+            p = m.group(0)
+            if p[0] == "'":
+                parts.append(p[1:-1])
+            elif p[0] == '"':
+                parts.append(p[1:-1])
+                expands = expands or "$" in p
+            else:
+                parts.append(p)
+                expands = expands or "$" in p or (first and p[:1] == "@") or \
+                    (p not in ("\\(", "\\)") and ("(" in p or ")" in p))
+                globs = globs or bool(_GLOB_CHARS.search(p) or _BRACE_EXPANSION.search(p)) or (first and p.startswith("~"))
+            first = False
+            i = m.end()
+        toks.append(_Tok("".join(parts), expands, globs))
+    return toks
+
+
+def _env_roots(ctx: PolicyContext) -> List[str]:
+    return [r for r in (*ctx.roots, ctx.repo_root) if r]
+
+
+def within_roots(path: str, ctx: PolicyContext) -> bool:
+    """True when ``path`` (absolute) is inside one of the environment roots. The temp directory does not count."""
+    return bool(path) and _is_abs(path.replace("\\", "/")) and any(_inside(path, r) for r in _env_roots(ctx))
+
+
+def resolve_shell_path(arg: str, cwd: str) -> Optional[str]:
+    """Absolute normalised path of a shell argument, or None when it cannot be checked (home, drive-relative,
+    provider/URL forms such as ``env:X`` or ``HKLM:``, UNC/device paths)."""
+    a = (arg or "").replace("\\", "/")
+    if not a or a.startswith("~") or a.startswith("//"):
+        return None
+    if re.match(r"^[A-Za-z]:(?!/)", a) or (":" in a and not re.match(r"^[A-Za-z]:/", a)):
+        return None
+    if _is_abs(a):
+        return _norm(a)
+    if not cwd:
+        return None
+    return _norm(cwd.replace("\\", "/").rstrip("/") + "/" + a)
+
+
+def _sensitive_name(p: str) -> bool:
+    n = _norm(p.replace("\\", "/"))
+    return bool(SECRET_NAME.search(n)) or n.lower().rsplit("/", 1)[-1] in ("pro.ps1", "backup.ps1")
+
+
+def _path_ok(tok: _Tok, cwd: str, ctx: PolicyContext, *, write: bool = False) -> bool:
+    """A path operand: inside the roots, not a secret or launcher, globs only with a literal leading character and
+    never a dot-glob (``.*`` can match ``..``); writes never touch a ``.git`` component."""
+    t = tok.text
+    if not t or t.startswith("-") or _sensitive_name(t):
         return False
-    sub, rest = tok[i].lower(), tok[i + 1:]
-    low = [t.lower() for t in rest]
-    if any(t.startswith("--output") for t in low):
+    if tok.globs:
+        if _GLOB_CHARS.match(t) or t.startswith(("~", "{")) or _BRACE_EXPANSION.search(t) or write:
+            return False
+        if any(c.startswith(".") and _GLOB_CHARS.search(c) for c in t.replace("\\", "/").split("/")):
+            return False
+    r = resolve_shell_path(t, cwd)
+    if r is None or not within_roots(r, ctx):
         return False
-    if sub in _GIT_ANY:
-        return True
+    if write and ".git" in [c.lower() for c in r.split("/")]:
+        return False
+    return True
+
+
+def _git_pos_ok(tok: _Tok, cwd: str, ctx: PolicyContext) -> bool:
+    """A git revision or pathspec of a read command: git reads it inside the repository, so revision syntax
+    (``HEAD:x``, ``a..b``, ``@{u}``) is fine; absolute, home, drive-relative and escaping paths are not."""
+    t = tok.text.replace("\\", "/")
+    if not t or t.startswith(("-", "~")) or _sensitive_name(t) or _sensitive_name(t.split(":", 1)[-1]) \
+            or _is_abs(t) or re.match(r"^[A-Za-z]:", t):
+        return False
+    if tok.globs and (_GLOB_CHARS.match(t) or _BRACE_EXPANSION.search(t)):
+        return False
+    return within_roots(_norm(cwd.replace("\\", "/").rstrip("/") + "/" + t), ctx) if cwd else False
+
+
+@dataclass(frozen=True)
+class _Spec:
+    flags: FrozenSet[str] = frozenset()                     # exact option tokens without a value
+    values: Dict[str, Any] = field(default_factory=dict)    # option -> "any" | "int" | "path" | "wpath" | tuple
+    patterns: Tuple[str, ...] = ()                          # regexes a whole option token may match (``-5``)
+    ci: bool = False                                        # also match PowerShell-style options case-insensitively
+
+
+def _spec(flags: Iterable[str] = (), values: Optional[Dict[str, Any]] = None, patterns: Iterable[str] = (),
+          ci: bool = False) -> _Spec:
+    return _Spec(frozenset(flags), dict(values or {}), tuple(patterns), ci)
+
+
+_INT = re.compile(r"^[+-]?\d+$")
+
+
+def _value_ok(val: _Tok, kind: Any, cwd: str, ctx: PolicyContext) -> bool:
+    if isinstance(kind, tuple):
+        return val.text in kind
+    if kind == "int":
+        return bool(_INT.match(val.text))
+    if kind == "path":
+        return _path_ok(val, cwd, ctx)
+    if kind == "wpath":
+        return _path_ok(val, cwd, ctx, write=True)
+    if kind == "rev":
+        return _git_pos_ok(val, cwd, ctx)
+    return kind == "any" and not val.text.startswith("-") or kind == "any-dash"
+
+
+def _parse(args: Sequence[_Tok], spec: _Spec, cwd: str, ctx: PolicyContext,
+           seen: Optional[Dict[str, List[str]]] = None) -> Optional[List[_Tok]]:
+    """Positional operands when every option is exactly on ``spec`` with a valid value; None otherwise."""
+    pos: List[_Tok] = []
+    i, dashdash = 0, False
+    while i < len(args):
+        tok = args[i]
+        t = tok.text
+        if dashdash or not t.startswith("-") or t == "-":
+            pos.append(tok)
+            i += 1
+            continue
+        if t == "--":
+            dashdash = True
+            i += 1
+            continue
+        key, flags, values = t, spec.flags, spec.values
+        if spec.ci and t not in flags and t.partition("=")[0] not in values:
+            key = t = t.lower()                           # PowerShell parameters: case-insensitive, still exact
+            flags = frozenset(f.lower() for f in spec.flags)
+            values = {k.lower(): v for k, v in spec.values.items()}
+        if key in flags:
+            if seen is not None:
+                seen.setdefault(key, [])
+            i += 1
+            continue
+        name, eq, val = t.partition("=")
+        if t.startswith("--") and eq and name in values:
+            if not _value_ok(_Tok(val, tok.expands, tok.globs), values[name], cwd, ctx):
+                return None
+            if seen is not None:
+                seen.setdefault(name, []).append(val)
+            i += 1
+            continue
+        if key in values:
+            if i + 1 >= len(args) or not _value_ok(args[i + 1], values[key], cwd, ctx):
+                return None
+            if seen is not None:
+                seen.setdefault(key, []).append(args[i + 1].text)
+            i += 2
+            continue
+        if any(re.fullmatch(p, t) for p in spec.patterns):
+            i += 1
+            continue
+        return None
+    return pos
+
+
+# ---- git: no global options at all (-C, --git-dir, --work-tree, -c, --exec-path ... are refused)
+_DIFF_FLAGS = ("--stat", "--shortstat", "--numstat", "--name-only", "--name-status", "--summary", "--color",
+               "--no-color", "--patch", "-p", "--no-patch", "-s", "--raw", "--no-renames", "--find-renames", "-M",
+               "-w", "--ignore-all-space", "-b", "--ignore-space-change", "--ignore-blank-lines", "--minimal",
+               "--patience", "--histogram", "--word-diff", "--check", "--no-ext-diff", "--no-textconv", "-R",
+               "--full-index", "--abbrev", "--exit-code", "--quiet", "--cached", "--staged", "--merge-base")
+_DIFF_VALUES = {"--stat": "any", "--color": "any", "--word-diff": "any", "--unified": "int", "-U": "int",
+                "--diff-filter": "any", "--abbrev": "int"}
+_LOG_FLAGS = ("--oneline", "--graph", "--decorate", "--no-decorate", "--all", "--branches", "--remotes", "--tags",
+              "--reverse", "--no-merges", "--merges", "--first-parent", "--follow", "--abbrev-commit",
+              "--left-right", "--date-order", "--topo-order", "--full-history", "--cherry-pick")
+_LOG_VALUES = {"-n": "int", "--max-count": "int", "--skip": "int", "--since": "any", "--until": "any",
+               "--after": "any", "--before": "any", "--author": "any", "--committer": "any", "--grep": "any",
+               "--format": "any", "--pretty": "any", "--date": "any", "--decorate": "any"}
+_REMOTE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_REF_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./-]*$")
+_FETCH_FLAGS = ("--prune", "-p", "--tags", "--no-tags", "--quiet", "-q", "--verbose", "-v", "--all", "--dry-run",
+                "--prune-tags", "--no-recurse-submodules")
+_PULL_FLAGS = _FETCH_FLAGS + ("--ff-only", "--ff", "--no-ff", "--rebase", "--no-rebase", "--no-edit", "--stat",
+                              "--no-stat")
+_GIT_CONFIG_KEY = re.compile(r"^(user\.(name|email)|remote\.[A-Za-z0-9_.-]+\.(url|fetch)|"
+                             r"branch\.[A-Za-z0-9_./-]+\.(remote|merge)|init\.defaultbranch)$", re.I)
+
+GIT_SPECS: Dict[str, _Spec] = {
+    "status": _spec(("-s", "--short", "-b", "--branch", "--porcelain", "--long", "-v", "--verbose", "--ignored",
+                     "--no-renames", "--show-stash", "--ahead-behind", "--no-ahead-behind"),
+                    {"--porcelain": ("v1", "v2"), "--untracked-files": ("no", "normal", "all")}),
+    "diff": _spec(_DIFF_FLAGS, _DIFF_VALUES, (r"-U\d+",)),
+    "log": _spec(_DIFF_FLAGS + _LOG_FLAGS, {**_DIFF_VALUES, **_LOG_VALUES}, (r"-\d+", r"-n\d+", r"-U\d+")),
+    "show": _spec(_DIFF_FLAGS + ("--oneline", "--abbrev-commit"), {**_DIFF_VALUES, "--format": "any",
+                                                                   "--pretty": "any", "--date": "any"}, (r"-U\d+",)),
+    "rev-parse": _spec(("--abbrev-ref", "--show-toplevel", "--git-dir", "--git-common-dir", "--absolute-git-dir",
+                        "--short", "--verify", "--is-inside-work-tree", "--is-inside-git-dir", "--symbolic-full-name",
+                        "--show-prefix", "--show-cdup", "--quiet", "-q", "--symbolic"), {"--short": "int"}),
+    "ls-files": _spec(("--cached", "-c", "--deleted", "-d", "--modified", "-m", "--others", "-o", "--stage", "-s",
+                       "--unmerged", "-u", "-z", "--exclude-standard", "--full-name", "--error-unmatch", "--directory",
+                       "--no-empty-directory", "-t", "-v")),
+    "merge-base": _spec(("--is-ancestor", "--all", "--fork-point", "--octopus", "--independent")),
+    "fetch": _spec(_FETCH_FLAGS),
+    "pull": _spec(_PULL_FLAGS),
+    "branch": _spec(("-a", "--all", "-r", "--remotes", "-v", "-vv", "--verbose", "--list", "-l", "--show-current",
+                     "--no-color", "--merged", "--no-merged", "--contains", "--track", "--no-track"),
+                    {"--sort": "any", "--format": "any", "--points-at": "any", "--color": "any"}),
+    "checkout": _spec(("-q", "--quiet", "--track", "--no-track"), {"-b": "any"}),
+    "switch": _spec(("-q", "--quiet", "--track", "--no-track", "--detach"), {"-c": "any", "--create": "any"}),
+    "add": _spec(("-v", "--verbose", "-n", "--dry-run", "-N", "--intent-to-add")),
+    "commit": _spec(("-q", "--quiet", "-v", "--verbose", "-s", "--signoff"),
+                    {"-m": "any-dash", "--message": "any-dash", "-F": "path", "--file": "path", "--author": "any"}),
+    "worktree": _spec(("--porcelain", "-v", "--verbose", "-z")),
+    "stash": _spec(("--stat", "-p", "--patch", "--name-only", "--name-status", "--oneline")),
+    "remote": _spec(("-v", "--verbose")),
+    "config": _spec((), {"--get": "any", "--get-all": "any"}),
+}
+_GIT_READ_POSITIONALS = ("status", "diff", "log", "show", "rev-parse", "ls-files", "merge-base")
+
+
+def _git_routine(args: Sequence[_Tok], cwd: str, ctx: PolicyContext) -> bool:
+    if not args or args[0].text.startswith("-") or args[0].text not in GIT_SPECS:
+        return False                                      # any global option (-C, --git-dir, -c ...) is refused
+    sub, rest = args[0].text, list(args[1:])
+    seen: Dict[str, List[str]] = {}
+    pos = _parse(rest, GIT_SPECS[sub], cwd, ctx, seen)
+    if pos is None:
+        return False
+    texts = [p.text for p in pos]
+    if sub in _GIT_READ_POSITIONALS:
+        return all(_git_pos_ok(p, cwd, ctx) for p in pos)
+    if sub in ("fetch", "pull"):
+        if not texts:
+            return True
+        return bool(_REMOTE_NAME.match(texts[0])) and all(_REF_NAME.match(t) and ".." not in t for t in texts[1:])
     if sub == "branch":
-        return not any(t in ("--delete", "--move", "--copy", "--force") or _short_has(t, "dDmMcCf") for t in rest)
-    if sub in ("checkout", "switch"):
-        return not any(t in ("--force", "--discard-changes", "--orphan", "--", ".", "--patch")
-                       or _short_has(t, "fBCp") for t in rest)
+        return len(texts) <= 2 and all(_REF_NAME.match(t) and ".." not in t for t in texts)
+    if sub == "checkout":                                 # only `checkout -b <new> [<start>]`; never paths or --
+        return "-b" in seen and len(seen["-b"]) == 1 and bool(_REF_NAME.match(seen["-b"][0])) and len(texts) <= 1 \
+            and all(_REF_NAME.match(t) and ".." not in t for t in texts) and "--" not in [a.text for a in rest]
+    if sub == "switch":
+        created = seen.get("-c", []) + seen.get("--create", [])
+        if "--" in [a.text for a in rest] or len(created) > 1 or not all(_REF_NAME.match(c) for c in created):
+            return False
+        if not created and len(texts) != 1:
+            return False
+        return len(texts) <= 1 and all(_REF_NAME.match(t) and ".." not in t for t in texts)
     if sub == "add":
-        paths = [t for t in rest if not t.startswith("-")]
-        bad = any(t in (".", "--all", "--update", "--force", "*", ":/", "--patch") or _short_has(t, "Aufp")
-                  for t in rest)
-        return bool(paths) and not bad
-    if sub == "commit":
-        return not any(t in ("--no-verify", "--no-gpg-sign", "--all", "--amend") or _short_has(t, "an") for t in rest)
+        return bool(pos) and all(_add_pathspec_ok(p, cwd, ctx) for p in pos)
+    if sub == "commit":                                   # a message is required; no pathspecs (`commit .` = -a)
+        return not texts and any(k in seen for k in ("-m", "--message", "-F", "--file"))
     if sub == "worktree":
-        return bool(low) and low[0] in ("list", "add") and not any(t in ("-f", "--force") for t in low)
+        return texts == ["list"]
     if sub == "stash":
-        return bool(low) and low[0] in ("list", "show", "push", "apply")
+        if not texts or texts[0] not in ("list", "show"):
+            return False
+        return len(texts) == 1 or (texts[0] == "show" and len(texts) == 2
+                                   and bool(re.match(r"^(stash@\{\d+\}|\d+)$", texts[1])))
     if sub == "remote":
-        return not low or low in (["-v"], ["--verbose"]) or (low[0] == "get-url" and len(low) <= 2)
+        return not texts or (not seen and len(texts) == 2 and texts[0] == "get-url"
+                             and bool(_REMOTE_NAME.match(texts[1])))
     if sub == "config":
-        return bool(low) and low[0] in ("--get", "--get-all") and len(low) <= 2
+        keys = seen.get("--get", []) + seen.get("--get-all", [])
+        return not texts and len(keys) == 1 and bool(_GIT_CONFIG_KEY.match(keys[0]))
     return False
 
 
-def _gh_routine(tok: List[str]) -> bool:
-    low = [t.lower() for t in tok]
-    if len(low) >= 3 and low[1] in _GH_VERBS:
-        return low[2] in _GH_VERBS[low[1]]
-    if len(low) >= 3 and low[1] == "api":
-        for j, t in enumerate(tok):
-            lt = t.lower()
-            if lt in ("-x", "--method"):
-                if j + 1 >= len(low) or low[j + 1] != "get":
-                    return False
-            elif lt.startswith("--method="):
-                if lt.split("=", 1)[1] != "get":
-                    return False
-            elif t.startswith("-X") and len(t) > 2:
-                if lt[2:] != "get":
-                    return False
-            elif lt in ("--input", "--field", "--raw-field") or lt.startswith(("--input=", "--field=", "--raw-field=")) \
-                    or (t.startswith(("-f", "-F")) and not t.startswith("--")):
-                return False
-        return True
-    return False
-
-
-def _python_routine(tok: List[str]) -> bool:
-    i = 1
-    while i < len(tok) and tok[i] in ("-B", "-I", "-BI", "-IB"):
-        i += 1
-    if i + 1 >= len(tok) or tok[i] != "-m":
+def _add_pathspec_ok(tok: _Tok, cwd: str, ctx: PolicyContext) -> bool:
+    """An explicit file or directory: no root pathspec (``.``, ``./``, ``:``, ``:/``, ``*``), no pathspec magic or
+    git glob (git globs even quoted pathspecs), nothing normalising to a root or the cwd, nothing outside the roots."""
+    t = tok.text.replace("\\", "/")
+    if not t or t.startswith((":", "-")) or _GLOB_CHARS.search(t) or tok.globs:
         return False
-    mod, rest = tok[i + 1], [t.lower() for t in tok[i + 2:]]
-    root = mod.split(".", 1)[0]
-    if root in ("unittest", "governance"):
-        return True
-    if root == "dev_supervisor":
-        return mod not in ("dev_supervisor.session_policy", "dev_supervisor.live_autonomy") and "--yes" not in rest
-    if root == "creator_state":
-        return mod == "creator_state" and bool(rest) and rest[0] in CREATOR_STATE_READ
+    if t.rstrip("/") in (".", "") or not _path_ok(tok, cwd, ctx):
+        return False
+    r = resolve_shell_path(t, cwd) or ""
+    return not any(_norm(r).rstrip("/").lower() == _norm(x).rstrip("/").lower() for x in [cwd, *_env_roots(ctx)] if x)
+
+
+# ---- gh: per-verb option allowlists; --jq/--template (environment access), --web and --repo on writes are refused
+_GH_READ_COMMON = {"-R": "any", "--repo": "any", "--json": "any"}
+GH_SPECS: Dict[Tuple[str, str], _Spec] = {
+    ("pr", "view"): _spec(("--comments", "-c"), _GH_READ_COMMON),
+    ("pr", "list"): _spec((), {**_GH_READ_COMMON, "--state": "any", "-s": "any", "--limit": "int", "-L": "int",
+                               "--author": "any", "-A": "any", "--label": "any", "-l": "any", "--base": "any",
+                               "-B": "any", "--head": "any", "-H": "any", "--search": "any", "-S": "any"}),
+    ("pr", "checks"): _spec(("--required",), _GH_READ_COMMON),
+    ("pr", "diff"): _spec(("--name-only", "--patch"), {"-R": "any", "--repo": "any", "--color": "any"}),
+    ("pr", "create"): _spec(("--draft", "-d"), {"--title": "any-dash", "-t": "any-dash", "--body": "any-dash",
+                                                "-b": "any-dash", "--body-file": "path", "-F": "path", "--base": "any",
+                                                "-B": "any", "--head": "any", "-H": "any", "--label": "any",
+                                                "-l": "any"}),
+    ("pr", "comment"): _spec((), {"--body": "any-dash", "-b": "any-dash", "--body-file": "path", "-F": "path"}),
+    ("issue", "view"): _spec(("--comments", "-c"), _GH_READ_COMMON),
+    ("issue", "list"): _spec((), {**_GH_READ_COMMON, "--state": "any", "-s": "any", "--limit": "int", "-L": "int",
+                                  "--author": "any", "-A": "any", "--assignee": "any", "-a": "any", "--label": "any",
+                                  "-l": "any", "--search": "any", "-S": "any"}),
+    ("issue", "create"): _spec((), {"--title": "any-dash", "-t": "any-dash", "--body": "any-dash", "-b": "any-dash",
+                                    "--body-file": "path", "-F": "path", "--label": "any", "-l": "any"}),
+    ("issue", "comment"): _spec((), {"--body": "any-dash", "-b": "any-dash", "--body-file": "path", "-F": "path"}),
+}
+_GH_API = _spec(("--paginate", "-i", "--include", "--silent"), {"-X": ("GET", "get"), "--method": ("GET", "get")},
+                (r"-X(GET|get)",))
+_GH_OPERAND = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_#./:@-]*$")
+
+
+def _gh_routine(args: Sequence[_Tok], cwd: str, ctx: PolicyContext) -> bool:
+    texts = [a.text for a in args]
+    if len(texts) >= 2 and texts[0] == "api":
+        pos = _parse(args[1:], _GH_API, cwd, ctx)
+        return pos is not None and len(pos) == 1 and pos[0].text.lstrip("/").lower() != "graphql" \
+            and bool(re.match(r"^/?[A-Za-z0-9][A-Za-z0-9_./{}?=&,:-]*$", pos[0].text))
+    if len(texts) < 2 or (texts[0], texts[1]) not in GH_SPECS:
+        return False
+    pos = _parse(args[2:], GH_SPECS[(texts[0], texts[1])], cwd, ctx)
+    return pos is not None and len(pos) <= 1 and all(_GH_OPERAND.match(p.text) for p in pos)
+
+
+# ---- python -m: closed module and subcommand allowlists (B4)
+_UNITTEST = _spec(("-v", "--verbose", "-q", "--quiet", "-f", "--failfast", "-b", "--buffer", "-c", "--catch",
+                   "--locals"), {"-k": "any"})
+_UNITTEST_DISCOVER = _spec(_UNITTEST.flags, {"-k": "any", "-s": "path", "--start-directory": "path", "-p": "any",
+                                             "--pattern": "any", "-t": "path", "--top-level-directory": "path"})
+GOVERNANCE_SPECS: Dict[Tuple[str, ...], _Spec] = {
+    ("validate",): _spec((), {"--against": "rev"}),
+    ("leases",): _spec((), {"--now": "any"}),
+    ("handoff",): _spec(("--check",)),                    # never --write
+    ("wave", "submit"): _spec((), {"--attempts": "int"}),
+    ("wave", "status"): _spec(("--json",)),
+}
+DEV_SUPERVISOR_SPECS: Dict[str, _Spec] = {               # never --yes, never --config
+    "status": _spec(("--json",)), "workers": _spec(("--json",)), "doctor": _spec(("--json",)),
+    "report": _spec(("--json",)),
+    "compact-check": _spec(("--json",), {"--session-id": "any", "--handoff-id": "any"}),
+    "snapshot": _spec(("--json",), {"--out": "wpath"}),
+    "route": _spec(("--json", "--validation-failed"),
+                   {"--criticality": "any", "--complexity": "any", "--context-tokens": "int",
+                    "--deadline-minutes": "any", "--concurrency": "int", "--pressure": "any", "--failures": "int"}),
+}
+CREATOR_STATE_SPECS: Dict[str, Tuple[_Spec, int]] = {    # command -> (options, number of project/source operands)
+    "list": (_spec(), 0), "incoming-list": (_spec(), 0),
+    "check": (_spec(("--quick",)), 1), "resume": (_spec(), 1), "checkpoints": (_spec(), 1),
+    "log": (_spec((), {"-n": "int"}), 1), "inventory": (_spec(("--json",), {"--type": "any"}), 1),
+    "ingest-status": (_spec(), 1), "verify-sources": (_spec(("--deep",)), 1),
+    "incoming-inspect": (_spec(("--json",)), 1), "shots-plan": (_spec(("--json",), {"--id": "any"}), 1),
+    "shots-status": (_spec(("--json",), {"--id": "any"}), 1), "shots-check": (_spec(("--json",), {"--id": "any"}), 1),
+}
+CREATOR_STATE_READ = tuple(CREATOR_STATE_SPECS) + ("--help", "-h")
+_SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+def _python_routine(args: Sequence[_Tok], cwd: str, ctx: PolicyContext) -> bool:
+    texts = [a.text for a in args]
+    i = 0
+    while i < len(texts) and texts[i] in ("-B", "-I", "-BI", "-IB"):
+        i += 1
+    if i + 1 >= len(texts) or texts[i] != "-m":
+        return False
+    mod, rest = texts[i + 1], list(args[i + 2:])
+    rt = [a.text for a in rest]
+    if mod == "unittest":
+        if rt[:1] == ["discover"]:
+            pos = _parse(rest[1:], _UNITTEST_DISCOVER, cwd, ctx)
+            return pos == []
+        pos = _parse(rest, _UNITTEST, cwd, ctx)
+        return pos is not None and all(re.match(r"^[A-Za-z_][\w.]*$", p.text) or
+                                       (p.text.endswith(".py") and _path_ok(p, cwd, ctx)) for p in pos)
+    if mod == "governance":
+        for key, spec in GOVERNANCE_SPECS.items():
+            if tuple(rt[:len(key)]) == key:
+                pos = _parse(rest[len(key):], spec, cwd, ctx)
+                if key == ("wave", "status"):
+                    return pos is not None and len(pos) <= 1 and all(_SLUG.match(p.text) for p in pos)
+                return pos == []
+        return False
+    if mod == "dev_supervisor":
+        if not rt or rt[0] not in DEV_SUPERVISOR_SPECS:
+            return False
+        return _parse(rest[1:], DEV_SUPERVISOR_SPECS[rt[0]], cwd, ctx) == []
+    if mod == "creator_state":
+        if rt in (["--help"], ["-h"]):
+            return True
+        if not rt or rt[0] not in CREATOR_STATE_SPECS:
+            return False
+        spec, n = CREATOR_STATE_SPECS[rt[0]]
+        pos = _parse(rest[1:], spec, cwd, ctx)
+        return pos is not None and len(pos) == n and all(
+            _SLUG.match(p.text) if not re.search(r"[/\\:]", p.text) else _path_ok(p, cwd, ctx) for p in pos)
     return False
 
 
-def _segment_routine(tok: List[str], ctx: PolicyContext) -> bool:
-    head = tok[0].lower().replace(".exe", "")
+# ---- simple read/inspect commands
+_LS = _spec(("-force", "-recurse", "-name", "-file", "-directory"), {"-filter": "any", "-depth": "int"},
+            (r"-[laAhR1trSdFGp]+",), ci=True)
+_CAT = _spec(("-n", "-A", "-v", "-e", "-E", "-T", "-s", "-b", "-raw"),
+             {"-totalcount": "int", "-tail": "int", "-head": "int", "-first": "int"}, ci=True)
+_HEAD = _spec(("-q", "-v"), {"-n": "int", "-c": "int", "--lines": "int", "--bytes": "int"},
+              (r"-\d+", r"-n[+-]?\d+", r"-c[+-]?\d+"))
+_WC = _spec(("-l", "-w", "-c", "-m", "-L", "--lines", "--words", "--bytes", "--chars"))
+_GREP = _spec(("--recursive", "--ignore-case", "--line-number", "--files-with-matches", "--files-without-match",
+               "--count", "--invert-match", "--word-regexp", "--extended-regexp", "--fixed-strings",
+               "--with-filename", "--no-filename", "--only-matching", "--quiet", "--no-messages"),
+              {"-e": "any-dash", "--regexp": "any-dash", "-m": "int", "--max-count": "int", "-A": "int", "-B": "int",
+               "-C": "int", "--include": "any", "--exclude": "any", "--exclude-dir": "any", "--color": "any",
+               "--colour": "any"}, (r"-[rinlLvcwxEFHhoqsI]+", r"-[ABCm]\d+"))
+_RG = _spec(("--files", "--hidden", "--no-ignore", "--ignore-case", "--smart-case", "--line-number",
+             "--files-with-matches", "--count", "--fixed-strings", "--word-regexp", "--no-heading", "--heading",
+             "--with-filename", "--no-filename", "--only-matching", "--vimgrep", "--multiline", "--json"),
+            {"-e": "any-dash", "--regexp": "any-dash", "-g": "any", "--glob": "any", "-t": "any", "--type": "any",
+             "-T": "any", "--type-not": "any", "-m": "int", "--max-count": "int", "-A": "int", "-B": "int",
+             "-C": "int", "--max-depth": "int", "--color": "any"}, (r"-[inlvcwxFHoqsSuU]+", r"-[ABCm]\d+"))
+_SORT = _spec(("--reverse", "--numeric-sort", "--unique", "--ignore-case", "--human-numeric-sort", "--version-sort",
+               "--stable"), {"-k": "any", "--key": "any", "-t": "any", "--field-separator": "any"},
+              (r"-[rnufhVbsdgiM]+",))
+_UNIQ = _spec(("-c", "-d", "-u", "-i", "--count", "--repeated", "--unique", "--ignore-case"), {"-f": "int", "-s": "int"})
+_DIFF = _spec(("--brief", "--recursive", "--new-file", "--ignore-all-space", "--ignore-space-change", "--text"),
+              {"-U": "int", "--unified": "int", "--color": "any"}, (r"-[uNrqwbBiat]+", r"-U\d+"))
+_MKDIR = _spec(("-p", "-v", "--parents", "--verbose", "-force"), ci=True)
+_SED = _spec(("-n", "-E", "-r", "--quiet", "--silent", "-nE", "-En", "-nr", "-rn"), {"-e": "any-dash"})
+_SED_SCRIPT = re.compile(r"^(?:(?:\d+|\$)(?:,(?:\d+|\$|\+\d+))?p)(?:;(?:(?:\d+|\$)(?:,(?:\d+|\$|\+\d+))?p))*$")
+_FIND_FLAGS = ("-empty", "-print", "-print0", "-prune", "-not", "!", "-o", "-or", "-a", "-and", "(", ")", "\\(",
+               "\\)", "-readable", "-writable")
+_FIND_VALUES = {"-name": "any", "-iname": "any", "-path": "any", "-ipath": "any", "-type": ("f", "d", "l"),
+                "-maxdepth": "int", "-mindepth": "int", "-size": "any-dash", "-mtime": "any-dash",
+                "-mmin": "any-dash", "-newer": "path", "-regex": "any", "-iregex": "any"}
+_TEST_OPS = ("=", "!=", "==", "!", "-eq", "-ne", "-lt", "-le", "-gt", "-ge", "-a", "-o", "-f", "-d", "-e", "-s", "-z",
+             "-n", "-r", "-w", "-x", "-L", "-h")
+
+
+def _paths_ok(pos: Optional[Sequence[_Tok]], cwd: str, ctx: PolicyContext, *, write: bool = False) -> bool:
+    return pos is not None and all(_path_ok(p, cwd, ctx, write=write) for p in pos)
+
+
+def _pattern_then_paths(args: Sequence[_Tok], spec: _Spec, cwd: str, ctx: PolicyContext) -> bool:
+    seen: Dict[str, List[str]] = {}
+    pos = _parse(args, spec, cwd, ctx, seen)
+    if pos is None:
+        return False
+    if not any(k in seen for k in ("-e", "--regexp")):
+        if not pos:
+            return False
+        pos = pos[1:]                                     # the first operand is the pattern, not a path
+    return _paths_ok(pos, cwd, ctx)
+
+
+def _find_routine(args: Sequence[_Tok], cwd: str, ctx: PolicyContext) -> bool:
+    i = 0
+    while i < len(args) and not args[i].text.startswith(("-", "(", "\\(", "!")):
+        if not _path_ok(args[i], cwd, ctx):
+            return False
+        i += 1
+    while i < len(args):
+        t = args[i].text
+        if t in _FIND_FLAGS:
+            i += 1
+        elif t in _FIND_VALUES and i + 1 < len(args) and _value_ok(args[i + 1], _FIND_VALUES[t], cwd, ctx):
+            i += 2
+        else:
+            return False                                  # -delete, -exec, -execdir, -ok, -fprint, -fls ... are refused
+    return True
+
+
+def _segment_routine(tok: List[_Tok], state: Dict[str, str], ctx: PolicyContext) -> bool:
+    if not tok or any(t.expands or t.text == "--%" for t in tok):
+        return False                                      # variables, subexpressions, splatting, stop-parsing
+    if any(t.globs and (_GLOB_CHARS.match(t.text) or t.text.startswith(("{", "~")) or _BRACE_EXPANSION.search(t.text))
+           for t in tok[1:]):
+        return False                                      # a glob that could expand into options or anywhere else
+    head = tok[0].text.lower()
+    head = head[:-4] if head.endswith(".exe") else head
+    args, cwd = tok[1:], state["cwd"]
+    texts = [a.text for a in args]
     if head == "rtk":
-        inner = tok[2:] if len(tok) > 1 and tok[1].lower() == "bypass" else tok[1:]
-        return bool(inner) and inner[0].lower() != "rtk" and _segment_routine(inner, ctx)
-    if any(SECRET_NAME.search(_norm(t)) or _norm(t).lower().rsplit("/", 1)[-1] in ("pro.ps1", "backup.ps1")
-           for t in tok[1:] if t and not t.startswith("-")):
-        return False                                  # secrets and launchers are never read by a worker shell
-    low = [t.lower() for t in tok]
+        inner = args[1:] if texts[:1] == ["bypass"] else args
+        return bool(inner) and inner[0].text.lower() not in ("rtk", "rtk.exe") and _segment_routine(list(inner), state, ctx)
+    if any(_sensitive_name(t) for t in texts if t and not t.startswith("-")):
+        return False                                      # secrets and launchers are never named by a worker shell
     if head == "git":
-        return _git_routine(tok)
+        return _git_routine(args, cwd, ctx)
     if head == "gh":
-        return _gh_routine(tok)
+        return _gh_routine(args, cwd, ctx)
     if head in ("python", "python3", "py"):
-        return _python_routine(tok)
-    if head in _SIMPLE_HEADS:
+        return _python_routine(args, cwd, ctx)
+    if head in ("cd", "pushd"):                           # only into the roots; later segments use the new cwd
+        if len(args) != 1 or texts[0].startswith("-") or args[0].globs:
+            return False
+        r = resolve_shell_path(texts[0], cwd)
+        if r is None or not within_roots(r, ctx):
+            return False
+        state["cwd"] = r
         return True
+    if head == "pwd":
+        return all(t in ("-P", "-L") for t in texts)
+    if head in ("echo", "printf", "true"):
+        return True
+    if head in ("ls", "dir"):
+        return _paths_ok(_parse(args, _LS, cwd, ctx), cwd, ctx)
+    if head in ("cat", "type"):
+        return _paths_ok(_parse(args, _CAT, cwd, ctx), cwd, ctx)
+    if head in ("head", "tail"):
+        return _paths_ok(_parse(args, _HEAD, cwd, ctx), cwd, ctx)
+    if head == "wc":
+        return _paths_ok(_parse(args, _WC, cwd, ctx), cwd, ctx)
+    if head == "grep":
+        return _pattern_then_paths(args, _GREP, cwd, ctx)
     if head == "rg":
-        return not any(t == "--pre" or t.startswith("--pre=") for t in low)
+        return _pattern_then_paths(args, _RG, cwd, ctx)
     if head == "find":
-        return not any(t in ("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fls", "-fprint", "-fprint0", "-fprintf")
-                       for t in low)
+        return _find_routine(args, cwd, ctx)
     if head == "sort":
-        return not any(t.startswith(("--output", "--compress-program")) or _short_has(t, "o") for t in tok[1:])
+        return _paths_ok(_parse(args, _SORT, cwd, ctx), cwd, ctx)
     if head == "uniq":
-        return len([t for t in tok[1:] if not t.startswith("-")]) <= 1     # a second operand is an output file
-    if head == "sed":
-        flags = [t for t in tok[1:] if t.startswith("-")]
-        if not any(_short_has(f, "n") for f in flags):
-            return False
-        if any(f.startswith("--in-place") or _short_has(f, "i") for f in flags):
-            return False
-        return not any(_SED_WRITE.search(t) for t in tok[1:] if not t.startswith("-"))
+        pos = _parse(args, _UNIQ, cwd, ctx)
+        return pos is not None and len(pos) <= 1 and _paths_ok(pos, cwd, ctx)   # a second operand is an output file
+    if head == "diff":
+        pos = _parse(args, _DIFF, cwd, ctx)
+        return pos is not None and len(pos) == 2 and _paths_ok(pos, cwd, ctx)
     if head == "mkdir":
-        for p in tok[1:]:
-            if p.startswith("-"):
-                continue
-            if (_is_abs(p.replace("\\", "/")) and not _in_environment(p, ctx)) or _norm(p).startswith(".."):
+        pos = _parse(args, _MKDIR, cwd, ctx)
+        return bool(pos) and _paths_ok(pos, cwd, ctx, write=True)
+    if head == "test":
+        return all(t in _TEST_OPS if t.startswith("-") or t in _TEST_OPS else _path_ok(a, cwd, ctx)
+                   for a, t in zip(args, texts))
+    if head == "sed":
+        seen: Dict[str, List[str]] = {}
+        pos = _parse(args, _SED, cwd, ctx, seen)
+        if pos is None or not any(k in seen for k in ("-n", "-nE", "-En", "-nr", "-rn", "--quiet", "--silent")):
+            return False
+        scripts = seen.get("-e", [])
+        if not scripts:
+            if not pos:
                 return False
-        return True
+            scripts, pos = [pos[0].text], pos[1:]
+        return all(_SED_SCRIPT.match(s) for s in scripts) and _paths_ok(pos, cwd, ctx)
     return False
 
 
-def routine_shell(command: str, ctx: PolicyContext = PolicyContext()) -> Tuple[bool, str]:
-    """(True, "") when the head of EVERY segment is on the worker routine allowlist; else (False, offending segment)."""
+def routine_shell(command: str, ctx: PolicyContext = PolicyContext(), cwd: str = "") -> Tuple[bool, str]:
+    """(True, "") when EVERY segment is on the closed worker routine allowlist; else (False, offending segment).
+
+    ``cwd`` is the payload working directory: when it is outside the roots every command is refused (a previous ``cd``
+    may have persisted). A ``cd``/``pushd`` into the roots changes the cwd used by the following segments."""
     text = command or ""
     if not text.strip():
         return False, "(empty command)"
     if any(x in text for x in ("`", "$(", "<(", ">(", "${")):
         return False, "command substitution"
+    start = (cwd or ctx.repo_root or "").replace("\\", "/")
+    if not within_roots(start, ctx):
+        return False, f"working directory {start or '(unknown)'} is outside the environment roots"
+    state = {"cwd": _norm(start)}
     for seg in _SPLIT.split(text):
         if not seg.strip():
             continue
         bare = _SAFE_REDIRECT.sub(" ", seg)
-        if re.search(r"[<>&]", bare):
-            return False, seg.strip()[:120]           # file redirection or background job
-        tok = _tokens(bare)
-        if not tok or not _segment_routine(tok, ctx):
+        if re.search(r"[<>&]", re.sub(r"\"[^\"]*\"|'[^']*'", "\"\"", bare)):
+            return False, seg.strip()[:120]               # file redirection or background job
+        tok = shell_tokens(bare)
+        if not tok or not _segment_routine(tok, state, ctx):
             return False, seg.strip()[:120]
     return True, ""
 
@@ -846,7 +1410,8 @@ def context_from_env(env: Dict[str, str], cwd: str) -> PolicyContext:
                          grants=frozenset(x for x in env.get("CS_AUTHORITY_GRANTS", "").split(",") if x in PROTECTED_KINDS
                                           and x not in UNCONDITIONAL_KINDS),
                          repo_root=env.get("CS_AUTHORITY_REPO_ROOT", cwd),
-                         approvals_dir=env.get(APPROVALS_ENV, ""))
+                         approvals_dir=env.get(APPROVALS_ENV, ""),
+                         boundary_paths=tuple(p for p in env.get(BOUNDARY_ENV, "").split(os.pathsep) if p))
 
 
 def _out(decision: str, reason: str) -> Dict[str, Any]:
@@ -862,7 +1427,7 @@ def hook_output(decision: Decision) -> Optional[Dict[str, Any]]:
 
 
 def respond(tool: str, tool_input: Dict[str, Any], decision: Decision, ctx: PolicyContext, mode: str,
-            session_id: str = "", role: str = "") -> Optional[Dict[str, Any]]:
+            session_id: str = "", role: str = "", cwd: str = "") -> Optional[Dict[str, Any]]:
     """The hook's answer for one evaluated call in the given mode (None = print nothing)."""
     why = f"authority policy [{decision.rule}]: {decision.reason}"
     if decision.verdict == DENY:
@@ -880,8 +1445,11 @@ def respond(tool: str, tool_input: Dict[str, Any], decision: Decision, ctx: Poli
                                 "continue with unrelated work")
     if mode == ADVISORY:
         return None
+    if resolve_input_dependent(tool, tool_input):
+        return _out("deny", "authority policy [resolve-input-dependent]: this Resolve tool is a read only according to "
+                            "a caller-supplied field; workers get no allow for it")
     if tool in SHELL_TOOLS:
-        ok, seg = routine_shell(str(tool_input.get("command", "")), ctx)
+        ok, seg = routine_shell(str(tool_input.get("command", "")), ctx, cwd)
         if not ok:
             return _out("deny", f"authority policy [worker-routine-allowlist]: not on the worker routine allowlist: {seg}")
         return _out("allow", "authority policy [worker-routine-allowlist]: routine command")
@@ -902,7 +1470,7 @@ def run_hook(stdin: TextIO, out: TextIO, env: Optional[Dict[str, str]] = None) -
         cwd = str(payload.get("cwd") or os.getcwd())
         ctx = context_from_env(env, cwd)
         decision = evaluate_tool_call(tool, tin, ctx, cwd)
-        res = respond(tool, tin, decision, ctx, mode, str(payload.get("session_id") or ""), env.get(ROLE_ENV, ""))
+        res = respond(tool, tin, decision, ctx, mode, str(payload.get("session_id") or ""), env.get(ROLE_ENV, ""), cwd)
     except Exception as exc:  # noqa: BLE001 - any failure must fail closed (RecursionError, OSError, ...)
         res = _out("deny", f"authority policy [hook-malformed-input]: could not evaluate the call ({exc}); failing closed")
     if res is not None:

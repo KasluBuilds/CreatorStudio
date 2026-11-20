@@ -17,9 +17,16 @@
 - Env per role: `CS_AUTHORITY_MODE` = `advisory` (main) / `authoritative` (worker, reviewer), `CS_AUTHORITY_ROLE`,
   `CS_AUTHORITY_APPROVALS_DIR` = `<state>/approvals`.
 - Derived settings: `install(..., user_settings=None)` reads `~/.claude/settings.json` (injectable), copies only
-  `hooks, autoMode, modelSettings, model, statusLine, permissions`, removes every hook whose command starts with
-  `rtk `, and puts the authority PreToolUse hook first. `env`, `apiKeyHelper`, `awsAuthRefresh`, `otelHeadersHelper`
-  and everything else are never copied. A missing or unreadable user file gives just the authority hook.
+  `hooks, autoMode, modelSettings, model, statusLine, permissions`, removes every hook whose executable is rtk
+  (`rtk`, `rtk.exe`, any path, quoted or not, any case; review N7), drops `permissions.defaultMode`,
+  `permissions.additionalDirectories` and `permissions.allow` (review N6), and puts the authority PreToolUse hook
+  first. `env`, `apiKeyHelper`, `awsAuthRefresh`, `otelHeadersHelper` and everything else are never copied. A missing
+  or unreadable user file gives just the authority hook.
+- `install` and `argv_with_policy` refuse (`PolicyInstallError`) when the launch cwd's `.claude/settings.json` or
+  `.claude/settings.local.json` contains `disableAllHooks` or any hooks, or cannot be read (review N6); the check is
+  repeated at launch time (`PolicyInstall.project_dir`).
+- `CS_AUTHORITY_BOUNDARY_PATHS` (review B5): the hook script, the live `authority.py` and `session_policy.py` and the
+  user settings file; the hook denies Write/Edit to them and shell commands naming them (both modes).
 - `argv_with_policy` inserts `--settings <file> --setting-sources project,local` (refuses an argv that already has
   either flag) and compares the file on disk with the exact content `install` verified.
 - `verify_hook` expects silence for `git status` in advisory mode and an explicit `allow` in authoritative mode.
