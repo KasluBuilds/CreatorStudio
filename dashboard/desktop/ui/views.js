@@ -279,5 +279,48 @@
     return h('div', { class: 'overview' }, hero, model.gates.length ? h('div', { class: 'gates' }, ...model.gates.map(gateCard)) : null, h('div', { class: 'grid' }, majorCard, waveCard, agentsCard, upCard, blockCard), strip);
   }
 
-  D.views = { renderOverview, renderAgent, renderRoadmap, renderGate, renderMarkdown, statePill, STATE_LABEL };
+  // ------------------------------------------------------------ Orbit (operation / supervisor), read-only
+  const FRESH = { live: ['Live', 'done'], cached: ['Cached', 'active'], stale: ['Stale', 'ready'], offline: ['Unavailable', 'blocked'], invalid: ['Invalid', 'blocked'], unconfigured: ['No file', 'upcoming'] };
+  const freshPill = (f) => pill(FRESH[f][0], FRESH[f][1]);
+  const QUALITY_PILL = { live: ['Live', 'done'], cached: ['Cached', 'active'], stale: ['Stale', 'ready'], estimated: ['Estimated', 'type'], unavailable: ['Unavailable', 'blocked'] };
+  const qualityPill = (q) => (QUALITY_PILL[q] ? pill(QUALITY_PILL[q][0], QUALITY_PILL[q][1]) : null);
+
+  function orbitRow(r) {
+    const val = r.label === 'UNAVAILABLE' ? h('span', { class: 'muted' }, `UNAVAILABLE: ${r.reason}`) : h('span', null, r.text);
+    return h('tr', { class: `orbit-row orbit-${r.freshness}` }, h('th', { scope: 'row' }, r.name), h('td', null, val),
+      h('td', null, h('span', { class: 'muted' }, r.label)), h('td', { 'data-quality': r.quality }, qualityPill(r.quality) || freshPill(r.freshness), ' ', h('span', { class: 'muted' }, r.ageText)));
+  }
+
+  function orbitSection(s) {
+    const body = [];
+    if (s.rows.length) body.push(h('table', { class: 'orbit-table' }, h('tbody', null, s.rows.map(orbitRow))));
+    if (s.items.length) {
+      body.push(h('ul', { class: 'plain' }, s.items.map((i) => h('li', { class: i.activity ? `orbit-act orbit-act-${i.activity.kind}` : null }, i.text,
+        i.status ? h('span', null, ' ', freshPill(i.status.freshness), ' ', h('span', { class: 'muted' }, `${i.status.label === 'UNAVAILABLE' ? 'status unavailable' : i.status.text} · ${i.status.ageText}`)) : null,
+        i.activity ? h('div', { class: 'muted orbit-activity' }, `activity: ${i.activity.text}`) : null,
+        i.inspect ? h('div', { class: 'muted' }, `inspect: ${i.inspect}`) : null,
+        i.context ? h('div', { class: 'muted orbit-context' }, ...i.context.map((c) => h('span', { 'data-quality': c.quality }, `${c.name}: ${c.label === 'UNAVAILABLE' ? `UNAVAILABLE (${c.reason})` : c.text} `, qualityPill(c.quality) || freshPill(c.freshness), '  '))) : null))));
+    }
+    if (!s.rows.length && !s.items.length) body.push(empty(s.empty || 'Nothing recorded.'));
+    if (s.note) body.push(h('p', { class: 'muted' }, s.note));
+    return h('section', { class: 'card orbit-card', 'data-orbit-section': s.id }, h('h2', null, s.title, ' ', s.freshness ? freshPill(s.freshness) : null), ...body);
+  }
+
+  /** orbit: the view model from src/orbit.js (built in the main process). Choosing a file and re-reading it are the only actions. */
+  function renderOrbit(orbit) {
+    const o = orbit || { state: 'unconfigured', message: 'Orbit data is not available.', sections: [] };
+    const cls = o.state === 'live' ? 'info' : (o.state === 'cached' || o.state === 'stale' || o.state === 'unconfigured') ? 'warn' : 'bad';
+    return h('div', { class: 'orbit', id: 'orbit' },
+      h('section', { class: 'hero' }, h('div', { class: 'hero-text' }, h('h1', null, 'Orbit: operation and supervisor'),
+        h('p', { class: 'muted' }, 'Read-only. This view shows a snapshot file written by the development supervisor. It never changes GitHub, the repository or the supervisor.'))),
+      h('div', { class: `banner banner-${cls}`, id: 'orbit-state', 'data-orbit-state': o.state },
+        freshPill(o.state), ' ', o.message, o.generatedAtText ? ` Snapshot written ${o.generatedAtText}.` : '', o.fileName ? ` File: ${o.fileName}.` : ''),
+      h('p', null, h('button', { class: 'btn primary', id: 'orbit-select', type: 'button', onclick: () => window.dashboard.orbitSelect() }, 'Choose snapshot file…'), ' ',
+        h('button', { class: 'btn', id: 'orbit-reload', type: 'button', onclick: () => window.dashboard.orbitReload() }, 'Re-read file')),
+      h('div', { class: 'grid' }, (o.sections || []).map(orbitSection)),
+      h('section', { class: 'card', id: 'orbit-about' }, h('h2', null, 'About Orbit'),
+        h('p', null, 'Orbit is the name of the development supervisor and its observability view. This window is still the Creator Studio Dashboard: file names, release names and identifiers keep their existing names. Account usage is shown only when the snapshot labels it OBSERVED; otherwise it says unavailable and why.')));
+  }
+
+  D.views = { renderOrbit, renderOverview, renderAgent, renderRoadmap, renderGate, renderMarkdown, statePill, STATE_LABEL };
 })();

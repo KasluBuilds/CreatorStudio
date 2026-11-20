@@ -987,7 +987,7 @@
         {
           "id": "S-RSR-001-00",
           "title": "Step 0: claim branch",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-RSR-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
             "AGR-GOV-REGISTRY-01 extended to T-RSR-001; no other task's record is edited",
@@ -998,20 +998,53 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main 18e970e in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md change."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #32 merged into main (merge commit shown); reviewed head 6c667680333aab8837b87c2131433a48b08ce124. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T22:12:47Z) and the merge commit is an ancestor of this branch after a fast-forward.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/32",
+              "commit": "469b95dda98365c8b9f23824e9f11684c3d6b1a2"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator, merged claim PR #32 (merge commit 469b95dda98365c8b9f23824e9f11684c3d6b1a2) under Lukas's standing delegation and told Claude in this session. This is ChatGPT's delegated approval, not a claim that Lukas personally reviewed the claim. Claude verified only that PR #32 is MERGED on GitHub and that the merge commit is an ancestor of the working branch."
+          }
         },
         {
           "id": "S-RSR-001-01",
           "title": "Step 1: remediate F-01, F-02, F-04, F-05, F-06, F-07 with adversarial tests",
-          "status": "PLANNED",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Each finding reproduced against current code, fixed within orchestrator/research/ and covered by adversarial regression tests",
             "F-02 external signer dependency reported honestly",
             "Full suite and all governance validators pass",
             "Only orchestrator/research/ and test_research.py change besides the shared registry files"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Dedicated Research tests, run by Claude in this session on the branch (Research tests 284 before this step, 354 after; 70 new adversarial regression tests). Synthetic data only.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_research.py",
+              "result": "Ran 354 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite, run by Claude in this session on the branch after merging origin/main 3f0a953 (the 2 skips are symlink-related tests in files this step did not change).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1604 tests: OK (skipped=2)"
+            },
+            {
+              "type": "observation",
+              "summary": "Attack reproduction (Claude, this session, same script against origin/main 0129423 and the fixed tree): F-01 topic_kind flip partial->verified (fixed: partial); F-04 5 invented URLs scored 0.75 lead evidence and an untrusted gatherer's receipt was accepted (fixed: 0.25, refused); F-05 clearing the assessed stance or deleting the contradicting citation kept VERIFIED (fixed: partial + CONTRADICTION_ERASED); F-06 30 tier-B origins scored 1.00 = one tier-A, a contradicted fact among 30 verified scored 0.97 (fixed: 0.85 vs 1.00, 0.35); F-07 relevance overall=0.99 with evidence 0 and text_origin='human' on an unattested page validated (fixed: rejected); F-02: the policy accepted any in-process callable and had no separated-verifier client (fixed: RemoteVerifier + require_separated_verifier; the external service is still missing)."
+            },
+            {
+              "type": "observation",
+              "summary": "Changed paths: orchestrator/research/ (attestation, ledger [new], models, sources, scoring, validation, outputs, agent, __init__, README [new]) and orchestrator/tests/test_research.py, plus the task's own registry/tracker/changelog/handoff records. No Asset, Creative Director, orchestrator, governance or shared-document change. Schema research-brief/0.5; signer-contract change (context_id = bind_context(brief id, topic kind), new scopes, text_origin signed); research->creative_director/0.3 unchanged. Not VERIFIED on real data."
+            }
+          ]
         }
       ]
     },
@@ -1109,6 +1142,1659 @@
             "Full suite and all governance validators pass"
           ],
           "evidence": []
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-001",
+      "title": "Telemetry and evidence model: sessions, context pressure, usage signals (issue #44 part A)",
+      "steps": [
+        {
+          "id": "S-DEV-001-00",
+          "title": "Lane L1 of wave w03-dev-supervisor",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "evidence.py: a small Evidence model with a source label (OBSERVED, REPORTED, INFERRED, UNAVAILABLE), timestamp, staleness check and helpers; every telemetry value carries a label and never an exact number the source does not expose",
+            "telemetry.py reads the Claude Code per-process session files (pid, sessionId, cwd, status busy/idle, name, startedAt, messaging socket path) from a configurable directory, tolerates missing/corrupt files and dead pids (liveness by pid probe, injectable), and reports staleness",
+            "telemetry.py computes per-session context pressure from the JSONL transcript by reading only the last assistant usage record (input + cache_read + cache_creation tokens, model id), with a configurable per-model context window table and thresholds (warn, compact, replace) as configuration with documented defaults; unknown model window gives UNAVAILABLE pressure, never a guess; tail read so large transcripts are not loaded whole; no transcript text is ever returned",
+            "Account usage and reset windows: a pluggable provider interface plus a statusline-JSON ingestor; with no source it returns UNAVAILABLE with the reason; the module documentation states plainly that nothing here is an account-usage reading unless a provider supplies it",
+            "A single snapshot function returns a JSON-serialisable dict (schema_version, generated_at, sessions[], each with the labelled fields) used later by the supervisor and Orbit",
+            "At least 40 offline tests with synthetic session files and synthetic transcripts (corrupt lines, huge line, missing usage, multiple models, dead pid, threshold edges); one real-machine OBSERVED run reported as numbers only",
+            "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "d861206bec7b6120be924c95262d59ac206db227"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w03-dev-supervisor",
+              "commit": "b9564e03115d569135017e05479598085f1e4639"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_telemetry.py",
+              "result": "Ran 90 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B -c snapshot(~/.claude/sessions, ~/.claude/projects), printing counts/tokens/model/ratio/level only",
+              "result": "OBSERVED: 2 sessions, both busy/alive/stale=True (status not updated within 300 s); session A: 360387 tokens, model claude-opus-5-5 not in default window table, pressure UNAVAILABLE; session B: 184076 tokens, model claude-sonnet-5-5, ratio 0.9204 against configured 200000 window, level replace; account_usage UNAVAILABLE (no provider)"
+            },
+            {
+              "type": "observation",
+              "summary": "Implemented orchestrator/dev_supervisor (evidence.py, telemetry.py): Evidence model with OBSERVED/REPORTED/INFERRED/UNAVAILABLE labels and staleness; session-file reader with injectable pid probe; tail-read context pressure (last assistant usage record, configurable window table and warn/compact/replace thresholds, unknown model gives UNAVAILABLE); pluggable account-usage provider interface plus statusline JSON ingestor (no source gives UNAVAILABLE with reason); snapshot() returning a JSON-serialisable dict. IMPLEMENTED and TESTED offline (90 synthetic tests pass). OBSERVED once on the real machine (numbers only, see commands): 2 live sessions read, 1 pressure computed, 1 UNAVAILABLE because the model id is not in the default window table. NOT TESTED: statusline ingestor against a real Claude Code statusline payload (shape of rate_limits is an assumption, PROPOSED); account usage is UNAVAILABLE, no known source. Default context windows and thresholds are configuration defaults, not verified facts about any account. Follow-up: telemetry.snapshot is no longer re-exported from dev_supervisor/__init__.py (it shadowed the submodule dev_supervisor.snapshot); use dev_supervisor.telemetry.snapshot."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Lukas's issue #44 authorization of high-autonomy work and standing instruction to the Repository Coordinator; lane reports, diffs and tests re-read and re-run by the Coordinator (dev tests 540 OK, node dashboard 91/91); live observations are the workers' reports (benchmark, Resolve discovery, one headless launch), not re-observed; no ChatGPT or Lukas code review claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-002",
+      "title": "Supervisor state store and worker lifecycle: spawn, assign, monitor, restart, stop (issue #44 part B)",
+      "steps": [
+        {
+          "id": "S-DEV-002-00",
+          "title": "Lane L2 of wave w03-dev-supervisor",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "state_store.py: a crash-safe machine-local store (atomic write, schema_version, fsync and rename, backup of the previous file, corruption detected and recovered from the backup, append-only JSON-lines event log) in a configurable directory that defaults OUTSIDE the repository; refuses a directory inside the repo working tree; no secrets ever written (scrub on write)",
+            "workers.py: a Worker record (id, role, task_id, branch, worktree, owner stream, provider/model identity, status, pid, session id, started and last-heartbeat, restart count, last result reference) and a registry that survives process restarts",
+            "lifecycle.py: spawn, assign, monitor, collect, restart and stop through an injected ProcessLauncher protocol (a fake launcher in tests; a real launcher that runs the claude CLI in print/stream-json mode with an explicit --model, --session-id and a task prompt file, argument lists only, no shell string interpolation, bounded runtime); heartbeat and stale detection; bounded restarts with backoff and a hard stop after N identical failures recorded as a blocker; graceful stop; duplicate-worker prevention for the same task/worktree; the worktree and branch must exist (injected checker) before a worker is assigned",
+            "Result collection: a worker result is stored as REPORTED until an injected verifier marks it VERIFIED or REJECTED; contradictory reports from two workers on one task are detected and flagged",
+            "Recovery: a fresh supervisor process reloads the registry, reconciles with live pids, marks vanished workers LOST and produces a recovery plan without relaunching anything automatically",
+            "At least 50 offline tests (fake launcher, fake clock, corruption, crash mid-write, restart storms, duplicate assignment, contradiction detection)",
+            "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L2 head on the wave branch (last commit to its report)",
+              "commit": "73d2ced965545408fabad027a4e5642ccf00f99a"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w03-dev-supervisor",
+              "commit": "b9564e03115d569135017e05479598085f1e4639"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_lifecycle.py",
+              "result": "Ran 88 tests: OK (TESTED, synthetic data, no network, no real process)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "claude --version",
+              "result": "OBSERVED: 2.1.316 (Claude Code)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "claude --help (read-only, grep for flags)",
+              "result": "OBSERVED: -p/--print, --output-format (text|json|stream-json, print only), --verbose, --model, --session-id <uuid> (must be a valid UUID), --permission-mode (acceptEdits|auto|bypassPermissions|manual|dontAsk|plan), --max-budget-usd (print only) are listed"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -c \"... build_claude_argv('claude-opus-5-5', str(uuid.UUID(int=1))) ...\" (construction only, nothing executed)",
+              "result": "OBSERVED: ['claude', '-p', '--output-format', 'stream-json', '--verbose', '--model', 'claude-opus-5-5', '--session-id', '00000000-0000-0000-0000-000000000001']; ClaudeCliLauncher().resolve_executable() found an executable: True; pid_alive(own pid)=True, pid_alive(4000000)=False; default state dir outside the repository: True"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "copy of dev_supervisor with a stand-in __init__.py in the scratchpad; python -B -I -c \"from dev_supervisor.lifecycle import Supervisor\"",
+              "result": "OBSERVED: imports work both as a namespace package (this lane) and as a regular package (after L1 adds __init__.py)"
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED: orchestrator/dev_supervisor/state_store.py (crash-safe machine-local store: envelope with schema_version and sha256 checksum, temp file + flush + fsync + os.replace with bounded retries for Windows sharing violations, atomic backup of the previous valid file, damaged file quarantined and recovered from backup or refused if both are damaged, newer schema refused, stale temp files from a hard crash removed on open, append-only events.jsonl tolerant of a torn last line, scrub of credential keys and credential-shaped values on every write, extended-length path prefix for long Windows paths, single-supervisor lock; default directory %LOCALAPPDATA%/CreatorStudio/dev_supervisor or XDG state dir, overridable by CREATORSTUDIO_DEV_SUPERVISOR_DIR, refused inside any git working tree). workers.py: Worker record (id, role, task_id, branch, worktree, owner stream, provider/model, status, pid, session id, started/last-heartbeat, restart count, failures, last result reference) and a WorkerRegistry persisted in the store with duplicate prevention per task and per normalised worktree. lifecycle.py: Supervisor with assign (injected worktree/branch checker), spawn (STARTING persisted before launch), monitor (exit codes, heartbeat and activity-based stale detection, bounded runtime), restart (exponential backoff, restart budget, BLOCKED plus blocker record after N identical failures, human unblock), graceful stop with kill after grace, collect (REPORTED until an injected verifier decides; contradictory reports from two workers detected, flagged and blocking VERIFIED until one side is REJECTED), and recover (reload, reconcile pids, mark vanished workers LOST, plan only, never launches or signals). ClaudeCliLauncher builds an argument list [claude, -p, --output-format, stream-json, --verbose, --model M, --session-id UUID] (shell=False, prompt file on stdin, output to log files, own process group) and never signals a pid it did not start; GitWorktreeChecker uses git argument lists with a timeout. TESTED: 88 offline tests pass (fake launcher, fake clock, fake popen, fake git runner, sockets blocked). OBSERVED: argv construction only, pid probe, executable resolution. NOT TESTED: the real launcher has never started a claude process; that stdin prompt delivery with -p and the --verbose requirement for stream-json behave as assumed is NOT TESTED; GitWorktreeChecker against a real repository is NOT TESTED; nothing is VERIFIED."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Lukas's issue #44 authorization of high-autonomy work and standing instruction to the Repository Coordinator; lane reports, diffs and tests re-read and re-run by the Coordinator (dev tests 540 OK, node dashboard 91/91); live observations are the workers' reports (benchmark, Resolve discovery, one headless launch), not re-observed; no ChatGPT or Lukas code review claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-003",
+      "title": "Safe handoff, compaction and session replacement (issue #44 part C)",
+      "steps": [
+        {
+          "id": "S-DEV-003-00",
+          "title": "Lane L3 of wave w03-dev-supervisor",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "handoff.py: a handoff builder that captures objective, decisions, current plan, task graph, worker identities and status, branches/worktrees, latest commits and PRs, tests and evidence with labels, blockers, next actions and resource state (context and usage signals with their labels); written as machine-readable JSON plus a human Markdown file in the machine-local state store, with a content hash; a VERIFY step re-reads the files, validates the schema, checks that every referenced branch/worktree/commit/PR exists through injected checkers, and returns NOT_SAFE with reasons when anything is missing; contains no secrets or transcript text",
+            "compaction.py: a policy that, given context pressure from the L1 telemetry (merge origin/wave/w03-dev-supervisor to use it) and configurable thresholds, decides NONE / WARN / COMPACT / REPLACE with a recorded reason; compaction is only requested when the session is idle and a handoff has just been verified; never claims exact usage when the signal is UNAVAILABLE; a compaction event is recorded through the state store event log",
+            "replacement.py: the replace-a-session procedure: verify handoff, mark the old session retiring, launch a fresh Main or worker through the L2 launcher protocol with a prompt that points to the verified handoff, wait for the new session's first heartbeat, then retire the old; if the handoff is not verified the old session is never cleared; the module and its result state that a fresh session does NOT replenish account usage; bounded retries and rollback (the old session stays authoritative until the new one is confirmed)",
+            "At least 40 offline tests (missing branch, corrupt handoff, hash mismatch, threshold edges, retiring and rollback, never-clear-without-verified-handoff, repeated failure stops)",
+            "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L3 head on the wave branch (last commit to its report)",
+              "commit": "c61952a3bd4f5fefe1d2b163b849872efcdf736b"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w03-dev-supervisor",
+              "commit": "b9564e03115d569135017e05479598085f1e4639"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "git fetch && git merge origin/wave/w03-dev-supervisor",
+              "result": "merged L1, L2, L4, L5, L6 into the lane branch"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_handoff.py",
+              "result": "Ran 66 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 472 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED and tested offline (66 tests): handoff.py builds a labelled handoff (objective, decisions, plan, task graph, L2 worker identities/status, branches, worktrees, commits, PRs, tests and evidence with labels, blockers, next actions, L1 context/usage signals with their labels; UNAVAILABLE never carries a value), refuses secret- or transcript-like text and over-long strings, writes JSON plus Markdown under <state store>/handoffs/ with a SHA-256 content hash, and verify_handoff re-reads both files, validates the schema, recomputes the hash and confirms every branch/worktree/commit/PR through injected checkers (missing, failing or absent checker = NOT_SAFE with reasons). Only a SAFE verification yields a VerifiedHandoff; it cannot be constructed or copied elsewhere (module-private seal plus issued-object registry), and require_verified also enforces freshness. compaction.py decides NONE/WARN/COMPACT/REPLACE from L1 context_pressure using PressureConfig.level and its thresholds, records the reason, allows COMPACT/REPLACE only when the session is idle and a fresh VerifiedHandoff exists, returns NONE with an explicit UNAVAILABLE/stale reason when pressure is unavailable or stale, and records compaction_decision/compaction_requested/compaction_refused in the state store event log. replacement.py requires a fresh VerifiedHandoff for the old session before anything happens, re-verifies on disk, marks the old session RETIRING (still authoritative), launches through the L2 ProcessLauncher with a prompt that only points to the handoff path and hash, waits (bounded) for the first heartbeat, moves authority to the new session, verifies the handoff once more and only then calls the retirer; bounded attempts, rollback to the old session, and a stop after N failed replacements in a row until a human resets. The module docstring and every ReplacementResult state that a fresh session does NOT replenish account usage. NOT TESTED: GitRefChecker and GhPrChecker against a live repository/GitHub, a real claude launch through ClaudeCliLauncher, any real heartbeat or retirer implementation (none exists yet; they are injected protocols). No live-machine observation was made in this lane."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Lukas's issue #44 authorization of high-autonomy work and standing instruction to the Repository Coordinator; lane reports, diffs and tests re-read and re-run by the Coordinator (dev tests 540 OK, node dashboard 91/91); live observations are the workers' reports (benchmark, Resolve discovery, one headless launch), not re-observed; no ChatGPT or Lukas code review claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-004",
+      "title": "Provider/model routing and OmniRoute benchmarking (issue #44 part D)",
+      "steps": [
+        {
+          "id": "S-DEV-004-00",
+          "title": "Lane L4 of wave w03-dev-supervisor",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "omniroute.py: a client over an injected HTTP transport for the local OmniRoute (base URL from configuration or env; the API key is read from the environment or the machine-local OmniRoute env file ONLY at call time, never logged, never stored, never in exceptions); lists models, sends a small benchmark prompt, records latency, status, token counts if returned and error class; localhost-only by default and refuses non-local base URLs unless explicitly allowed",
+            "routing.py: a task-profile scheduler: input is criticality, complexity class, estimated context size, deadline, concurrency, current context pressure and quota signals (each possibly UNAVAILABLE); output is a ranked decision with reasons (strongest Claude model for architecture, integration and high criticality; OmniRoute Gemini/Groq routes for routine, mechanical, search and repetitive work; escalation to Claude on validation failure or repeated failure; never a paid API route unless a configuration flag explicitly authorises it, default off); deterministic and fully explained; no fixed percentage split",
+            "A benchmark harness runs a fixed set of small synthetic tasks (code transform, JSON extraction, summarise, a tool-use style instruction, a refusal-safe task) against each reachable OmniRoute route, scores them with deterministic checkers (not an LLM judge), records pass rate, latency and failure class, and writes a results JSON containing no secrets",
+            "LIVE verification: run the harness against the local OmniRoute (the Coordinator started it on port 20128; if it is down start it with `omniroute serve --daemon --no-open`); report which Gemini/Groq routes answer, pass rates and latencies, which fail and why; write the factual results into OMNIROUTE_BENCHMARK.md labelled OBSERVED with date and commands; do not print or store any key, do not look for billing, do not configure paid providers",
+            "At least 40 offline tests; routing decisions covered for every branch including all-UNAVAILABLE signals and the paid-route-off default",
+            "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L4 head on the wave branch (last commit to its report)",
+              "commit": "1c3da5ac3733d146738e39b00b6d9525edb48055"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w03-dev-supervisor",
+              "commit": "b9564e03115d569135017e05479598085f1e4639"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_routing.py",
+              "result": "Ran 70 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.omniroute --out <results.json> --timeout 45",
+              "result": "live run, 7 Gemini/Groq routes, 2 answered (see OMNIROUTE_BENCHMARK.md)"
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED: orchestrator/dev_supervisor/omniroute.py (injected-transport OmniRoute client, localhost-only by default, key read at call time only, error classes, 5-task deterministic benchmark harness, results JSON without secrets) and routing.py (deterministic explained task-profile scheduler; UNAVAILABLE signals neutral; paid route excluded unless allow_paid_api). TESTED: 70 offline tests, sockets blocked. OBSERVED (single live run vs local OmniRoute, see OMNIROUTE_BENCHMARK.md): gemini-3.1-flash-lite 5/5, gemini-3-flash-preview 4/5; other Gemini routes failed with not_found/rate_limited/timeout/upstream_error; both Groq routes auth_error. NOT TESTED: long contexts, multi-turn tool use, Claude Code through OmniRoute, authenticated requests (no key was available), repeat runs. Nothing is VERIFIED. PROPOSED: scoring weights and thresholds in routing.py are design choices, not calibrated."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Lukas's issue #44 authorization of high-autonomy work and standing instruction to the Repository Coordinator; lane reports, diffs and tests re-read and re-run by the Coordinator (dev tests 540 OK, node dashboard 91/91); live observations are the workers' reports (benchmark, Resolve discovery, one headless launch), not re-observed; no ChatGPT or Lukas code review claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-005",
+      "title": "Resolve project discovery and bridge bootstrap, read-only (issue #44 part E)",
+      "steps": [
+        {
+          "id": "S-DEV-005-00",
+          "title": "Lane L5 of wave w03-dev-supervisor",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "INVESTIGATE first and write the findings into RESOLVE_BOOTSTRAP.md (OBSERVED versus inferred): why an agent could launch DaVinci Resolve Free 21.0.4.5 yet not identify the intended project or start the in-app bridge; read-only inspection only (process list, the listening bridge port 49632 on 127.0.0.1, .mcp.json.example, the davinci-resolve MCP read tools, local Resolve project metadata); you must NOT open, create, rename, save, import into or modify any project or timeline and must not click in Resolve; if a read needs the bridge and it is unavailable, document exactly what the user must do",
+            "resolve_discovery.py: a pure, injectable discovery module: is Resolve running (process check), is the bridge listening (TCP connect to 127.0.0.1 only), can the MCP answer a read-only call, current project name and stable identity (unique id where the API exposes one, else name plus database plus folder), current timeline name, project list; every field labelled OBSERVED or UNAVAILABLE; no guessing by name: it accepts a machine-local config of the expected project identity and reports MATCH, MISMATCH, UNCONFIGURED or UNAVAILABLE, and refuses to proceed on MISMATCH",
+            "A small CLI entry (`python -B -m dev_supervisor.resolve_discovery`) prints the report as JSON, exit code non-zero on MISMATCH or UNAVAILABLE; it never performs a project mutation; bridge start is documented, and launched only on an explicit flag and only as far as it can be done without touching a project; otherwise it prints the exact manual fallback",
+            "The real active project on this machine is DISCOVERED read-only and recorded (name, identity if available, timeline) in the lane report as OBSERVED; never written to a tracked file if it contains a personal path or a name not already public in the repository",
+            "At least 30 offline tests with a fake process list, fake socket and fake MCP transport (MISMATCH, UNCONFIGURED, bridge down, Resolve closed, timeouts); coordination note: T-RSV-002 owns the resolve_executor package and the exclusive 'resolve' resource; this lane is read-only and does not touch that package",
+            "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L5 head on the wave branch (last commit to its report)",
+              "commit": "1c6a2b1aab38bec018a80206c6f6be3c5e8022c7"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w03-dev-supervisor",
+              "commit": "b9564e03115d569135017e05479598085f1e4639"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_resolve_discovery.py",
+              "result": "Ran 60 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B -m dev_supervisor.resolve_discovery --config <local> --mcp-snapshot <local>  (real process list and real loopback connect)",
+              "result": "resolve_running true, bridge_listening true, verdict MISMATCH, exit 1"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B -m dev_supervisor.resolve_discovery (no config)",
+              "result": "UNCONFIGURED, exit 2"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "Get-Process (Resolve) ; Test-NetConnection 127.0.0.1 -Port 49632",
+              "result": "1 Resolve process; TcpTestSucceeded True"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "MCP read calls: resolve_control.runtime_mode; project_manager.get_current; timeline.get_name; project_manager.list",
+              "result": "all succeeded, no mutation; ToolSearch only loaded schemas (project_manager, timeline, resolve_control)"
+            },
+            {
+              "type": "observation",
+              "summary": "Implemented orchestrator/dev_supervisor/resolve_discovery.py (injectable process/socket/MCP transports, OBSERVED/UNAVAILABLE labelling, MATCH/MISMATCH/UNCONFIGURED/UNAVAILABLE identity verdict, never by name alone, require_match refuses MISMATCH, CLI with exit codes 0/1/2/3, --start-bridge launches only the Resolve app and always prints the manual bridge steps) plus 60 offline tests and RESOLVE_BOOTSTRAP.md. Live read-only observation (OBSERVED): Resolve Free 21.0.4.5 GUI running, 1 instance; TCP connect to 127.0.0.1:49632 succeeded (no bytes sent); MCP read calls answered; database Local Database (Disk); current project is the T-RSV-002 disposable probe project (CS_T-RSV-002_ntsc_probe) with a UUID id exposed by get_current, current timeline N2; project list holds 7 projects incl. MCP_COMPATIBILITY_TEST. So the intended project MCP_COMPATIBILITY_TEST is NOT the open one; discovery CLI with a config expecting it returned MISMATCH exit 1, with no config UNCONFIGURED exit 2. Root cause (INFERRED, partly REPORTED): launching Resolve starts only the app; the bridge needs the user to run Workspace > Scripts > resolve_bridge; identity is whatever project is open (changed by other tasks) and no identity config existed. NOT TESTED: raw reply on port 49632 (authenticated), folder identity, a real MCP client in the CLI (it takes an agent-supplied snapshot). Nothing VERIFIED beyond the cited command outputs."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Lukas's issue #44 authorization of high-autonomy work and standing instruction to the Repository Coordinator; lane reports, diffs and tests re-read and re-run by the Coordinator (dev tests 540 OK, node dashboard 91/91); live observations are the workers' reports (benchmark, Resolve discovery, one headless launch), not re-observed; no ChatGPT or Lukas code review claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-006",
+      "title": "Automatic GitHub progress reporting: durable event log (issue #44 part 5)",
+      "steps": [
+        {
+          "id": "S-DEV-006-00",
+          "title": "Lane L6 of wave w03-dev-supervisor",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "github_log.py: an event model (task_started, step_done, decision, test_run, failure, retry, provider_change, handoff, compaction, blocker, pr_opened) with evidence references and a source label; renders a concise Markdown comment; every event is scrubbed (tokens, key/value secrets, absolute user paths, long opaque strings) before it leaves the process",
+            "Posting goes through an injected Runner protocol wrapping the gh CLI with argument lists (never shell strings): issue comment, issue create (sub-task), issue close; a real runner is provided but all tests use a fake; rate limiting and batching, bounded retries with backoff, an offline spool file (machine-local, atomic) so an event is never lost when GitHub or the network is down, and an idempotent flush (an event id marker prevents duplicate comments)",
+            "Visibility safety: the repository is PUBLIC; the logger refuses to post content flagged as sensitive (secret pattern, transcript text marker, personal path) and records the refusal locally instead",
+            "A helper creates a sub-task issue from a task record (id, owner, scope, dependencies, acceptance criteria, branch/worktree) with a back-reference to the parent issue number",
+            "At least 40 offline tests (fake gh runner, outage plus spool plus flush, duplicate prevention, scrubbing, refusal)",
+            "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L6 head on the wave branch (last commit to its report)",
+              "commit": "d3f55bc490b1588f7065f0632f19e8ff05cfa2e9"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w03-dev-supervisor",
+              "commit": "b9564e03115d569135017e05479598085f1e4639"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_github_log.py",
+              "result": "Ran 98 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B -I <scratch live script>: GitHubLogger(GhRunner(repo=KasluBuilds/CreatorStudio)).log(event, issue 50) twice, then GhRunner.event_ids(50)",
+              "result": "posted / duplicate / marker 1ee7c0de50000006 found (OBSERVED)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "gh issue view 50 --json comments --jq '[.comments[] | select(.body|contains(\"dev-event:1ee7c0de50000006\"))] | length'",
+              "result": "1 (OBSERVED)"
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED: orchestrator/dev_supervisor/github_log.py (11-kind Event model with evidence refs and source label, scrubber for tokens/key-value secrets/userinfo/query strings/absolute and personal paths/long opaque strings, Markdown renderer with @mention and marker-forgery neutralisation, Runner protocol, GhRunner over the gh CLI with argument lists and stdin bodies, GitHubLogger with atomic machine-local spool, posted-id ledger, per-issue batching, rate limiting, bounded retries with exponential backoff, marker read-back before re-posting after an ambiguous failure, refusal log without content, sub-task issue helper with parent back-reference and per-task idempotency, close_issue). TESTED: 98 offline unit tests with a fake runner; subprocess and sockets patched to fail in the flow test. OBSERVED live (one harmless comment on issue #50 through GhRunner; second log of the same event returned 'duplicate'; read-after-write via GhRunner.event_ids and via gh issue view found exactly 1 comment carrying the marker). NOT TESTED: live issue create/close through GhRunner, GhRunner transient-error classification against real gh failures, concurrent processes on one state dir (no file lock). PROPOSED: wiring into the supervisor loop (other lanes)."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Lukas's issue #44 authorization of high-autonomy work and standing instruction to the Repository Coordinator; lane reports, diffs and tests re-read and re-run by the Coordinator (dev tests 540 OK, node dashboard 91/91); live observations are the workers' reports (benchmark, Resolve discovery, one headless launch), not re-observed; no ChatGPT or Lukas code review claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-007",
+      "title": "Orbit observability: supervisor snapshot and dashboard panel (issue #44 part F)",
+      "steps": [
+        {
+          "id": "S-DEV-007-00",
+          "title": "Lane L7 of wave w03-dev-supervisor",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "snapshot.py builds one read-only JSON for Orbit from the L1 telemetry and the L2 registry (Main, workers, tasks, model/provider, context pressure with labels, account usage only when OBSERVED, branch/PR, last durable GitHub checkpoint, blockers, failures, retries, next actions); each value says whether it is live or cached and its age; stale and offline are first-class states",
+            "The existing dashboard (read-only) gains an Operation/Supervisor view that renders that snapshot (from a local file path or setting, never a network write); a missing or stale file shows an explicit offline/stale state, never an empty success view; the UI distinguishes live from cached data; the product identity is shown as Orbit in the window title, headings of the NEW view and the About text, while released artifact names, file names and existing ids are NOT renamed; record the naming decision in the lane report",
+            "The dashboard stays read-only: no code path writes to GitHub, the repository or the supervisor state; add a test asserting this where the existing test style allows",
+            "Existing dashboard node tests (dashboard/desktop/tests) and Python snapshot tests still pass and are not weakened; new tests cover live, stale and offline rendering with fixtures",
+            "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L7 head on the wave branch (last commit to its report)",
+              "commit": "ea203ccc9ac07410973d3915623e339834be7e51"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w03-dev-supervisor",
+              "commit": "b9564e03115d569135017e05479598085f1e4639"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_snapshot.py",
+              "result": "Ran 12 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 418 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dashboard_app.py",
+              "result": "Ran 7 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "tests 91, pass 91, fail 0 (79 existing unchanged + 12 new in tests/orbit.test.js; the new UI test renders ui/dom.js + ui/views.js through a minimal fake DOM, not a browser)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --check main.js preload.js ui/app.js ui/views.js src/orbit.js",
+              "result": "syntax OK"
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED: orchestrator/dev_supervisor/snapshot.py builds one read-only Orbit JSON from the L1 telemetry snapshot and the L2 WorkerRegistry/event log (main session, workers, tasks, model/provider, context pressure, account usage, branch/PR, last GitHub checkpoint, blockers, failures, retries, next actions). Every value carries label, timestamp, source, freshness (live/cached/stale/offline) and age_seconds; missing sources are UNAVAILABLE/offline, never an empty success. Account usage is exposed only when every value is OBSERVED, otherwise UNAVAILABLE with the reason (a REPORTED statusline payload is hidden). The only write is write_snapshot() of the snapshot file itself (atomic); building never touches supervisor state (tested by hashing/mtime). dashboard/desktop gained an Orbit tab (src/orbit.js pure evaluator recomputing ages at display time, src/orbit-file.js read-only loader with one app-setting write in the app's own userData folder, ui/views.js renderOrbit, main.js/preload.js IPC orbit:select and orbit:reload which only read). States shown: live, cached, stale, offline (file missing / nothing answered), unconfigured (no file chosen) and invalid (not an Orbit snapshot). NAMING DECISION: the product identity is Orbit in the window title ('Orbit · Creator Studio Dashboard'), the new view heading and the About Orbit text and README section; the released artifact name (CreatorStudio-Dashboard-<version>-portable.exe), package name, productName, appId, AppUserModelId, file names and existing ids are NOT renamed, because renaming them would break updates, the release checksums and existing tooling; a test pins these identifiers. NOT TESTED: a running Electron window (electron is not installed in this worktree; no npm install was run), the IPC handlers and the file dialog, and any live observation on the real machine (no real session files or supervisor state were read). Nothing here is VERIFIED on real input. dashboard/build_snapshot.py and dashboard/index.html were not changed (not needed)."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Lukas's issue #44 authorization of high-autonomy work and standing instruction to the Repository Coordinator; lane reports, diffs and tests re-read and re-run by the Coordinator (dev tests 540 OK, node dashboard 91/91); live observations are the workers' reports (benchmark, Resolve discovery, one headless launch), not re-observed; no ChatGPT or Lukas code review claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-008",
+      "title": "Supervisor CLI and one-command launch of Main (issue #44 integration)",
+      "steps": [
+        {
+          "id": "S-DEV-008-00",
+          "title": "Lane L8 of wave w03-dev-supervisor",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "config.py: machine-local configuration (state directory outside the repo, thresholds, model table, OmniRoute base URL, GitHub repo and issue, paid-route flag default off) loaded from a machine-local file; a documented example is committed as a template with placeholders only",
+            "cli.py and __main__.py: `python -B -m dev_supervisor` with subcommands start (launch Main under the supervisor), status, workers, assign, handoff, compact-check, replace, report (flush the GitHub log), snapshot, route (explain a routing decision), doctor (check claude CLI, git, gh, OmniRoute, Resolve discovery, state dir, repo clean); each is non-destructive by default and exits non-zero on a failed check; the documented single launch command starts Main and the supervisor loop",
+            "launch.py: starts Main as a claude CLI session with the verified handoff and operating instructions as an appended prompt file, in the repository root, with a selectable profile that only passes flags (model, permission mode as configured) and NEVER reads, copies or modifies pro.ps1, backup.ps1 or .mcp.json; the Claude Pro versus OmniRoute choice is made by which local launcher the user runs and is documented, not automated by editing those launchers; the dangerous-permissions flag is only passed when the machine-local config explicitly enables it",
+            "Integration test with fakes: start, assign two fake workers, simulate pressure, handoff verified, replacement, status reflects the new Main; nothing touches the real machine in tests",
+            "At least 30 offline tests",
+            "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L8 head on the wave branch (last commit to its report)",
+              "commit": "581e95c22dc13d322ec415c4660fca2c911ba2db"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w03-dev-supervisor",
+              "commit": "b9564e03115d569135017e05479598085f1e4639"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_cli.py",
+              "result": "Ran 43 tests: OK (offline: fake terminal, launcher, checkers, runner and transports; socket, subprocess.run and subprocess.Popen patched to fail; includes the mandatory fake end-to-end flow: assign two workers, start, simulated 95% pressure, handoff written and verified, automatic replacement, status shows the new authoritative Main)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 527 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_claude_md.py",
+              "result": "Ran 11 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_governance.py",
+              "result": "Ran 98 tests: FAILED (failures=1): test_every_package_directory_has_an_owner_entry, because 'orchestrator/dev_supervisor/' has no ownership entry. Same result with this lane's uncommitted changes stashed; the package directory comes from the earlier lanes. Fixing it needs a registry edit outside L8 paths (see unresolved)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "claude --version; claude --help (read only)",
+              "result": "OBSERVED 2.1.316; flags confirmed: --model, --session-id, --name, --append-system-prompt, --permission-mode (acceptEdits|auto|bypassPermissions|manual|dontAsk|plan), --dangerously-skip-permissions, -p, --output-format, --verbose; --append-system-prompt-file only named in the --bare help text"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B <scratch>/live_l2_check.py <orchestrator> haiku  (L2 Supervisor + ClaudeCliLauncher + GitWorktreeChecker, temp state dir and temp git repo outside the repository, max_runtime_s=120)",
+              "result": "OBSERVED exit 0, 8.5 s, EXITED, event types [system/init, assistant, rate_limit_event, result/success], result 'OK', stderr empty"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "claude -p --output-format stream-json --model haiku < prompt.txt  (temp dir)",
+              "result": "OBSERVED exit 1 after 2 s, stdout empty: 'Error: When using --print, --output-format=stream-json requires --verbose'"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "claude -p --model haiku --append-system-prompt-file <tmp>/sys.txt < prompt.txt  (temp dir)",
+              "result": "OBSERVED exit 0 after 7 s, stdout 'OK' (flag accepted)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "claude --definitely-not-a-flag-xyz -p < /dev/null",
+              "result": "OBSERVED exit 1, 'error: unknown option' (control: unknown flags are rejected)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor doctor",
+              "result": "OBSERVED exit 1: claude OK (2.1.316), git OK, gh_auth OK (account name only), omniroute OK (localhost reachable, 445 model ids), resolve WARN (UNCONFIGURED, acceptable), state_dir OK (outside repo, not created), repo_clean FAIL (this lane's 4 then-uncommitted files), worktrees OK (48 registered, no wave_id configured); took about 11 s"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor status; ... compact-check; ... start; ... route --criticality low --complexity mechanical; ... config --example",
+              "result": "OBSERVED: status exit 0 (no Main recorded); compact-check exit 3 (pressure UNAVAILABLE, no Main); start without --yes exit 0, printed the plan and launched nothing; route exit 0 (best omniroute:gemini, paid_api excluded); config --example printed the placeholder template. compact-check created the default machine-local state dir with one events.jsonl; it was removed afterwards (it did not exist before)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "gh issue comment 52 (start and end of lane)",
+              "result": "posted short progress comments, no secrets"
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED: python -B -m dev_supervisor (cli.py, __main__.py) with start, status, workers, assign, handoff, compact-check, replace, report, snapshot, route, doctor and config. Each is non-destructive without --yes and exits non-zero on a failed check (1 failed/refused, 2 usage/config, compact-check 3 pressure UNAVAILABLE, 4 COMPACT/REPLACE due). It integrates L1-L7 without re-implementing them: L1 telemetry/evidence, L2 StateStore/WorkerRegistry/Supervisor/ClaudeCliLauncher (worker permission mode added by overriding Supervisor.build_spec, still built by build_claude_argv), L3 build/write/verify_handoff, compaction.decide and replace_session, L4 routing.decide and OmniRouteClient, L5 resolve_discovery.discover, L6 GitHubLogger (events are spooled by the loop and posted only by report --yes), and L7 build_snapshot. config.py: a machine-local config (default <state dir>/config.json or CREATORSTUDIO_DEV_SUPERVISOR_CONFIG, refused inside a git tree). It covers models, context windows, thresholds, OmniRoute URL, GitHub repo/issue, allow_paid_api=false and dangerously_skip_permissions=false. Credential-like keys or values are refused. The template has placeholders only (docstring and `config --example`). launch.py DECISION, resolving the open point from L3: Main is an INTERACTIVE claude session in a new console window (subprocess.Popen with an argument list, CREATE_NEW_CONSOLE, shell=False, no cmd/wt string parsing, .cmd/.bat shims refused, cwd = repo root). Its argv is --model, --session-id <uuid>, --name, --append-system-prompt-file <state dir>/prompts/main-<uuid>.prompt.txt (operating instructions plus the verified handoff path and hash after a replacement), an optional --permission-mode, and --dangerously-skip-permissions only when the config enables it. Workers stay headless via L2. InteractiveMainLauncher implements the L2 ProcessLauncher protocol so L3 replace_session relaunches Main interactively. LIMITS: the supervisor observes Main only through the L1 session file and transcript tail and cannot inject keystrokes. Compacting an interactive Main therefore means Main writes a handoff, the supervisor verifies it by read-back, then replaces the session (auto only when auto_replace_main=true, the session is idle and a handoff written within 30 min verifies). An old Main this process did not start is never signalled; the result is REPLACED_OLD_NOT_CLEARED and the user closes the window. CLI commands never write the worker registry while a loop runs: assign/replace --yes queue requests in <state>/requests and the loop holding the lock executes them. The provider (Claude Pro vs OmniRoute) is inherited from whichever local launcher opened the terminal. The supervisor never reads, copies or edits pro.ps1, backup.ps1 or .mcp.json (none were read in this lane). OBSERVED live (once, bounded, haiku, temp state dir and temp git repo outside the repository, no repository writes): the L2 worker path ran end to end. Argv: [\"claude\",\"-p\",\"--output-format\",\"stream-json\",\"--verbose\",\"--model\",\"haiku\",\"--session-id\",\"<uuid>\"], prompt on stdin. Result: exit 0 in 8.5 s, worker status EXITED, 4 stream lines with event types system/init, assistant, rate_limit_event, result/success, is_error false, num_turns 1, result session_id equal to --session-id, result text exactly 'OK', stderr 0 bytes. This PROVES the L2 assumptions that -p reads the prompt from stdin and that stream-json needs --verbose (without --verbose: exit 1 in 2 s, 'Error: When using --print, --output-format=stream-json requires --verbose'). --append-system-prompt-file is not listed in `claude --help` (2.1.316) but was OBSERVED accepted (claude -p --model haiku --append-system-prompt-file <tmp>: exit 0, output 'OK'; control: an unknown option gives 'error: unknown option', exit 1). Doctor and the read-only commands were run against the real machine (see commands). NOT TESTED: the interactive Main launch (NewConsoleTerminal) and a real replacement or retirement of an interactive Main were never run live; start --yes was not run on this machine; report --yes was not run live (no real posting); the Resolve MCP transport is not wired (L5 has none); the session-file heartbeat on a real interactive session is unobserved; non-Windows interactive launch is not implemented. Nothing is VERIFIED."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Lukas's issue #44 authorization of high-autonomy work and standing instruction to the Repository Coordinator; lane reports, diffs and tests re-read and re-run by the Coordinator (dev tests 540 OK, node dashboard 91/91); live observations are the workers' reports (benchmark, Resolve discovery, one headless launch), not re-observed; no ChatGPT or Lukas code review claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-009",
+      "title": "Development operating system documentation and doc reconciliation (issue #44 part G)",
+      "steps": [
+        {
+          "id": "S-DEV-009-00",
+          "title": "Lane L9 of wave w03-dev-supervisor",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "DEVELOPMENT_OPERATING_SYSTEM.md (project-independent, placeholders instead of machine values): how Main controls the operation; how specialist agents communicate (Claude Code messaging, GitHub as the durable log); the Python supervisor, session/context rotation and recovery; GitHub task/step/event logging, branches, worktrees, PRs and integration; Orbit and what it observes; Claude Pro versus OmniRoute (free Gemini/Groq, no paid API assumed) with quota realities and the statement that a fresh session does not replenish usage; Windows/VS Code setup and machine-local configuration; how to onboard a new repository; how Main proposes ideas, evaluates feasibility and trade-offs and asks essential questions before a major build; and the distinction between reusable development infrastructure and Creator Studio's video-production agents",
+            "Every capability in the document is labelled with its real status (IMPLEMENTED, TESTED, OBSERVED, REPORTED, PROPOSED, NOT TESTED) taken from the lane reports and the merged code on the wave branch, with nothing promoted beyond its evidence",
+            "AGENTS.md, WORKFLOW.md and ENVIRONMENT.md are reconciled (no duplicated or conflicting rules): development-time agents are clearly separated from video-production agents; MASTER.md, ROADMAP.md, DECISIONS_AND_OPEN_QUESTIONS.md, README.md, TOOLS.md, CLAUDE.md, PROJECT_OPERATING_PROTOCOL.md, RESOLVE_INTEGRATION.md and TECHNICAL_ARCHITECTURE.md are NOT edited by this lane (shared files, the integrator and T-RSV-002 own them); list the proposed edits to those files in the lane report instead",
+            "test_dev_docs.py checks that DEVELOPMENT_OPERATING_SYSTEM.md contains every required section, a status label on each capability, no secret patterns, no absolute user paths and no launcher contents; the existing docs tests still pass",
+            "Synthetic data only: no real footage, no network in unit tests (a test patches socket creation to fail where a transport is involved), no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any evidence from the real machine (live observation) is summarised as numbers and identifiers only, never user prompts, transcript text or file contents; stated as OBSERVED with the exact command; anything not observed is labelled NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, reported, proposed and open items"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L9 head on the wave branch (last commit to its report)",
+              "commit": "b9564e03115d569135017e05479598085f1e4639"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w03-dev-supervisor",
+              "commit": "b9564e03115d569135017e05479598085f1e4639"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_docs.py",
+              "result": "Ran 12 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+              "result": "Ran 540 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_claude_md.py",
+              "result": "Ran 11 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_governance*.py",
+              "result": "Ran 98 tests: 1 failure, test_every_package_directory_has_an_owner_entry (dev_supervisor has no owner entry; pre-existing, reported by L8, registry is Coordinator-owned)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor doctor",
+              "result": "OBSERVED: all required checks passed; resolve UNCONFIGURED (warning)"
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED: DEVELOPMENT_OPERATING_SYSTEM.md (15 sections: principles, roles, Main control, proposing ideas/agreeing a large build, communication, supervisor commands, context rotation/handoff/recovery, GitHub log, Claude Pro vs OmniRoute, Orbit, Windows/VS Code and machine-local config, 12-step onboarding checklist with real dev_supervisor commands, development vs product agents, 25-row capability status table, safety). Labels taken from lane reports L1-L8; nothing marked VERIFIED. AGENTS.md and WORKFLOW.md got a scope note separating development-time agents from video-production agents; ENVIRONMENT.md got a supervisor/machine-local-config paragraph and the OmniRoute start command with the benchmark pointer (no secrets; the two-launchers rule is kept, the supervisor is a Python package not a third launcher). TESTED offline: test_dev_docs.py 12 tests (sections, labels per capability row, no VERIFIED, no secrets, no absolute user paths, no launcher contents, referenced commands exist as subcommands, reconciled docs). NOT TESTED: onboarding checklist on another repository; all live-only items inherited from lanes (interactive Main launch, start --yes, replacement, heartbeat, Electron). No live observation was taken by this lane beyond running 'doctor' and 'config --example' (doctor: required checks passed, resolve UNCONFIGURED warning)."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Lukas's issue #44 authorization of high-autonomy work and standing instruction to the Repository Coordinator; lane reports, diffs and tests re-read and re-run by the Coordinator (dev tests 540 OK, node dashboard 91/91); live observations are the workers' reports (benchmark, Resolve discovery, one headless launch), not re-observed; no ChatGPT or Lukas code review claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-013",
+      "title": "Autonomy loop: task selection, wake-up wait and Main Stop hook (issue #44, mission part 2-4)",
+      "steps": [
+        {
+          "id": "S-DEV-013-00",
+          "title": "Lane L1 of wave w04-autonomy-loop",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module orchestrator/dev_supervisor/autonomy.py with its own CLI `python -B -m dev_supervisor.autonomy <cmd>` (do NOT edit cli.py, launch.py, telemetry.py or any other existing module: they are claimed by open tasks T-DEV-010..012); standard library only; reuse existing modules read-only (state_store.StateStore, workers.WorkerRegistry, config.Config loading as cli.py does, evidence labels)",
+            "`next [--json] [--repo <root>]`: builds the actionable list for Main from the repository records and the supervisor state, ordered by priority with a reason each: (a) worker results that are REPORTED and not yet verified (review_worker_result); (b) FAILED or LOST workers and whether a retry is eligible or blocked (bounded restarts, identical-failure stop); (c) wave lanes SUBMITTED but not verified, read from waves/*/wave.json plus `git` remote branch state via an injected runner; (d) registered tasks in ACTIVE_TASKS.json / DEVELOPMENT_TRACKER.json that are eligible: PLANNED or the next PLANNED step of an ACTIVE task whose dependencies are COMPLETED and whose owned_paths do not overlap another ACTIVE task; (e) blocked items with the exact blocker (dependency, lease held by another task, missing merge). When nothing is actionable it returns an explicit idle_reason (for example 'waiting for 2 running workers' or 'no eligible task: T-X waits for T-Y'). Never invents work; repository files win over supervisor cache",
+            "`wait --timeout <s> [--poll <s>] [--cursor <file>]`: blocks until the actionable fingerprint changes or a new supervisor event (events.jsonl beyond a stored cursor) of kind worker_* / main_* / replacement arrives, prints a short JSON summary of what changed, exit 0 on change and exit 3 on timeout; meant to be run by Main as a background command so its exit re-invokes Main; bounded, low CPU, tolerant of missing/corrupt state",
+            "`stop-hook`: implements the Claude Code Stop hook contract: reads the hook JSON from stdin (session_id, stop_hook_active, ...); only for the authoritative Main session id recorded in the supervisor state (any other session: allow, no output); if actionable items exist that Main has not yet been told about (fingerprint stored in the state directory), print {\"decision\": \"block\", \"reason\": \"<one line naming the next item and the command to inspect it>\"}; if stop_hook_active is true and the fingerprint is unchanged, allow; at most a configurable number of consecutive blocks (default 3) before allowing; any internal error fails OPEN (allow, exit 0) and is logged to the state directory; reasons never contain secrets or transcript text",
+            "`main-settings --out <file> [--python <exe>] [--orchestrator <dir>]`: writes a Claude Code settings JSON containing only a hooks.Stop entry that runs the stop-hook command (argument-safe quoting on Windows), for use with `claude --settings <file>`; it never edits ~/.claude, the repository's .claude/ or any launcher; wiring it into launch.py is a later task (record that as PROPOSED)",
+            "At least 40 offline tests with temp state directories, synthetic ACTIVE_TASKS/TRACKER/wave manifests, a fake git runner and a fake clock (eligibility rules, dependency and overlap blocking, idle reasons, wait change/timeout, stop-hook block/allow/loop-bound/fail-open/other-session, settings file shape)",
+            "One OBSERVED live dry run of `next --json` against this repository and the real machine-local supervisor state directory, reported as counts and task ids only",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only (never prompts, transcript text or file contents), labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "7c3fce9fc2a8cbc212a63c0bdf045cda4240b104"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w04-autonomy-loop",
+              "commit": "7c3fce9fc2a8cbc212a63c0bdf045cda4240b104"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_autonomy.py",
+              "result": "Ran 104 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+              "result": "Ran 648 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests (before fix rounds 2-3)",
+              "result": "Ran 2163 tests in 369s: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.autonomy next --json --repo <this worktree>",
+              "result": "OBSERVED: items 1 (verify_wave w04-autonomy-loop L1,L2), others_waiting 2, blocked 0, warnings 1 (multiple authoritative Main sessions, 2 short ids)"
+            },
+            {
+              "type": "observation",
+              "summary": "Added orchestrator/dev_supervisor/autonomy.py (stdlib only) with next, wait, stop-hook and main-settings, plus 89 offline tests. IMPLEMENTED and TESTED offline with synthetic registries, a fake git runner and a fake clock: eligibility (PLANNED, dependencies COMPLETED/RELEASED, owned-path overlap with ACTIVE/UNDER_REVIEW tasks ignoring shared_files), tracker steps, worker results and failures with retry eligibility, submitted-but-unmerged waves, idle reasons, wait change/timeout, Stop hook block/allow/loop-bound/fail-open/other-session, settings shape. OBSERVED once: next --json against this checkout and the real machine-local state returned 3 items (2 review_step, 1 verify_wave), 0 blocked, 0 warnings, state directory unchanged. NOT TESTED: a real Claude Code session invoking the hook, wait run as a real background command, hook run through claude --settings. Wiring main-settings into launch.py is PROPOSED (later task). Known limit: a wave merged by squash is not an ancestor of origin/main, so it can be listed as verify_wave until its remote branch is deleted. Fix round 2 (Main's live findings): review_step and start_step items are actionable only for tasks owned by --owner (default claude:repository-coordinator); other owners' steps are listed in others_waiting_review, outside the fingerprint, and never make stop-hook block. A wave is closed (never verify_wave) when all its lanes' task ids are COMPLETED/RELEASED in ACTIVE_TASKS.json (what governance wave close writes, per closeout_records) or its manifest records a closed state; ancestry is no longer the only signal. Fix round 3: authoritative_main() now prefers the session equal to main.json's session_id while RUNNING when it is among the authoritative ACTIVE/RETIRING sessions, else the single candidate, else None (fail open); next always warns 'multiple authoritative Main sessions: <short ids>' when several exist. OBSERVED live: that warning appears against the real state (two short ids)."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (648 dev tests OK, 99 node tests OK) and live checks; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-014",
+      "title": "Orbit: readable usage windows and explicit data-quality labels (issue #44, mission part 7)",
+      "steps": [
+        {
+          "id": "S-DEV-014-00",
+          "title": "Lane L2 of wave w04-autonomy-loop",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Orbit account-usage section (dashboard/desktop/src/orbit.js and its UI) shows the known keys produced by the supervisor's rate_limit_event provider in plain language: '5-hour window: used' -> '21%'; '5-hour window: resets' -> the UTC time plus a relative phrase ('in 1 h 3 min', or 'window already reset' when the time is past); the same for the 7-day window; 'rate-limit status'; unknown keys keep the existing generic rendering",
+            "A provenance line states the source (for example 'from the last worker run's rate_limit_event') and its age; a value whose own timestamp is older than the stale threshold is shown as stale, never as live",
+            "Every value shows one explicit data-quality badge from: live, cached, stale, estimated (label INFERRED), unavailable (with reason); REPORTED account usage stays UNAVAILABLE as today (the OBSERVED-only rule is unchanged)",
+            "Orbit stays read-only (no new write paths; the existing read-only test still passes); released artifact names, package name and ids are not renamed",
+            "Node tests (cd dashboard/desktop && node --test \"tests/*.test.js\") extended with fixtures for the new labels, resets in the future and in the past, stale values and unknown keys; existing tests updated only where the label text intentionally changes, with a note in the lane report",
+            "orchestrator/tests/test_dev_orbit_view.py runs the Orbit node tests through subprocess when node is on PATH (skips with a clear reason otherwise) and checks the Python snapshot fixture for the usage keys renders through orbit.js without leaking REPORTED values",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only (never prompts, transcript text or file contents), labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L2 head on the wave branch (last commit to its report)",
+              "commit": "a15f0c623f41a1d59d38865be785c4e3713d90bd"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w04-autonomy-loop",
+              "commit": "7c3fce9fc2a8cbc212a63c0bdf045cda4240b104"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "tests 99, pass 99, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 544 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "OK (skipped=2)"
+            },
+            {
+              "type": "observation",
+              "summary": "Orbit account-usage section now renders known rate_limit_event keys in plain language (5-hour/7-day window used and resets with a UTC time plus a relative phrase, rate-limit status), adds a provenance note (source in plain words plus age, no worker or file names), and gives every row one data-quality badge (live, cached, stale, estimated for INFERRED, unavailable with reason). OBSERVED-only rule unchanged. IMPLEMENTED and TESTED with synthetic fixtures (node tests, Python wrapper). NOT TESTED in a running Electron window; no live observation was made."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (648 dev tests OK, 99 node tests OK) and live checks; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-015",
+      "title": "Snapshot: operation picture (next items, idle reason), per-worker context, supervisor health, handoff state",
+      "steps": [
+        {
+          "id": "S-DEV-015-00",
+          "title": "Lane L1 of wave w05-orbit-operation",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "snapshot.build_snapshot keeps its current signature working and accepts optional inputs for the new sections; Snapshot additions (top-level keys, every value an evidence dict {label, value, timestamp, source, freshness} or a list of plain records): 'operation': {'actionable': [{id, kind, priority, summary, inspect}], 'others_waiting': [...same], 'blocked': [{id, kind, summary}], 'idle_reason': evidence, 'warnings': [str], 'fingerprint': str}; 'supervisor_health': {'lock_alive': evidence, 'last_tick_at': evidence, 'last_event_kind': evidence}; 'handoff': {'latest_id': evidence, 'verified': evidence, 'created_at': evidence}; each worker record gains 'context_pressure': {'tokens','window','ratio','level'} evidences (UNAVAILABLE with reason when its transcript is not found).",
+            "The operation section comes from dev_supervisor.autonomy (read-only import of its next computation); per-worker context pressure uses telemetry.find_transcript/context_pressure for each worker's session id and cwd (worktree)",
+            "Supervisor health from the state store lock and the events log (last tick or last event time); handoff state from the newest handoff file in the state directory and its verify status if recorded",
+            "New entry point `python -B -m dev_supervisor.snapshot --out <file> [--repo <root>]` builds the FULL snapshot (telemetry, registry, events, operation, health, handoff, account usage via telemetry.RateLimitEventProvider if that class exists, else UNAVAILABLE) and writes it atomically; read-only otherwise",
+            "At least 25 new offline tests; one OBSERVED live run of the entry point against the real state (counts only)",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py or autonomy.py (claimed by open tasks or a merged lane); import them read-only",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "9640bf04a7809fc116407a276eab48fc0cc930b7"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w05-orbit-operation",
+              "commit": "4c0039fa78f35192bbc23eb784f6fb154ad9c64c"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_snapshot.py",
+              "result": "Ran 53 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 689 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 2223 tests in 417.668s: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B -m dev_supervisor.snapshot --out <temp file outside repo> --repo <lane worktree>",
+              "result": "OBSERVED: wrote snapshot; actionable 0, others_waiting 2, blocked 0, workers 0, warnings 1; idle_reason OBSERVED; health labels lock_alive OBSERVED, last_tick_at INFERRED, last_event_kind OBSERVED; handoff labels latest_id OBSERVED, created_at OBSERVED, verified REPORTED; account usage UNAVAILABLE"
+            },
+            {
+              "type": "observation",
+              "summary": "snapshot.build_snapshot keeps its signature and gains optional operation, health, handoff and worker_context inputs. New top-level sections: operation {actionable, others_waiting, blocked, idle_reason, warnings, fingerprint} (from autonomy.compute_items, read-only), supervisor_health {lock_alive, last_tick_at, last_event_kind} (lock file read without acquiring, event log), handoff {latest_id, verified, created_at} (newest handoffs/*.json plus recorded handoff_verified/handoff_not_safe events), and a per-worker context_pressure {tokens, window, ratio, level} (telemetry.find_transcript/context_pressure by worker session id and worktree; UNAVAILABLE with reason when not found). New entry point python -B -m dev_supervisor.snapshot --out FILE [--repo ROOT] builds the full snapshot read-only and writes it atomically. Account usage uses telemetry.RateLimitEventProvider only if the class exists (it does not on this branch), else UNAVAILABLE. IMPLEMENTED and TESTED offline (synthetic data). OBSERVED once live against the real default state directory (counts only, see commands). NOT TESTED: RateLimitEventProvider against a real class, the desktop Orbit rendering of the new sections (lane L2), a real worker transcript (no live worker existed)."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (727 dev tests OK, 106 node tests OK) and live checks against the real supervisor state; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-016",
+      "title": "Orbit: operation, queued work, idle reason, worker context, supervisor health and handoff views",
+      "steps": [
+        {
+          "id": "S-DEV-016-00",
+          "title": "Lane L2 of wave w05-orbit-operation",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Orbit renders the new snapshot sections (Snapshot additions (top-level keys, every value an evidence dict {label, value, timestamp, source, freshness} or a list of plain records): 'operation': {'actionable': [{id, kind, priority, summary, inspect}], 'others_waiting': [...same], 'blocked': [{id, kind, summary}], 'idle_reason': evidence, 'warnings': [str], 'fingerprint': str}; 'supervisor_health': {'lock_alive': evidence, 'last_tick_at': evidence, 'last_event_kind': evidence}; 'handoff': {'latest_id': evidence, 'verified': evidence, 'created_at': evidence}; each worker record gains 'context_pressure': {'tokens','window','ratio','level'} evidences (UNAVAILABLE with reason when its transcript is not found).): 'Next actions for Main' (actionable, ordered), 'Waiting on others' (informational), 'Blocked', an explicit idle reason line, warnings, per-worker context pressure, supervisor health and handoff state; a missing section renders as unavailable with a reason, never as an empty success",
+            "A worker that is only registered (status ASSIGNED) is never shown as active; a blocked task is never shown as running",
+            "Every value keeps its data-quality badge (live/cached/stale/estimated/unavailable); Orbit stays read-only; no renames of released artifacts",
+            "Node tests with fixtures for each section and the missing-section case; test_dev_orbit_view.py extended to render the Python-built fixture from L1 after merging origin/wave/w05-orbit-operation",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py or autonomy.py (claimed by open tasks or a merged lane); import them read-only",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L2 head on the wave branch (last commit to its report)",
+              "commit": "4c0039fa78f35192bbc23eb784f6fb154ad9c64c"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w05-orbit-operation",
+              "commit": "4c0039fa78f35192bbc23eb784f6fb154ad9c64c"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\"",
+              "result": "tests 106, pass 106, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "OK (includes test_dev_orbit_view.py, 6 tests)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests (before merging L1)",
+              "result": "Ran 2182 tests: OK (skipped=2)"
+            },
+            {
+              "type": "observation",
+              "summary": "Orbit (dashboard/desktop) now renders operation (Next actions for Main, Waiting on others, Blocked, idle reason, warnings, fingerprint), supervisor health, handoff and per-worker context pressure. A registered-only (ASSIGNED) worker is labelled 'registered only, not active'; a blocked task (worker BLOCKED or listed in operation.blocked) is labelled 'BLOCKED, not running'. Missing or not-computed sections render as UNAVAILABLE with a reason. Every value keeps its quality badge. Implemented and unit-tested with synthetic data, including a snapshot built by L1's snapshot.py and rendered through orbit.js. The Electron window itself is NOT TESTED; nothing OBSERVED live."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (727 dev tests OK, 106 node tests OK) and live checks against the real supervisor state; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-017",
+      "title": "Supervisor state repair: retire stale authoritative Main records",
+      "steps": [
+        {
+          "id": "S-DEV-017-00",
+          "title": "Lane L3 of wave w05-orbit-operation",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module dev_supervisor/repair.py with CLI `python -B -m dev_supervisor.repair [--yes]`: finds sessions-document records with role main, authoritative true, status ACTIVE/RETIRING that are NOT main.json's RUNNING session and whose process is not alive (pid from the record or ~/.claude/sessions files via telemetry.read_sessions, liveness probe injectable) and proposes retiring them (authoritative false, status RETIRED_STALE, note with reason and time)",
+            "Dry run by default prints the plan; --yes applies it through StateStore atomic writes (backup kept), appends a 'state_repaired' event, and refuses when the supervisor lock is held by a live process unless --allow-while-running is given (then it only edits the sessions document, never main.json); never touches a session that is alive or is main.json's session; never deletes records",
+            "At least 20 offline tests (stale vs alive vs current, lock held, corrupt document, idempotent re-run); one OBSERVED live DRY RUN against the real state (ids shortened to 8 chars); do not run --yes on the real state (Main decides)",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py or autonomy.py (claimed by open tasks or a merged lane); import them read-only",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L3 head on the wave branch (last commit to its report)",
+              "commit": "fbcbb917150371bbe4d9403815c01616b12b73c1"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w05-orbit-operation",
+              "commit": "4c0039fa78f35192bbc23eb784f6fb154ad9c64c"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_repair.py",
+              "result": "Ran 38 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 686 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 2220 tests in 394.808s: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.repair   (OBSERVED, real default state dir, dry run)",
+              "result": "current Main 46f52067 [RUNNING] KEEP; authoritative records 46f52067, bb87f796; RETIRE bb87f796 ACTIVE (updated 2026-11-18T08:01:39+00:00): no pid recorded and no session file names this session; no process found. File listing (16 files, mtimes, sizes) identical before and after."
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED dev_supervisor/repair.py (python -B -m dev_supervisor.repair [--yes] [--allow-while-running]): finds role main / authoritative / ACTIVE|RETIRING records that are not main.json's session and whose process is not alive (record pid or session-file pid, injectable probe), proposes authoritative=false + status RETIRED_STALE with a reason/time note. Dry run reads without any store recovery or cleanup, so it writes nothing. --yes writes the sessions document once through StateStore (backup kept), appends a state_repaired event, refuses when a live process holds the supervisor lock unless --allow-while-running (never edits main.json or the lock), never deletes records. TESTED: 38 offline tests. OBSERVED: one live dry run (see commands). NOT TESTED: --yes against real state (Main decides); behaviour with a real live second Main process. A record with no pid evidence at all is treated as 'no process found' and proposed for retirement; a probe that raises is treated as alive."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (727 dev tests OK, 106 node tests OK) and live checks against the real supervisor state; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-018",
+      "title": "End-to-end autonomy acceptance harness (issue #44, mission part 11)",
+      "steps": [
+        {
+          "id": "S-DEV-018-00",
+          "title": "Lane L1 of wave w06-acceptance-text-workers",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module dev_supervisor/acceptance.py with CLI `python -B -m dev_supervisor.acceptance --out <report.json> [--real-worker] [--keep]` that runs a scripted scenario in an ISOLATED temp state directory and a temp git repository (never the real supervisor state, never this repository's registry): (1) a synthetic ACTIVE_TASKS.json/DEVELOPMENT_TRACKER.json with two eligible tasks and one blocked task; (2) autonomy next selects the first eligible task; (3) a worker is assigned and spawned through the existing lifecycle (ConfiguredSupervisor / WorkerSupervisor) with a fake launcher by default, or with --real-worker a REAL bounded `claude -p --model haiku` run (child env without parent-session markers and without ANTHROPIC_* overrides, prompt: write one file in its temp worktree) whose exit and output file are checked; (4) the result is recorded REPORTED, independently verified by the harness (file content check), marked VERIFIED; (5) the task is marked COMPLETED in the synthetic registry and autonomy next selects the second task without any human input; (6) a context threshold is SIMULATED with a synthetic transcript above the compact threshold, compaction decides, a handoff is built, written and verified (handoff module, injected checkers), and replacement runs with a fake Main launcher and a simulated heartbeat; (7) the replacement Main's view (autonomy next) still shows the second task and not the completed first one (no duplication); (8) the stop-hook blocks the new Main while work remains and allows after it is told",
+            "The report lists every step with outcome PASS/FAIL and a mode label REAL, SIMULATED or MOCKED, plus timings; exit 0 only if all steps pass; nothing is labelled REAL unless a real process ran",
+            "At least 25 offline tests (default mocked mode, failure injection per step, report shape, isolation: the real state dir and repo registry are never touched); one OBSERVED live run in default mode and one with --real-worker (counts and step outcomes only)",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+            "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "7358fcc8fc72872b917889aa5ddcdfa017e40c68"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w06-acceptance-text-workers",
+              "commit": "f79e9011ad4ffa2e28f279bef0e495ea6424530a"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_acceptance.py",
+              "result": "Ran 40 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 769 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 2303 tests in 307.035s: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.acceptance --out <temp>/mocked.json",
+              "result": "OBSERVED overall PASS 13/13 steps, 1.694s, mode mocked"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.acceptance --out <temp>/real.json --real-worker",
+              "result": "OBSERVED overall PASS 13/13 steps, 13.905s, mode real-worker (worker_run REAL 12.66s)"
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED dev_supervisor/acceptance.py: a 13-step scripted autonomy scenario in a fresh temp state dir and temp git repository (two eligible tasks, one blocked; autonomy next; worker via lifecycle.Supervisor with a fake launcher or one bounded real `claude -p --model haiku --allowedTools Write` run in a cleaned environment; REPORTED then VERIFIED by reading the output file back; task COMPLETED then second task selected; synthetic transcript at 0.93 context ratio, compaction defers then allows after a verified handoff; replacement with fake launcher/heartbeat; replacement Main sees only the second task; Stop hook blocks then allows). Report lists each step with PASS/FAIL, REAL/SIMULATED/MOCKED and timings. TESTED: 40 offline tests (every failure injection fails exactly its step, isolation checks, report shape). OBSERVED: one default-mode run and one --real-worker run, both 13/13 PASS (real run: haiku exit 0, 10 stream lines, 1 result event, 0 errors). NOT TESTED: other models, Linux/macOS, interactive Main, real Resolve. Harness result on synthetic data is not a VERIFIED claim about the project."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (818 dev tests OK, 109 node tests OK), the acceptance harness in both modes (13/13 each) and a live text-worker call; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-019",
+      "title": "OmniRoute text-only workers on free routes (issue #44, mission part 5)",
+      "steps": [
+        {
+          "id": "S-DEV-019-00",
+          "title": "Lane L2 of wave w06-acceptance-text-workers",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module dev_supervisor/text_worker.py with CLI `python -B -m dev_supervisor.text_worker --task <task.json> --out <result.json> [--routes r1,r2] [--benchmark <results.json>]`: runs one bounded TEXT-ONLY task (kinds: summarise, classify, extract_json, review_notes) through the existing dev_supervisor.omniroute client against the local gateway; route order from a benchmark results file when given (pass rate, then latency), else a configured default list; bounded retries and fallback to the next route on rate_limited/timeout/not_found/auth_error; a deterministic output checker per kind (length bounds, label in allowed set, valid JSON with required keys); the result JSON records route, attempts, latencies, failure classes, checker verdict, and labels the output REPORTED until a checker passes (then CHECKED) — never VERIFIED",
+            "Refuses non-local base URLs unless explicitly allowed; never uses a paid route; no tool use (Claude Code through OmniRoute currently fails tool calls with a Gemini thought_signature error, OBSERVED 2026-11-18: record that limitation in the module docstring)",
+            "At least 30 offline tests with a fake transport (fallback order, retry bounds, each checker, refusal of remote URLs, no key in output); one OBSERVED live run of each task kind on the free gemini/gemini-3.1-flash-lite route (route, pass/fail, latency only)",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+            "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L2 head on the wave branch (last commit to its report)",
+              "commit": "11ec7383019098782330b6c054350b87c669acc9"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w06-acceptance-text-workers",
+              "commit": "f79e9011ad4ffa2e28f279bef0e495ea6424530a"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_text_worker.py",
+              "result": "Ran 49 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+              "result": "Ran 778 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "OK (full suite)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B -m dev_supervisor.text_worker --task <task.json> --out <result.json> --routes gemini/gemini-3.1-flash-lite (x4 kinds)",
+              "result": "summarise/classify/extract_json/review_notes all CHECKED, 1 attempt each"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "python -B -m dev_supervisor.text_worker --task <classify.json> --out <result.json> --routes groq/openai/gpt-oss-20b,gemini/gemini-3.1-flash-lite",
+              "result": "CHECKED on gemini route after auth_error on groq, 2 attempts"
+            },
+            {
+              "type": "observation",
+              "summary": "Added dev_supervisor/text_worker.py: bounded text-only worker (summarise, classify, extract_json, review_notes) over the local OmniRoute client. Free-route allowlist (gemini/, groq/), route order from a benchmark file (pass rate, then latency) or default list, 1 same-route retry for timeout/upstream/connection, immediate fallback on rate_limited/not_found/auth_error/check_failed, total attempts capped at 8, deterministic checkers, result labelled REPORTED until the checker passes then CHECKED (never VERIFIED). No tool use (Gemini thought_signature limitation recorded in the module docstring). 49 offline tests with a fake transport. OBSERVED live: one CHECKED run per kind on gemini/gemini-3.1-flash-lite (6.6 s, 8.0 s, 9.9 s, 8.7 s total latency) and one fallback (groq/openai/gpt-oss-20b auth_error HTTP 403 5.4 s, then gemini/gemini-3.1-flash-lite ok 2.0 s). 5 live calls total. NOT VERIFIED beyond that: single run, synthetic inputs only."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (818 dev tests OK, 109 node tests OK), the acceptance harness in both modes (13/13 each) and a live text-worker call; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-020",
+      "title": "Orbit polish: styles for operation sections and dated long resets",
+      "steps": [
+        {
+          "id": "S-DEV-020-00",
+          "title": "Lane L3 of wave w06-acceptance-text-workers",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "dashboard/desktop styles give the operation sections (classes added by the previous wave, e.g. orbit-act) readable list styling consistent with the existing theme in light and dark mode; no new dependencies",
+            "Account-usage reset rows show the date when the reset is more than 24 h away (e.g. 'Sat 21 Nov 23:00 UTC (in 3 d 9 h)'), deterministic from nowMs; existing behaviour for nearer resets unchanged",
+            "Node tests for both; Orbit stays read-only; no renames of released artifacts",
+            "Synthetic data only: no real footage, no network in unit tests, no secrets/tokens/keys printed, stored or committed, no absolute user paths in tracked files",
+            "Any live observation is summarised as numbers and identifiers only, labelled OBSERVED with the exact command; anything not observed is NOT TESTED",
+            "Nothing is described as VERIFIED without command output; the lane report separates implemented, tested, observed, proposed and open items",
+            "Do NOT edit cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py or repair.py (claimed by open tasks or merged lanes); import them read-only",
+            "No paid API route is ever used; OmniRoute calls go only to the local gateway; never read, print or store any key",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) and the desktop node tests stay green; existing tests are not weakened"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L3 head on the wave branch (last commit to its report)",
+              "commit": "6c0c4beb218f06be766f4940fc9f4c709b4ebebb"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w06-acceptance-text-workers",
+              "commit": "f79e9011ad4ffa2e28f279bef0e495ea6424530a"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\" (baseline, before changes)",
+              "result": "tests 106, pass 106, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd dashboard/desktop && node --test \"tests/*.test.js\" (after changes)",
+              "result": "tests 109, pass 109, fail 0"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_orbit_view.py",
+              "result": "Ran 6 tests: OK"
+            },
+            {
+              "type": "observation",
+              "summary": "Orbit (dashboard/desktop) now styles the operation sections: each orbit-act item is a bordered row whose left edge carries the activity colour (accent for active, bad for blocked, warn for stale/unknown, muted for registered/inactive), with orbit-activity and orbit-context lines set smaller. Only existing theme tokens are used, so light and dark follow the same palette. Account-usage reset rows more than 24 h after nowMs show the UTC weekday, day, month and time, e.g. 'Sat 21 Nov 23:00 UTC (in 3 d 11 h)'. Within 24 h (including exactly 24 h) and past resets keep the previous format. The format is computed from nowMs with UTC getters only (src/orbit.js resetText). Node tests cover the future, boundary and past cases, a month boundary, and that every activity kind has a stylesheet rule. Orbit stays read-only; no new dependencies. Synthetic data only; no network; nothing observed live."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's standing delegation (protocol sections 18/19, issue #44 mission of 2026-11-18); lanes implemented by worker subagents; Main independently re-ran tests (818 dev tests OK, 109 node tests OK), the acceptance harness in both modes (13/13 each) and a live text-worker call; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-010",
+      "title": "dev_supervisor: explicit claude child environment into main (PR #60, follow-up to #57)",
+      "steps": [
+        {
+          "id": "S-DEV-010-00",
+          "title": "Step 0: claim",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-DEV-010 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "AGR-GOV-REGISTRY-01 extended and AGR-DEV-FIXES-01 added; no other task's record is edited",
+            "Governance validate, handoff check and tracker check pass"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 2cfc78c; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change. Retroactive: the implementation branch already exists (see integration_notes)."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #60 merged to main as 7feb86b81bf3 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff 178fd22b8b681f32); claim PR #61 merged earlier."
+            }
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
+        },
+        {
+          "id": "S-DEV-010-01",
+          "title": "Step 1: implementation on task/dev-supervisor-launch-env",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "main contains provider_env.child_env and launch/lifecycle use it",
+            "dev_supervisor tests and the full suite pass",
+            "validate passes on the PR head"
+          ],
+          "evidence": [
+            {
+              "type": "pull_request",
+              "commit": "7feb86b81bf30a099eb1391672bde56adf1678fa",
+              "summary": "Implementation delivered in PR #60 (merge commit 7feb86b81bf30a099eb1391672bde56adf1678fa); record caught up at closeout."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #60 merged to main as 7feb86b81bf3 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff 178fd22b8b681f32); claim PR #61 merged earlier."
+            }
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-011",
+      "title": "dev_supervisor: context telemetry for a supervisor-launched Main (issue #58, PR #59)",
+      "steps": [
+        {
+          "id": "S-DEV-011-00",
+          "title": "Step 0: claim",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-DEV-011 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "AGR-GOV-REGISTRY-01 extended and AGR-DEV-FIXES-01 added; no other task's record is edited",
+            "Governance validate, handoff check and tracker check pass"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 2cfc78c; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change. Retroactive: the implementation branch already exists (see integration_notes)."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #59 merged to main as cd475b3aa8c1 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff 6c6aa14e993ad333); acceptance-harness interaction fixed in T-DEV-023 (PR #81)"
+            }
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
+        },
+        {
+          "id": "S-DEV-011-01",
+          "title": "Step 1: implementation on task/dev-supervisor-transcript-env",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "A supervisor-launched Main writes its transcript and session record (OBSERVED)",
+            "compact-check reports a numeric ratio for claude-opus-5-5",
+            "A token count above the configured window never yields REPLACE",
+            "Tests and validators pass"
+          ],
+          "evidence": [
+            {
+              "type": "pull_request",
+              "commit": "cd475b3aa8c17070ae08d620784a113d67c347f1",
+              "summary": "Implementation delivered in PR #59 (merge commit cd475b3aa8c17070ae08d620784a113d67c347f1); record caught up at closeout."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #59 merged to main as cd475b3aa8c1 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff 6c6aa14e993ad333); acceptance-harness interaction fixed in T-DEV-023 (PR #81)"
+            }
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-012",
+      "title": "dev_supervisor: account usage from Claude Code rate_limit_event (issue #44)",
+      "steps": [
+        {
+          "id": "S-DEV-012-00",
+          "title": "Step 0: claim",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-DEV-012 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
+            "AGR-GOV-REGISTRY-01 extended and AGR-DEV-FIXES-01 added; no other task's record is edited",
+            "Governance validate, handoff check and tracker check pass"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main 2cfc78c; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change. Retroactive: the implementation branch already exists (see integration_notes)."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #62 merged to main as 3b51dc096b79 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff d8c62ad414a8602a); claim PR #61 merged earlier"
+            }
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
+        },
+        {
+          "id": "S-DEV-012-01",
+          "title": "Step 1: implementation on task/dev-supervisor-rate-limit-usage",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Account usage is OBSERVED from a real rate_limit_event, else UNAVAILABLE with the reason",
+            "No transcript or prompt text is read into the result",
+            "Tests and validators pass"
+          ],
+          "evidence": [
+            {
+              "type": "pull_request",
+              "commit": "3b51dc096b7980b47c9555cc454fd12a80d5fee8",
+              "summary": "Implementation delivered in PR #62 (merge commit 3b51dc096b7980b47c9555cc454fd12a80d5fee8); record caught up at closeout."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #62 merged to main as 3b51dc096b79 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff d8c62ad414a8602a); claim PR #61 merged earlier"
+            }
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-GOV-008",
+      "title": "Autonomous PR integration policy (issue #44)",
+      "steps": [
+        {
+          "id": "S-GOV-008-00",
+          "title": "Step 0: claim",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-GOV-008 registered ACTIVE with lease, owned paths and criteria; AGR-GOV-REGISTRY-01 extended; no other record edited"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch from origin/main; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #77 merged to main as 6274b9e8ec67 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff f723f04e7b52b0de, reserved paths under Lukas's recorded direct word, issue #44 comment 6981997602); claim PR #76 merged earlier"
+            }
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
+        },
+        {
+          "id": "S-GOV-008-01",
+          "title": "Step 1: policy text in sections 18/19 and CLAUDE.md",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Per the task acceptance criteria"
+          ],
+          "evidence": [
+            {
+              "type": "pull_request",
+              "commit": "6274b9e8ec672731b51203547675f7228250ccea",
+              "summary": "Implementation delivered in PR #77 (merge commit 6274b9e8ec672731b51203547675f7228250ccea); record caught up at closeout."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #77 merged to main as 6274b9e8ec67 by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff f723f04e7b52b0de, reserved paths under Lukas's recorded direct word, issue #44 comment 6981997602); claim PR #76 merged earlier"
+            }
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-021",
+      "title": "Autonomous merge gate with serialization lock (issue #44, full-autonomy policy)",
+      "steps": [
+        {
+          "id": "S-DEV-021-00",
+          "title": "Lane L1 of wave w07-autonomous-integration",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module dev_supervisor/integrate.py, CLI `python -B -m dev_supervisor.integrate <pr> [--yes] [--repo <root>] [--base main]`: evaluates EVERY gate and prints a gate table; with --yes and all gates PASS it merges; dry run by default",
+            "Gates: (1) PR open, not draft, base main, head branch prefix task/, wave/ or chatgpt/; (2) required check 'validate' SUCCESS on the exact current head SHA and no failing or pending required check; (3) GitHub mergeStateStatus CLEAN (up to date, no conflicts); (4) scope: every changed file lies inside the owned_paths of the ACTIVE/UNDER_REVIEW task registered for the head branch in ACTIVE_TASKS.json on origin/main, or for a wave/ branch inside the union of its lanes' owned paths plus waves/<id>/, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, CHANGELOG.md, SESSION_HANDOFF.md written by wave close; a registry-only PR (only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md) passes scope as a record; (5) review: a PR comment whose first line is a valid dev-review v1 marker with verdict APPROVE whose diff_sha256 equals the hash recomputed now, posted by a reviewer that is not recorded as the author (author identity = the PR's head commits' Co-Authored-By/author lines and the task owner; the reviewer id must differ) — a newer CHANGES_REQUESTED for the same hash blocks; wave PRs may instead rely on wave close evidence only if a review marker exists for the wave diff; (6) secret scan of added lines (reuse orchestrator/governance's scanner read-only if importable, else an equivalent pattern list); (7) no tracked launcher/credential/media file added. Review report format (posted as a PR comment by a reviewer worker): first line exactly '<!-- dev-review v1 pr=<n> diff_sha256=<16 hex> verdict=<APPROVE|CHANGES_REQUESTED> reviewer=<reviewer id> -->'; diff hash = first 16 hex of sha256 of `git diff --binary $(git merge-base <base> <head>) <head>`; the body lists BLOCKING and NON-BLOCKING findings and exact test result lines",
+            "Serialization: an exclusive integration lock file in the supervisor state directory (atomic create, holder pid/time, stale after a timeout) so two merges never run at once; the lock is held from final gate evaluation through merge and read-back",
+            "Merge: `gh pr merge <n> --merge --match-head-commit <evaluated head>`; then read back `gh pr view <n> --json state,mergeCommit` and fail unless MERGED; post one PR comment with the gate table and result (marker '<!-- dev-integrate v1 pr=<n> head=<sha> result=<MERGED|REFUSED> -->'); append a supervisor event",
+            "Never force, never admin-bypass, never retries a failed merge more than once, never merges when any gate is FAIL or UNKNOWN",
+            "At least 40 offline tests with fake gh/git runners covering every gate pass/fail, lock contention and stale lock, head moved between evaluation and merge (match-head-commit failure), read-back failure; one OBSERVED live DRY RUN against a real open PR (gate table only)",
+            "Synthetic data only; no network in unit tests (gh and git are injected runners with fakes); no secrets/tokens printed, stored or committed; no absolute user paths in tracked files",
+            "Live observations summarised as numbers/identifiers, labelled OBSERVED with the exact command; anything not observed is NOT TESTED; nothing VERIFIED without command output",
+            "Do NOT edit any existing module (cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py, repair.py, acceptance.py, text_worker.py are claimed or merged); import read-only",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) stays green"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L1 head on the wave branch (last commit to its report)",
+              "commit": "c187addd7524ca75b06be20abbc516f6a12b811f"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w07-autonomous-integration",
+              "commit": "b0d346d9eb662d7a6602cb32af08a13bc58b4742"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_integrate.py",
+              "result": "Ran 86 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+              "result": "Ran 904 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 2438 tests: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.integrate 60 --repo ..",
+              "result": "OBSERVED dry run PR #60: pr_state PASS, checks PASS, merge_state FAIL (BEHIND), scope FAIL (no registered task), review FAIL (no APPROVE marker), secrets PASS, forbidden_files PASS; exit 1, nothing changed"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_integrate.py",
+              "result": "Ran 89 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+              "result": "Ran 907 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.integrate 61 --repo ..",
+              "result": "OBSERVED dry run PR #61: all 7 gates PASS, result DRY_RUN"
+            },
+            {
+              "type": "observation",
+              "summary": "Added dev_supervisor/integrate.py: CLI that evaluates seven merge gates (pr_state, checks, merge_state, scope, review, secrets, forbidden_files) with injected gh/git runners and prints a gate table. Dry run by default; with --yes and all PASS it takes an exclusive O_EXCL lock file in the supervisor state dir, re-evaluates under the lock, merges with gh pr merge --merge --match-head-commit, reads back MERGED, posts one dev-integrate v1 PR comment and appends a supervisor event. Never admin/force; at most one retry after confirming head unchanged. 86 offline tests. A minimal review-marker parser and diff hash live inside integrate.py (PROPOSED: replace with dev_supervisor.review from lane L2). OBSERVED: one live dry run on PR #60 (gate table only). NOT TESTED: a real --yes merge, a real review comment against live GitHub, wave/ PR scope against a real wave PR. Follow-up: registry-only non-wave PRs now PASS the review gate (protocol section 18 gate 4); wave PRs and PRs with any non-registry file still need review."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's direct authorization of 2026-11-18 (issue #44, full development autonomy); lanes implemented by worker subagents; Main independently re-ran tests (89 integrate, 69 review) and live dry runs/checks on PRs 60, 59, 61, 62, 77; independent reviewer worker review requested on the wave PR; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-022",
+      "title": "Independent review packets and review-report validation (issue #44, full-autonomy policy)",
+      "steps": [
+        {
+          "id": "S-DEV-022-00",
+          "title": "Lane L2 of wave w07-autonomous-integration",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "New module dev_supervisor/review.py, CLI `python -B -m dev_supervisor.review packet <pr> --out <dir>` and `python -B -m dev_supervisor.review check <pr>`",
+            "packet: fetches the PR (gh), computes the merge base and diff hash, writes diff.patch, files.txt, the registered task's acceptance criteria and owned paths, and a reviewer prompt (reviewer-prompt.md) instructing an independent reviewer worker to inspect correctness, tests, regressions, security, architecture and conventions, run the tests, classify BLOCKING/NON-BLOCKING findings and post exactly one comment in the dev-review v1 format; Review report format (posted as a PR comment by a reviewer worker): first line exactly '<!-- dev-review v1 pr=<n> diff_sha256=<16 hex> verdict=<APPROVE|CHANGES_REQUESTED> reviewer=<reviewer id> -->'; diff hash = first 16 hex of sha256 of `git diff --binary $(git merge-base <base> <head>) <head>`; the body lists BLOCKING and NON-BLOCKING findings and exact test result lines",
+            "check: lists review markers on the PR, validates format, recomputes the diff hash, and reports CURRENT_APPROVED / STALE (hash changed: re-review needed) / CHANGES_REQUESTED / MISSING / INVALID; exposes a function used by integrate.py later (pure, injectable runners)",
+            "At least 30 offline tests (marker parsing edge cases, forged or malformed markers, stale hash, multiple reviews latest-wins, author-equals-reviewer rejection); one OBSERVED live `check` against a real PR that has a review comment",
+            "Synthetic data only; no network in unit tests (gh and git are injected runners with fakes); no secrets/tokens printed, stored or committed; no absolute user paths in tracked files",
+            "Live observations summarised as numbers/identifiers, labelled OBSERVED with the exact command; anything not observed is NOT TESTED; nothing VERIFIED without command output",
+            "Do NOT edit any existing module (cli.py, launch.py, lifecycle.py, provider_env.py, telemetry.py, autonomy.py, snapshot.py, repair.py, acceptance.py, text_worker.py are claimed or merged); import read-only",
+            "Full suite (cd orchestrator && python -B -I -m unittest discover -s tests) stays green"
+          ],
+          "evidence": [
+            {
+              "type": "commit",
+              "summary": "Lane L2 head on the wave branch (last commit to its report)",
+              "commit": "94e2e785f47f80d4e0f4d430def1fbc32a3f3fe0"
+            },
+            {
+              "type": "commit",
+              "summary": "Reviewed wave head of w07-autonomous-integration",
+              "commit": "b0d346d9eb662d7a6602cb32af08a13bc58b4742"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_review.py",
+              "result": "Ran 69 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"",
+              "result": "Ran 887 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 2421 tests in 369.853s: OK (skipped=2)"
+            },
+            {
+              "type": "test_run",
+              "summary": "Run by the lane agent and recorded in its report",
+              "command": "cd orchestrator && python -B -m dev_supervisor.review check 60",
+              "result": "CURRENT_APPROVED pr=60 current=178fd22b8b681f32 review=178fd22b8b681f32 verdict=APPROVE reviewer=independent-reviewer-worker valid=1/1 files=4"
+            },
+            {
+              "type": "observation",
+              "summary": "IMPLEMENTED dev_supervisor/review.py: strict dev-review v1 marker parser (first line only), diff_hash, pure review_status (latest valid review wins; statuses CURRENT_APPROVED/STALE/CHANGES_REQUESTED/MISSING/INVALID; rejects other-PR markers, malformed or misplaced markers and reviewer id equal to a PR author id), injected git/gh runners, packet command (diff.patch, files.txt, task.md, reviewer-prompt.md) and check command. TESTED by 69 offline tests with fake runners. OBSERVED live: check on PR 60 returned MISSING, then INVALID (the shared GitHub account made the commenter login equal the PR author; the login comparison was removed and only the marker reviewer id is compared), then CURRENT_APPROVED for the reviewer worker's real comment. NOT TESTED: live packet command, live run on a PR with CHANGES_REQUESTED or STALE. Not VERIFIED."
+            }
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": false,
+            "approved_by": "repository_coordinator",
+            "lukas_confirmed": true,
+            "date": "2026-11-18",
+            "source": "REPORTED: Repository Coordinator (Main) under Lukas's direct authorization of 2026-11-18 (issue #44, full development autonomy); lanes implemented by worker subagents; Main independently re-ran tests (89 integrate, 69 review) and live dry runs/checks on PRs 60, 59, 61, 62, 77; independent reviewer worker review requested on the wave PR; no Lukas or ChatGPT code review is claimed"
+          }
+        }
+      ]
+    },
+    {
+      "task_id": "T-DEV-023",
+      "title": "dev_supervisor: acceptance harness pressure simulation scaled to the configured context window (issue #44)",
+      "steps": [
+        {
+          "id": "S-DEV-023-00",
+          "title": "Step 0: claim",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "T-DEV-023 is registered as ACTIVE with owned paths and acceptance criteria; no other task's record is edited",
+            "Governance validate, handoff check and tracker check pass"
+          ],
+          "evidence": [
+            {
+              "type": "observation",
+              "summary": "Claim branch created from origin/main; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json and SESSION_HANDOFF.md change. Replaces closed PR #79, which the merge gate refused for editing T-DEV-011 from a foreign branch."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #81 merged to main as 13202fc1b15a by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff e2ae95cfe87db503); claim PR #80 merged earlier"
+            }
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
+        },
+        {
+          "id": "S-DEV-023-01",
+          "title": "Step 1: implementation on task/t-dev-023-acceptance-window",
+          "status": "COMPLETED",
+          "acceptance_criteria": [
+            "Simulation scaled to the configured window",
+            "test_dev_acceptance passes at 200K and 1M",
+            "Full suite passes"
+          ],
+          "evidence": [
+            {
+              "type": "pull_request",
+              "commit": "13202fc1b15a979055ec62a00732e1fd60033a1b",
+              "summary": "Implementation delivered in PR #81 (merge commit 13202fc1b15a979055ec62a00732e1fd60033a1b); record caught up at closeout."
+            },
+            {
+              "type": "observation",
+              "summary": "PR #81 merged to main as 13202fc1b15a by dev_supervisor.integrate (8 gates PASS, review APPROVE for diff e2ae95cfe87db503); claim PR #80 merged earlier"
+            }
+          ],
+          "completion": {
+            "approved_by": "repository_coordinator",
+            "reviewed_by_chatgpt": false,
+            "lukas_confirmed": true,
+            "date": "2026-11-19",
+            "source": "DIRECT: in the Main session on 2026-11-19 Lukas said 'I authorize routine PR merging whenever all project safeguards pass'; merged by the Repository Coordinator under PROJECT_OPERATING_PROTOCOL.md section 18 with all gates PASS"
+          }
         }
       ]
     }

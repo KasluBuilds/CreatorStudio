@@ -2,6 +2,8 @@
 
 **Status:** PROPOSED architecture. Names and responsibilities are design recommendations; these agents have not all been implemented. Offline library foundations exist for the Research Agent, Asset Agent and Creative Director (`orchestrator/research/`, `assets/`, `creative_director/`); none is wired into an orchestrator and none has live providers, and there is no Editor Agent, Resolve Executor or QC Agent. Status of record: `PROJECT_STATUS.json`.
 
+**Scope.** This file describes the video-production agents only (the product's runtime roles). The development-time agents that build this repository (Main, workers, the Python supervisor, Orbit) are a separate, reusable system documented in `DEVELOPMENT_OPERATING_SYSTEM.md` and governed by `PROJECT_OPERATING_PROTOCOL.md` section 19. The two share no names, registries or state: "Orchestrator" below is the production job coordinator, not Main; production agents never launch or supervise development sessions.
+
 ## 1. Orchestrator
 
 **Mission:** Coordinate the production job from intake to delivery.

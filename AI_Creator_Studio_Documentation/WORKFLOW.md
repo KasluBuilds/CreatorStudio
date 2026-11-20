@@ -2,6 +2,8 @@
 
 **Status:** PROPOSED target workflow. The Resolve connection is verified, but the autonomous pipeline is not yet implemented.
 
+**Scope.** This workflow is the video-production pipeline. How the repository itself is developed (Main, workers, supervisor, GitHub log) is a separate system: see `DEVELOPMENT_OPERATING_SYSTEM.md`. Development agents do not run these stages on real footage; stage state is recorded by `creator_state`, never by the development supervisor.
+
 ## 1. Intake and ingest
 
 1. Creator imports camera footage, phone footage, screen recordings, audio, images and project notes.

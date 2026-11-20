@@ -23,9 +23,11 @@ WHAT THE SIGNATURES PROTECT (assuming the orchestrator's authorities and verifie
 WHAT THEY DO NOT PROTECT
   * Reviewer identity: a signature proves the review service signed it, not that "human:ana" is who they
     say. Authenticating reviewers is the review service's job.
-  * Process isolation: this is an INTERFACE. If the orchestrator injects an in-process verifier that
-    closes over a key, that key can be reached by introspection. Real separation needs the verifier to be
-    a call to a separate service/process; this package cannot enforce that and does not pretend to.
+  * Process isolation: a bare callable verifier is an INTERFACE. If the orchestrator injects an in-process
+    verifier that closes over a key, that key can be reached by introspection. Real separation needs the
+    verifier to be a call to a separate service/process. `RemoteVerifier` is the Research-side client for
+    such a service (it holds a transport, never a key) and `TrustPolicy(require_separated_verifier=True)`
+    refuses anything else; the service itself belongs to the orchestrator and does not exist yet.
   * A symmetric-key verifier can also sign; prefer asymmetric signatures in the orchestrator.
   * Truth of a process record: methods are registered, documented and declared reproducible /
     model-free by whoever registers them; the package never re-runs a check.
@@ -40,7 +42,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, Optional
 
-from .models import (Attestation, Citation, Claim, ExcerptProof, ProcessRecord, RetrievalRecord, Source)
+from .models import (Attestation, Citation, Claim, ExcerptProof, ProcessRecord, RetrievalRecord, Source, TopicKind)
 from .safety import NOTE_MAX, unsafe_text_problems
 
 SCOPE_SOURCE = "source"
@@ -49,11 +51,16 @@ SCOPE_EVERGREEN = "evergreen"
 SCOPE_INDEPENDENCE = "independence"
 SCOPE_KIND = "claim_kind"
 SCOPE_RISK = "risk_downgrade"
-ALL_SCOPES = frozenset({SCOPE_SOURCE, SCOPE_CITATION, SCOPE_EVERGREEN, SCOPE_INDEPENDENCE, SCOPE_KIND, SCOPE_RISK})
+SCOPE_RESOLUTION = "resolution"      # a human's explicit, reasoned resolution of one recorded contradiction
+SCOPE_LEDGER = "ledger"              # seals the head of the brief's append-only evidence ledger
+ALL_SCOPES = frozenset({SCOPE_SOURCE, SCOPE_CITATION, SCOPE_EVERGREEN, SCOPE_INDEPENDENCE, SCOPE_KIND, SCOPE_RISK,
+                        SCOPE_RESOLUTION, SCOPE_LEDGER})
 PURPOSE_REVIEW = "review"
 PURPOSE_INGESTION = "ingestion"
-METHOD_SCOPES = frozenset({"source_type", "peer_review", "citation_support", "evergreen_exemption"})
-_PROCESS_NEEDS = {SCOPE_SOURCE: "source_type", SCOPE_CITATION: "citation_support", SCOPE_EVERGREEN: "evergreen_exemption"}
+METHOD_SCOPES = frozenset({"source_type", "peer_review", "citation_support", "evergreen_exemption", "ledger_seal"})
+# a resolution of a contradiction is a judgement: no process may issue one (it is absent here on purpose)
+_PROCESS_NEEDS = {SCOPE_SOURCE: "source_type", SCOPE_CITATION: "citation_support", SCOPE_EVERGREEN: "evergreen_exemption",
+                  SCOPE_LEDGER: "ledger_seal"}
 DEFAULT_MAX_AGE_DAYS = 180
 MAX_EXCERPT_CHARS = 600
 
@@ -80,6 +87,15 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def bind_context(brief_id: str, topic_kind) -> str:
+    """The context string a reviewer signs: the brief id AND the topic kind. The topic kind decides how stale
+    evidence may be, so an attestation issued under one kind must not survive a change to another (audit F-01:
+    flipping a brief to 'evergreen' after review must not revive old evidence). The review boundary signs
+    exactly this string as `context_id`."""
+    kind = topic_kind.value if isinstance(topic_kind, TopicKind) else str(topic_kind)
+    return f"{brief_id}#{kind}"
+
+
 # ------------------------------------------------------------------------- subjects
 def _iso(d: Optional[dt.date]) -> Optional[str]:
     return d.isoformat() if isinstance(d, dt.date) else None
@@ -95,7 +111,7 @@ def source_fields(s: Source) -> dict:
             "retracted": bool(s.retracted), "correction_state": s.correction_state, "published": s.published,
             "retrieved_at": _iso(s.retrieved_at), "publisher": s.publisher, "authors": list(s.authors),
             "derived_from": s.derived_from, "version_of": s.version_of,
-            "original_source_url": s.original_source_url, "work_id": s.work_id,
+            "original_source_url": s.original_source_url, "work_id": s.work_id, "text_origin": s.text_origin,
             "retrieval_id": r.record_id if r else None, "content_sha256": r.content_sha256 if r else None}
 
 
@@ -130,6 +146,18 @@ def kind_subject(c: Claim) -> dict:
 def risk_subject(c: Claim) -> dict:
     return {"scope": SCOPE_RISK, "claim_id": c.id, "claim_text_sha256": sha256_text(c.text),
             "declared_risk": c.risk_class.value}
+
+
+def resolution_subject(entry, claim_text_sha256: str, rationale: str) -> dict:
+    """What a human signs to resolve ONE recorded contradiction: the ledger entry (by its chained digest), the
+    claim text it was recorded against and the written rationale."""
+    return {"scope": SCOPE_RESOLUTION, "entry_digest": entry.digest, "entry_id": entry.entry_id,
+            "claim_id": entry.claim_id, "claim_text_sha256": claim_text_sha256,
+            "source_id": entry.source_id, "rationale_sha256": sha256_text(rationale)}
+
+
+def ledger_subject(brief_id: str, head: str, count: int) -> dict:
+    return {"scope": SCOPE_LEDGER, "brief_id": brief_id, "head": head, "count": count}
 
 
 def independence_subject(sources: Iterable[Source]) -> dict:
@@ -258,6 +286,92 @@ class VerifyResult:
     kind: str = ""          # "human" | "process" when ok
 
 
+class VerifierUnavailable(Exception):
+    """The verification boundary could not be reached or answered unintelligibly. Always fails closed."""
+
+
+class RemoteVerifier:
+    """Research-side client for a verification service that runs OUTSIDE this process (audit F-02).
+
+    It holds a TRANSPORT, never a key: `transport(request: bytes) -> bytes` carries one canonical-JSON request
+    to the orchestrator's verification service and returns its canonical-JSON answer. The service holds the
+    keys, decides whether a key is currently accepted and enforces its own policy. This class:
+      * sends only (purpose, message, signature, key_id): nothing that could be used to mint a signature;
+      * accepts ONLY the exact answer {"v":1,"valid":true}; anything else (false, truthy strings, extra or
+        missing fields, bad JSON) is a refusal;
+      * raises VerifierUnavailable when the boundary cannot be reached (any transport exception, an answer that
+        is not JSON), so the policy can say so and fail closed;
+      * never logs or stores the message or signature, and its repr shows nothing but its name.
+    Whether the transport really crosses a process boundary is the orchestrator's responsibility; the package
+    cannot check that, which is why TrustPolicy(require_separated_verifier=True) exists to refuse bare callables."""
+
+    def __init__(self, transport: Callable[[bytes], bytes], *, name: str = "remote-verifier") -> None:
+        if not callable(transport):
+            raise ValueError("transport must be callable")
+        self._transport = transport
+        self.name = name
+
+    def __repr__(self) -> str:
+        return f"RemoteVerifier({self.name!r})"
+
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def __reduce__(self):
+        raise TypeError("RemoteVerifier cannot be serialised")
+
+    def __call__(self, purpose: str, message: bytes, signature: str, key_id: str) -> bool:
+        if (purpose not in (PURPOSE_REVIEW, PURPOSE_INGESTION) or not isinstance(message, (bytes, bytearray))
+                or not isinstance(signature, str) or not isinstance(key_id, str)):
+            return False
+        request = canonical_bytes({"v": 1, "purpose": purpose, "message": bytes(message).hex(),
+                                   "signature": signature, "key_id": key_id})
+        try:
+            raw = self._transport(request)
+        except Exception as e:  # noqa: BLE001 - any transport failure means "boundary unavailable"
+            raise VerifierUnavailable(type(e).__name__) from None
+        try:
+            answer = json.loads(raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else raw)
+        except (ValueError, UnicodeDecodeError, AttributeError, TypeError):
+            raise VerifierUnavailable("unintelligible answer") from None
+        return (isinstance(answer, dict) and set(answer) == {"v", "valid"} and answer["v"] == 1
+                and answer["valid"] is True)
+
+
+def check_signing_request(request) -> list[str]:
+    """REFERENCE POLICY for the signer (this package holds no key and signs nothing). A signer must receive the
+    STRUCTURED subject, re-derive the digest itself and apply its own rules; it must never sign an opaque message
+    it cannot interpret (that would make it a blind signing oracle). Returns the reasons to refuse; empty means
+    acceptable. `request` = {"subject": dict, "kind", "attestor", "scope", "context_id", optionally
+    "claimed_subject_digest"}. The signer must additionally authenticate the reviewer and check its own key state."""
+    out: list[str] = []
+    try:
+        subject, scope, kind = request["subject"], request["scope"], request["kind"]
+        attestor, context_id = request["attestor"], request["context_id"]
+    except (KeyError, TypeError):
+        return ["request must carry subject, scope, kind, attestor and context_id"]
+    if not isinstance(subject, dict) or subject.get("scope") != scope or scope not in ALL_SCOPES:
+        out.append("subject scope missing or different from the requested scope")
+    if kind not in ("human", "process"):
+        out.append("kind must be human or process")
+    if kind == "human" and not (isinstance(attestor, str) and _HUMAN_RE.match(attestor)):
+        out.append("human attestor must look like 'human:<name>'")
+    if kind == "process" and scope not in _PROCESS_NEEDS:
+        out.append(f"no process may attest scope '{scope}'")
+    if kind == "process" and not (isinstance(attestor, str) and attestor.startswith("process:")):
+        out.append("process attestor must be 'process:<method_id>'")
+    parts = context_id.split("#", 1) if isinstance(context_id, str) else []
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        out.append("context_id must be bind_context(brief_id, topic_kind)")
+    claimed = request.get("claimed_subject_digest") if isinstance(request, dict) else None
+    if claimed is not None and not (isinstance(subject, dict) and claimed == subject_digest(subject)):
+        out.append("claimed subject digest does not match the subject: refusing to sign what it cannot interpret")
+    return out
+
+
 class TrustPolicy:
     """Verification-only policy. Holds NO key. With no verifier, nothing verifies (fail closed).
 
@@ -267,11 +381,17 @@ class TrustPolicy:
     def __init__(self, verifier: Optional[Verifier] = None, *, verifier_id: str = "",
                  methods: Optional[MethodRegistry] = None, max_age_days: int = DEFAULT_MAX_AGE_DAYS,
                  revocation=None, trusted_gatherers: Iterable[str] = (), require_retrieval: bool = True,
-                 context_id: str = "") -> None:
+                 context_id: str = "", topic_kind: Optional[TopicKind] = None,
+                 require_separated_verifier: bool = False, require_ledger_seal: bool = False) -> None:
         if verifier is not None and not callable(verifier):
             raise ValueError("verifier must be callable")
+        if require_separated_verifier and verifier is not None and not isinstance(verifier, RemoteVerifier):
+            raise ValueError("this policy requires a RemoteVerifier (a client of a verification service outside this "
+                             "process); a bare callable may hold or reach signing material")
         if not isinstance(max_age_days, int) or isinstance(max_age_days, bool) or max_age_days < 1:
             raise ValueError("max_age_days must be a positive integer")
+        if topic_kind is not None and not isinstance(topic_kind, TopicKind):
+            raise ValueError("topic_kind must be a TopicKind")
         self._verifier = verifier
         self.verifier_id = verifier_id
         self.methods = methods if methods is not None else MethodRegistry()
@@ -280,21 +400,51 @@ class TrustPolicy:
         self.trusted_gatherers = frozenset(trusted_gatherers)
         self.require_retrieval = bool(require_retrieval)
         self.context_id = context_id
+        self.topic_kind = topic_kind
+        self.require_separated_verifier = bool(require_separated_verifier)
+        self.require_ledger_seal = bool(require_ledger_seal)
 
     def __repr__(self) -> str:
         return (f"TrustPolicy(verifier={'set' if self._verifier else 'none'}, id={self.verifier_id!r}, "
                 f"methods={len(self.methods)}, context={self.context_id!r})")
 
+    # A policy holds a verifier that, in a badly wired deployment, may reach key material: it is never copied
+    # or serialised (a copy or pickle would carry that reference into a brief, a log or a file).
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def __reduce__(self):
+        raise TypeError("TrustPolicy cannot be serialised")
+
     @property
     def can_verify(self) -> bool:
         return self._verifier is not None
 
-    def bound_to(self, context_id: str) -> "TrustPolicy":
-        """A copy bound to one brief/project id. Attestations for any other context fail."""
-        return TrustPolicy(self._verifier, verifier_id=self.verifier_id, methods=self.methods,
-                           max_age_days=self.max_age_days, revocation=self.revocation,
-                           trusted_gatherers=self.trusted_gatherers, require_retrieval=self.require_retrieval,
-                           context_id=context_id)
+    def _clone(self, **over) -> "TrustPolicy":
+        kw = dict(verifier_id=self.verifier_id, methods=self.methods, max_age_days=self.max_age_days,
+                  revocation=self.revocation, trusted_gatherers=self.trusted_gatherers,
+                  require_retrieval=self.require_retrieval, context_id=self.context_id, topic_kind=self.topic_kind,
+                  require_separated_verifier=self.require_separated_verifier,
+                  require_ledger_seal=self.require_ledger_seal)
+        kw.update(over)
+        return TrustPolicy(self._verifier, **kw)
+
+    def bound_to(self, context_id: str, topic_kind: Optional[TopicKind] = None) -> "TrustPolicy":
+        """A copy bound to one brief id (and, when given, its topic kind). An attestation is accepted only for
+        the exact `bind_context(brief_id, topic_kind)` it was issued for; an unbound kind verifies nothing."""
+        return self._clone(context_id=context_id, topic_kind=topic_kind)
+
+    def for_topic(self, topic_kind: TopicKind) -> "TrustPolicy":
+        return self._clone(topic_kind=topic_kind)
+
+    @property
+    def expected_context(self) -> str:
+        if self.context_id and self.topic_kind is not None:
+            return bind_context(self.context_id, self.topic_kind)
+        return ""
 
     def fingerprint(self) -> str:
         """Identity of the policy (verifier id, method registry, expiry, retrieval and gatherer rules,
@@ -303,12 +453,15 @@ class TrustPolicy:
             "verifier_id": self.verifier_id, "methods": self.methods.digest(), "max_age_days": self.max_age_days,
             "require_retrieval": self.require_retrieval, "trusted_gatherers": sorted(self.trusted_gatherers),
             "revocation": self.revocation.identity() if self.revocation is not None else "",
-            "can_verify": self.can_verify})).hexdigest()[:32]
+            "can_verify": self.can_verify, "separated": self.require_separated_verifier,
+            "ledger_seal": self.require_ledger_seal})).hexdigest()[:32]
 
     # ---- generic review attestations
     def verify(self, att, subject: dict, today: dt.date) -> VerifyResult:
         try:
             return self._verify(att, subject, today)
+        except VerifierUnavailable:
+            return VerifyResult(False, ["the verification boundary is unavailable; failing closed"])
         except Exception as e:  # noqa: BLE001 - malformed data must fail closed, never crash or accept
             return VerifyResult(False, [f"verification error ({type(e).__name__}); failing closed"])
 
@@ -320,10 +473,10 @@ class TrustPolicy:
         if self._verifier is None:
             return VerifyResult(False, ["no verifier configured: attestations cannot be verified"])
         bad: list[str] = []
-        if not self.context_id:
-            bad.append("trust policy is not bound to a brief")
-        elif att.context_id != self.context_id:
-            bad.append("attestation is bound to a different brief/context")
+        if not self.context_id or self.topic_kind is None:
+            bad.append("trust policy is not bound to a brief and its topic kind")
+        elif att.context_id != self.expected_context:
+            bad.append("attestation is bound to a different brief or topic kind (the reviewed context changed)")
         if not isinstance(att.key_id, str) or not att.key_id:
             bad.append("attestation has no key id")
         if not isinstance(att.attestation_id, str) or not att.attestation_id:
@@ -422,10 +575,28 @@ class TrustPolicy:
             return VerifyResult(False, ["independence attestation needs two or more distinct sources"])
         return self.verify(ia.attestation, independence_subject(srcs), today)
 
+    def verify_resolution(self, resolution, entry, claim_text_sha256: str, today: dt.date) -> VerifyResult:
+        """A contradiction is resolved only by an explicit HUMAN attestation over this ledger entry, the claim text it
+        was recorded against and the written rationale. No process may resolve one."""
+        rationale = getattr(resolution, "rationale", None)
+        if not isinstance(rationale, str) or len(rationale.strip()) < 20:
+            return VerifyResult(False, ["a resolution needs a written rationale (at least 20 characters)"])
+        if unsafe_text_problems(rationale, 1000):
+            return VerifyResult(False, ["the rationale contains unsafe text"])
+        v = self.verify(resolution.attestation, resolution_subject(entry, claim_text_sha256, rationale), today)
+        if v.ok and v.kind != "human":
+            return VerifyResult(False, ["only a human attestation can resolve a contradiction"])
+        return v
+
+    def verify_ledger_seal(self, seal, brief_id: str, head: str, count: int, today: dt.date) -> VerifyResult:
+        return self.verify(seal, ledger_subject(brief_id, head, count), today)
+
     # ---- ingestion boundary: retrieval records and excerpt proofs
     def verify_retrieval(self, r, s: Source, today: dt.date) -> VerifyResult:
         try:
             return self._verify_retrieval(r, s, today)
+        except VerifierUnavailable:
+            return VerifyResult(False, ["the verification boundary is unavailable; failing closed"])
         except Exception as e:  # noqa: BLE001
             return VerifyResult(False, [f"verification error ({type(e).__name__}); failing closed"])
 
@@ -445,7 +616,9 @@ class TrustPolicy:
             return VerifyResult(False, bad)
         if not _HEX64.match(r.content_sha256):
             bad.append("content hash is not a sha256 hex digest")
-        if self.trusted_gatherers and r.gatherer not in self.trusted_gatherers:
+        if not self.trusted_gatherers:
+            bad.append("no trusted ingestion component is configured: a retrieval record cannot be accepted")
+        elif r.gatherer not in self.trusted_gatherers:
             bad.append(f"gatherer '{r.gatherer}' is not a trusted ingestion component")
         if self.revocation is not None and self.revocation.is_revoked(r.record_id):
             bad.append("retrieval record has been revoked")
@@ -464,6 +637,8 @@ class TrustPolicy:
     def verify_excerpt(self, c: Citation, s: Source, today: dt.date) -> VerifyResult:
         try:
             return self._verify_excerpt(c, s, today)
+        except VerifierUnavailable:
+            return VerifyResult(False, ["the verification boundary is unavailable; failing closed"])
         except Exception as e:  # noqa: BLE001
             return VerifyResult(False, [f"verification error ({type(e).__name__}); failing closed"])
 

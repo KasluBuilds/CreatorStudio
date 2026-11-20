@@ -27,6 +27,7 @@ from typing import Iterable, Optional
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit
 
 from .attestation import DEFAULT_TRUST, TrustPolicy, VerifyResult
+from . import ledger as _ledger
 from .models import (Attestation, Citation, Claim, ClaimKind, ClaimRisk, ClaimStatus, QualityTier, ReviewStatus,
                      Source, SourceType, Stance, TopicKind)
 from .risk import classify_risk
@@ -425,6 +426,28 @@ class SourceAssessment:
     @property
     def can_support_fact_alone(self) -> bool:
         return self.tier is QualityTier.A
+
+
+STAGE_DISCOVERED, STAGE_RETRIEVED, STAGE_INSPECTED, STAGE_REVIEWED = "discovered", "retrieved", "inspected", "reviewed"
+
+
+def provenance_stage(c: Optional[Citation], s: Optional[Source], claim: Optional[Claim] = None,
+                     trust: Optional[TrustPolicy] = None, today: Optional[dt.date] = None) -> str:
+    """How far a piece of evidence has actually got (audit F-04). A URL somebody supplied is only DISCOVERED.
+      discovered - the source is known by address only (a lead): no authenticated retrieval record;
+      retrieved  - an ingestion-signed retrieval record verifies for this source;
+      inspected  - and the citation's locator is tied to the retrieved content by an ingestion-signed excerpt proof;
+      reviewed   - and a valid human or process attestation covers this exact citation.
+    Only 'inspected' or 'reviewed' evidence may count; the stage is recomputed, never read from a stored label."""
+    t = trust or DEFAULT_TRUST
+    today = today or dt.date.today()
+    if s is None or not t.verify_retrieval(s.retrieval, s, today).ok:
+        return STAGE_DISCOVERED
+    if c is None or not t.verify_excerpt(c, s, today).ok:
+        return STAGE_RETRIEVED
+    if claim is not None and c.attestation is not None and t.verify_citation(claim, c, s, today).ok:
+        return STAGE_REVIEWED
+    return STAGE_INSPECTED
 
 
 def retrieval_ok(s: Source, trust: Optional[TrustPolicy] = None, today: Optional[dt.date] = None) -> VerifyResult:
@@ -1021,7 +1044,7 @@ def _side(items: list[EvidenceItem]) -> tuple[float, float, list[EvidenceItem]]:
 
 def assess_claim(claim: Claim, sources: Iterable[Source], *, today: dt.date,
                  topic_kind: TopicKind = TopicKind.EVERGREEN, trust: Optional[TrustPolicy] = None,
-                 independence: Iterable = ()) -> ClaimAssessment:
+                 independence: Iterable = (), ledger: Iterable = (), resolutions: Iterable = ()) -> ClaimAssessment:
     """Strongest status the evidence justifies, with an inspectable trail. `trust` must be bound to the
     brief (TrustPolicy.bound_to); an unbound policy verifies nothing.
 
@@ -1045,10 +1068,21 @@ def assess_claim(claim: Claim, sources: Iterable[Source], *, today: dt.date,
     VERIFIED needs: (1) a tier-A source with a human-attested citation; or (2) a process-attested citation
     on a tier A/B source; or (3) two independent tier A/B origins with assessed citations (for SCIENCE at
     least one primary). Safety-critical claims never use route 3 and are never VERIFIED while any warning
-    (retrieved, unretrieved, historical, unassessed) is unresolved."""
+    (retrieved, unretrieved, historical, unassessed) is unresolved.
+
+    CONTEXT. Attestations are valid only for the brief AND the topic kind they were issued for: `topic_kind` here
+    is authoritative and the policy is re-bound to it, so flipping a brief to 'evergreen' after review does not
+    keep its attestations alive. LEDGER. `ledger` / `resolutions` are the brief's evidence ledger and the human
+    resolutions of its contradictions (ledger.py): a recorded contradiction that was deleted, relabelled or
+    detached from its claim stays in force as an UNRESOLVED contradiction (it blocks VERIFIED and raises the
+    safety warning) until a valid human resolution covers it. Pass them whenever a brief is assessed; validation,
+    the builder and the exporters do."""
     if claim.kind is not ClaimKind.FACT:
         return ClaimAssessment(ClaimStatus.NOT_APPLICABLE, [f"{claim.kind.value} is not a verifiable fact"])
     t = trust or DEFAULT_TRUST
+    if t.topic_kind is not topic_kind:
+        t = t.for_topic(topic_kind)
+    ledger, resolutions = list(ledger), list(resolutions)
     srcs = check_unique_ids(sources)
     by_id = {s.id: s for s in srcs}
     tiers = assess_all(srcs, t, today)
@@ -1141,6 +1175,23 @@ def assess_claim(claim: Claim, sources: Iterable[Source], *, today: dt.date,
                             ind.strict_group_of[s.id])
         (sup if stance is Stance.SUPPORTS else con).append(item)
 
+    unresolved_eval = unresolved_con
+    erased: list = []
+    if ledger:
+        for st in _ledger.contradiction_states(ledger, resolutions, claim, claim.id, t, today):
+            if st.state == "erased":
+                erased.append(st)
+                msg = (f"A contradiction recorded against this claim (from {st.entry.source_id}, entry {st.entry.entry_id}) "
+                       f"is no longer present: {st.reason}. It stays in force as an unresolved contradiction until a "
+                       "human resolves it explicitly.")
+                reasons.append(msg)
+                caveats.append(msg)
+                unresolved_con = True
+                unresolved_safety = unresolved_safety or safety
+            elif st.state == "resolved":
+                caveats.append(f"A contradiction from {st.entry.source_id} (entry {st.entry.entry_id}) was resolved by "
+                               f"{st.resolver}; the rationale is kept in the brief.")
+
     both = {i.strict_group for i in sup} & {i.strict_group for i in con}
     ambiguous_ids: list[str] = []
     if both:
@@ -1228,7 +1279,10 @@ def assess_claim(claim: Claim, sources: Iterable[Source], *, today: dt.date,
     elif len(groups_ab) >= 2 and not safety and (topic_kind is not TopicKind.SCIENCE or primary_ab):
         route = ROUTE_TWO_B
     blockers: list[str] = []
-    if unresolved_con:
+    if erased:
+        blockers.append("a recorded contradiction was removed, relabelled or detached without an authenticated "
+                        "human resolution")
+    if unresolved_eval:
         blockers.append("a contradicting citation from a tier A/B source could not be evaluated")
     if unresolved_llm_con:
         blockers.append("an LLM-only credible contradiction is unresolved")

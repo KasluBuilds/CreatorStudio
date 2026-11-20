@@ -185,10 +185,11 @@ None of these blocks work; each has a default the Coordinator follows until Luka
 - **D2. Is one wave review enough?** Default: the Coordinator's single verification of a wave approves every lane in it, recorded
   as `approved_by: repository_coordinator`, REPORTED under the standing delegation. If Lukas wants a lane reviewed separately, say so in
   the manifest and split it into its own wave.
-- **D3. Reviewer independence.** With the Coordinator as integrator, a wave is reviewed by the same tooling that created it. The
-  gates (disjoint ownership, scope, tests, CI, secret scan) are mechanical; there is no second human or ChatGPT read unless Lukas
-  asks for one. Default: Coordinator merges when gates pass; Lukas or ChatGPT may review any wave pull request before it merges by
-  commenting or reserving it.
+- **D3. Reviewer independence.** Decided 2026-11-18 by Lukas (issue #44, T-GOV-008): every wave pull request, like every code
+  pull request, needs a recorded review by an independent reviewer worker that did not author any of its lanes, bound to the hash of
+  the wave diff (`PROJECT_OPERATING_PROTOCOL.md` section 18, gate 4); the generated closeout records need no separate review. The
+  mechanical gates (disjoint ownership, scope, tests, CI, secret scan) still apply. No human or ChatGPT read is required; Lukas or
+  ChatGPT may still review or reserve any wave pull request before it merges.
 - **D4. Admin enforcement.** Protection includes administrators, so even Lukas's own token cannot push to `main` directly; he can
   lift it in the settings when he must.
 - **D5. Local enablement.** Each clone runs `git config core.hooksPath .githooks` once (it covers every worktree).
@@ -197,12 +198,19 @@ None of these blocks work; each has a default the Coordinator follows until Luka
 
 ## 12. Coordinator gate checklist (every merge)
 
+The authoritative gate list is `PROJECT_OPERATING_PROTOCOL.md` section 18 (gates 1-8 and the reserved actions); this checklist is
+the wave-specific procedure for it and never overrides it.
+
 1. `git fetch origin`; `gh pr view <n> --json state,isDraft,mergeable,mergeStateStatus,headRefOid,statusCheckRollup`.
 2. State OPEN, not a draft, `MERGEABLE`, `validate` conclusion SUCCESS for `headRefOid`.
 3. For a wave: on the wave branch `wave verify <id> --require-complete` clean before `close`, `wave verify <id> --allow-closeout` clean after,
    every lane `DONE`, every `unresolved` entry recorded or sent to Lukas.
 4. The changed files are only the lanes' paths, `waves/<id>/`, and the four closeout records (the verify step proves it).
-5. Not on the exclusion list of `PROJECT_OPERATING_PROTOCOL.md` section 18 (governance machinery, own implementation, UNRESOLVED
-   packages, VERIFIED upgrades, real footage, another session's task in progress).
-6. `gh pr merge <n> --merge --match-head-commit <headRefOid>`; confirm `state: MERGED` and the merge commit; fast-forward the primary checkout.
-7. Record anything surprising in the next pull request's description or the wave's changelog entry; never silently skip a gate.
+5. An independent reviewer worker's `dev-review v1` comment with verdict APPROVE for the current wave diff hash exists (section 18
+   gate 4); any change to the wave diff after it needs a new review.
+6. Nothing on the reserved list of `PROJECT_OPERATING_PROTOCOL.md` section 18 (branch protection or settings, governance machinery
+   without Lukas's direct word, UNRESOLVED or another stream's packages without authorization, VERIFIED upgrades, real footage,
+   credentials, real Resolve mutation, paid API, another session's task in progress).
+7. Integration is serialized (section 18 gate 8): `gh pr merge <n> --merge --match-head-commit <headRefOid>`; confirm `state: MERGED`
+   and the merge commit by reading GitHub back; post the gate table on the pull request; fast-forward the primary checkout.
+8. Record anything surprising in the next pull request's description or the wave's changelog entry; never silently skip a gate.

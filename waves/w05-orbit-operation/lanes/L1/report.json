@@ -1,0 +1,17 @@
+{
+  "lane": "L1",
+  "status": "DONE",
+  "summary": "snapshot.build_snapshot keeps its signature and gains optional operation, health, handoff and worker_context inputs. New top-level sections: operation {actionable, others_waiting, blocked, idle_reason, warnings, fingerprint} (from autonomy.compute_items, read-only), supervisor_health {lock_alive, last_tick_at, last_event_kind} (lock file read without acquiring, event log), handoff {latest_id, verified, created_at} (newest handoffs/*.json plus recorded handoff_verified/handoff_not_safe events), and a per-worker context_pressure {tokens, window, ratio, level} (telemetry.find_transcript/context_pressure by worker session id and worktree; UNAVAILABLE with reason when not found). New entry point python -B -m dev_supervisor.snapshot --out FILE [--repo ROOT] builds the full snapshot read-only and writes it atomically. Account usage uses telemetry.RateLimitEventProvider only if the class exists (it does not on this branch), else UNAVAILABLE. IMPLEMENTED and TESTED offline (synthetic data). OBSERVED once live against the real default state directory (counts only, see commands). NOT TESTED: RateLimitEventProvider against a real class, the desktop Orbit rendering of the new sections (lane L2), a real worker transcript (no live worker existed).",
+  "commands": [
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_snapshot.py", "result": "Ran 53 tests: OK"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"", "result": "Ran 689 tests: OK"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests", "result": "Ran 2223 tests in 417.668s: OK (skipped=2)"},
+    {"command": "python -B -m dev_supervisor.snapshot --out <temp file outside repo> --repo <lane worktree>", "result": "OBSERVED: wrote snapshot; actionable 0, others_waiting 2, blocked 0, workers 0, warnings 1; idle_reason OBSERVED; health labels lock_alive OBSERVED, last_tick_at INFERRED, last_event_kind OBSERVED; handoff labels latest_id OBSERVED, created_at OBSERVED, verified REPORTED; account usage UNAVAILABLE"}
+  ],
+  "unresolved": [
+    "Existing test test_write_snapshot_atomic_roundtrip_and_cli now passes --repo/--sessions-dir/--projects-dir temp dirs and expects overall_freshness cached (not offline) because the full entry point now observes an operation idle reason; the old assertion described the previous registry-less entry point.",
+    "snapshot.main no longer calls load_inputs (kept for compatibility); cli.py cmd_snapshot is unchanged and does not pass the new inputs, so cli snapshot shows the new sections as UNAVAILABLE until cli.py (not in this lane) calls build_full_snapshot.",
+    "No tick event kind is written by the supervisor today; last_tick_at falls back to the newest event time labelled INFERRED."
+  ],
+  "changelog": "Orbit snapshot: operation picture (next items, idle reason), per-worker context pressure, supervisor health, handoff state and a full read-only dev_supervisor.snapshot entry point (T-DEV-015, lane w05/L1)."
+}

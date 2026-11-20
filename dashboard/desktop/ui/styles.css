@@ -185,3 +185,20 @@ ul.evidence p { margin: .25em 0; font-size: 13px; }
 .theme-switch button:focus-visible { outline-offset: -2px; }
 .topbar-actions { display: flex; align-items: center; gap: 12px; }
 @media (forced-colors: active) { .node-dot, .pill, .chip, .btn, .theme-switch { forced-color-adjust: auto; border: 1px solid CanvasText; } }
+
+/* Orbit view: reuses the existing colour tokens only */
+.orbit-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.orbit-table th { text-align: left; font-weight: 600; padding: 4px 10px 4px 0; width: 28%; text-transform: capitalize; }
+.orbit-table td { padding: 4px 10px 4px 0; vertical-align: top; }
+/* Orbit operation sections: each list item is a card-like row; its left edge carries the activity colour (never the text alone) */
+.orbit-card ul.plain li { overflow-wrap: anywhere; line-height: 1.45; }
+.orbit-card ul.plain li.orbit-act { margin: .35em 0; padding: .5em .75em; border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 10px; background: var(--panel2); }
+.orbit-card ul.plain li.orbit-act + li.orbit-act { margin-top: .35em; }
+.orbit-card ul.plain li.orbit-act-active { border-left-color: var(--accent); }
+.orbit-card ul.plain li.orbit-act-blocked { border-left-color: var(--bad); }
+.orbit-card ul.plain li.orbit-act-stale, .orbit-card ul.plain li.orbit-act-unknown { border-left-color: var(--warn); }
+.orbit-card ul.plain li.orbit-act-registered, .orbit-card ul.plain li.orbit-act-inactive { border-left-color: var(--muted); }
+.orbit-activity { font-size: 12px; margin-top: .2em; }
+.orbit-context { font-size: 12px; margin-top: .25em; line-height: 1.8; }
+.orbit-context > span { display: inline-block; margin-right: .75em; }
+.orbit-card ul.plain li > .muted { display: block; font-size: 12px; margin-top: .15em; }

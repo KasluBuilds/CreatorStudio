@@ -1,0 +1,17 @@
+{
+  "lane": "L3",
+  "status": "DONE",
+  "summary": "Orbit (dashboard/desktop) now styles the operation sections: each orbit-act item is a bordered row whose left edge carries the activity colour (accent for active, bad for blocked, warn for stale/unknown, muted for registered/inactive), with orbit-activity and orbit-context lines set smaller. Only existing theme tokens are used, so light and dark follow the same palette. Account-usage reset rows more than 24 h after nowMs show the UTC weekday, day, month and time, e.g. 'Sat 21 Nov 23:00 UTC (in 3 d 11 h)'. Within 24 h (including exactly 24 h) and past resets keep the previous format. The format is computed from nowMs with UTC getters only (src/orbit.js resetText). Node tests cover the future, boundary and past cases, a month boundary, and that every activity kind has a stylesheet rule. Orbit stays read-only; no new dependencies. Synthetic data only; no network; nothing observed live.",
+  "commands": [
+    {"command": "cd dashboard/desktop && node --test \"tests/*.test.js\" (baseline, before changes)", "result": "tests 106, pass 106, fail 0"},
+    {"command": "cd dashboard/desktop && node --test \"tests/*.test.js\" (after changes)", "result": "tests 109, pass 109, fail 0"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_orbit_view.py", "result": "Ran 6 tests: OK"}
+  ],
+  "unresolved": [
+    "Visual check of the new list styling in light and dark mode and in the Electron window: NOT TESTED (no GUI run). Only the token-based CSS and the contrast tests in theme-css.test.js were exercised.",
+    "Changed existing assertion: tests/orbit.test.js, test 'orbit usage: known rate_limit_event keys render in plain language...', the '7-day window: resets' expectation changed from '14:47 UTC (in 3 d 3 h)' to 'Sat 21 Nov 14:47 UTC (in 3 d 3 h)' because that reset is more than 24 h away. No other existing assertion was changed.",
+    "Day-of-month is printed without zero padding (e.g. 'Sat 5 Nov'); the brief did not specify this.",
+    "orbit.js now also exports resetText (additive)."
+  ],
+  "changelog": "Orbit: operation sections get readable row styling, and account-usage resets more than 24 h away show the date (T-DEV-020)."
+}

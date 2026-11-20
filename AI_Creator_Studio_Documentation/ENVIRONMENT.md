@@ -37,9 +37,15 @@ and forward slashes (`/c/Users/...`) after `!`.
   Do not add a third. They set Anthropic-style environment variables whose values are credentials. They are recreated by hand on a new machine.
 - Provider switches are performed by a human starting the other launcher; `creator_state switch-provider` only records the fact.
 
+Development supervisor (separate from the two launchers; it is a Python package, not a third launcher script): Main is started and supervised
+by `python -B -m dev_supervisor start --yes` from `orchestrator/` (NOT TESTED live; see `DEVELOPMENT_OPERATING_SYSTEM.md`). Its configuration is a
+machine-local JSON file kept outside the repository (`<STATE_DIR>/config.json`, or the path in `CREATORSTUDIO_DEV_SUPERVISOR_CONFIG`); create it from
+`python -B -m dev_supervisor config --example` and check the machine with `python -B -m dev_supervisor doctor`. It holds no credentials.
+
 ## 4. OmniRoute
 
 - Local gateway at `http://localhost:20128` (REPORTED, `MASTER.md` section 10). Provider keys (free Gemini and Groq tiers) are held by OmniRoute on this machine and are not in the repository.
+- Start the gateway with `omniroute serve --daemon --no-open` (OBSERVED once in the w03 benchmark run). A benchmark of its Gemini and Groq routes is in `orchestrator/dev_supervisor/OMNIROUTE_BENCHMARK.md`: 2 of 7 routes answered, Groq routes returned auth errors (OBSERVED, one run). No paid API route is configured or assumed.
 - The fallback launcher has not been tested end to end with the Resolve MCP (open item in `ROADMAP.md`).
 
 ## 5. DaVinci Resolve and the MCP
