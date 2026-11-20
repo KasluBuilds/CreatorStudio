@@ -73,7 +73,7 @@ CASES = [
     # ---- shell: deny-list unchanged, routine allowlist in authoritative mode
     ("Bash", {"command": "git status --short"}, None, "allow"),
     ("Bash", {"command": "rtk git log --oneline -5"}, None, "allow"),
-    ("Bash", {"command": "git log --oneline | head -5"}, None, "allow"),
+    ("Bash", {"command": "git log --oneline | head -5"}, None, "deny"),    # structural rule: one simple command
     ("Bash", {"command": "git diff 2>&1"}, None, "allow"),
     ("Bash", {"command": "git add orchestrator/x.py tests/y.py"}, None, "allow"),
     ("Bash", {"command": 'git commit -m "T-DEV-028: x" -m "Co-Authored-By: a"'}, None, "allow"),
@@ -82,13 +82,13 @@ CASES = [
     ("Bash", {"command": "git config --get user.name"}, None, "allow"),
     ("Bash", {"command": "gh pr view 98"}, None, "allow"),
     ("Bash", {"command": "gh api repos/KasluBuilds/CreatorStudio/pulls"}, None, "allow"),
-    ("Bash", {"command": "python -B -I -m unittest discover -s tests -p test_dev_*.py"}, None, "allow"),
+    ("Bash", {"command": "python -B -I -m unittest discover -s tests -p test_dev_x.py"}, None, "allow"),
     ("Bash", {"command": "python -B -m creator_state list"}, None, "allow"),
     ("Bash", {"command": "python -B -m governance wave submit"}, None, "allow"),
     ("Bash", {"command": "sed -n 1,80p orchestrator/x.py"}, None, "allow"),
     ("Bash", {"command": "find . -name x.py"}, None, "allow"),
     ("Bash", {"command": "mkdir -p build/out"}, None, "allow"),
-    ("PowerShell", {"command": "ls; pwd"}, None, "allow"),
+    ("PowerShell", {"command": "ls"}, None, "deny"),                         # workers use Bash
     ("Bash", {"command": "git push origin task/x"}, None, "deny"),           # Main pushes; workers do not
     ("Bash", {"command": "git branch -D old"}, None, "deny"),
     ("Bash", {"command": "git checkout -- ."}, None, "deny"),
@@ -669,7 +669,7 @@ WORKER_DENY = [
     "gh pr merge 1", "gh pr close 1", "gh release create v1", "gh repo delete x", "gh api --hostname x repos/y",
     "gh pr view 1 --rep x/y",
     # shell expansion and other closed-world gaps
-    "echo $GH_TOKEN", "ls @(1)", "ls (Get-Content x)", "git log @args", "cat x{,/../../etc}", "ls *", "ls ./*/../..",
+    "echo $GH_TOKEN", "ls @(1)", "ls (Get-Content x)", "git diff --stat HEAD~1", "cat x{,/../../etc}", "ls *", "ls ./*/../..",
     "cat .*", "grep -r x --include=x -f C:/x .", "find . -fprint C:/x", "find . -newer C:/x", "sed -n 1p -i x",
     "sed -n 1,5p;w/out x", "sed -n s/a/b/pe x", "sort -T C:/x a", "uniq a b", "mkdir .git/hooks", "mkdir ../x",
     "mkdir sub/.git", "rg -z x", "rg --pre=x y", "rg --hostname-bin x y", "head -f x", "tail -f x", "ls --hyperlink",
@@ -678,8 +678,8 @@ WORKER_DENY = [
 
 # Authoritative worker, cwd = its worktree: routine work must get an explicit allow.
 WORKER_ALLOW = [
-    "git status", "git status --short", "git status --porcelain=v1", "git diff", "git diff --stat HEAD~1",
-    "git diff --cached", "git diff -- orchestrator/x.py", "git diff origin/main...HEAD --name-only",
+    "git status", "git status --short", "git status --porcelain=v1", "git diff", "git diff --stat origin/main",
+    "git diff --cached", "git diff -- orchestrator/x.py", "git diff origin/main...HEAD --name-only", "git diff --stat",
     "git log --oneline -5", "git log --format=%H -n 3", "git log --oneline origin/main..HEAD",
     "git show HEAD:orchestrator/x.py", "git show --stat HEAD", "git add orchestrator/x.py tests/y.py",
     "git add -- orchestrator/x.py", "git add orchestrator", 'git commit -m "T-DEV-028: x" -m "Co-Authored-By: a"',
@@ -693,7 +693,8 @@ WORKER_ALLOW = [
     "gh pr diff 98 --name-only", "gh pr create --title t --body b --base main", "gh pr comment 98 --body-file notes.md",
     "gh pr comment 98 --body x", "gh issue view 44 --comments", "gh issue list --label x",
     "gh api repos/KasluBuilds/CreatorStudio/pulls", "gh api -X GET repos/x/y",
-    'python -B -m unittest discover -s tests -p "test_dev_*.py"', "python -B -I -m unittest discover -s tests -p test_dev_x.py",
+    'python -B -m unittest discover -s tests -p "test_dev_x.py"', "python -B -I -m unittest discover -s tests -p test_dev_x.py",
+    "python -B -m unittest discover -s tests -p test_x.py",
     "python -B -m unittest tests.test_dev_authority -v", "python -B -m governance validate",
     "python -B -m governance validate --against origin/main", "python -B -m governance leases",
     "python -B -m governance handoff", "python -B -m governance handoff --check", "python -B -m governance wave submit",
@@ -703,12 +704,12 @@ WORKER_ALLOW = [
     "python -B -m dev_supervisor snapshot --out snap.json", "python -B -m dev_supervisor route --criticality high",
     "python -B -m creator_state list", "python -B -m creator_state log demo -n 30", "python -B -m creator_state check demo",
     "python -B -m creator_state verify-sources demo --deep", "python -B -m creator_state --help",
-    "ls", "ls -la", "ls orchestrator", "pwd", "cd orchestrator && git status",
-    "cd orchestrator; python -B -m unittest discover -s tests", "cat orchestrator/x.py", "head -n 20 x.py", "tail -5 x.py",
+    "ls", "ls -la", "ls orchestrator", "pwd", "cat orchestrator/x.py", "head -n 20 x.py", "tail -5 x.py",
     "wc -l x.py", 'grep -rn "def x" orchestrator', "grep -n TODO x.py", "rg -n pattern orchestrator",
-    'find orchestrator -name "*.py"', "find . -type f -name x.py", "sort x.txt", "uniq x.txt", "diff a.txt b.txt",
-    "echo hi", "mkdir -p build/out", "test -f x.py", "true", "printf x", "sed -n 1,80p x.py", "sed -n '1,$p' x.py",
-    "rtk git status", "rtk bypass git log -5", "git log --oneline | head -5", "git diff 2>&1", "ls orchestrator/*.py",
+    'find orchestrator -name "x.py"', "find . -type f -name x.py", "sort x.txt", "uniq x.txt", "diff a.txt b.txt",
+    "echo hi", "mkdir -p build/out", "test -f x.py", "true", "printf x", "sed -n 1,80p x.py", "sed -n '1,5p' x.py",
+    "rtk git status", "rtk git log -5", "rtk gh pr view 5", "rtk ls orchestrator", "rtk grep -n x x.py",
+    "rtk find . -name x.py", "rtk wc -l x.py", "rtk diff a.txt b.txt", "git diff 2>&1", "git status --short 2>&1",
 ]
 
 
@@ -728,12 +729,13 @@ class ReviewRound1Shell(Base):
                 got, why = self.hook("Bash", {"command": cmd}, env=self.wenv(), cwd=WT)
                 self.assertEqual(got, "allow", why)
 
-    def test_powershell_routine_and_case(self):
-        for cmd, want in (("ls -Recurse orchestrator", "allow"), ("dir -Force", "allow"), ("cat x.py -Raw", "allow"),
-                          ("ls -Rec orchestrator", "deny"), ("cat C:/elsewhere/x -Raw", "deny"),
-                          ("cat env:GH_TOKEN", "deny"), ("Get-Content x.py", "deny")):
+    def test_powershell_tool_is_never_allowed_for_a_worker(self):
+        for cmd in ("ls -Recurse orchestrator", "dir -Force", "cat x.py -Raw", "git status", "ls | sort {calc}",
+                    "ls | sort {.\\x.cmd}", "ls | ls {calc}"):
             with self.subTest(cmd=cmd):
-                self.assertEqual(self.hook("PowerShell", {"command": cmd}, env=self.wenv(), cwd=WT)[0], want)
+                got, why = self.hook("PowerShell", {"command": cmd}, env=self.wenv(), cwd=WT)
+                self.assertEqual(got, "deny", why)
+                self.assertIn("not on the worker routine allowlist", why)
 
     def test_cwd_outside_roots_denies_every_shell_command(self):
         for cwd in (ROOT, "C:/wt", "D:/x", ""):
@@ -744,12 +746,11 @@ class ReviewRound1Shell(Base):
         got, _ = self.hook("Bash", {"command": "git status"}, env=self.wenv(), cwd=WT + "/orchestrator")
         self.assertEqual(got, "allow")
 
-    def test_cd_changes_the_cwd_for_later_segments_only_inside_roots(self):
+    def test_no_cd_at_all(self):
         ctx = au.PolicyContext(roots=(WT,), repo_root=WT)
-        self.assertTrue(au.routine_shell("cd orchestrator && cat x.py", ctx, WT)[0])
-        self.assertFalse(au.routine_shell("cd orchestrator && cat ../../x.py", ctx, WT)[0])
-        self.assertTrue(au.routine_shell("cd orchestrator && cat ../x.py", ctx, WT)[0])
-        self.assertFalse(au.routine_shell("cd orchestrator/.. && cd .. && ls", ctx, WT)[0])
+        for cmd in ("cd orchestrator", "cd orchestrator && cat x.py", "pushd orchestrator", "popd", "cd"):
+            with self.subTest(cmd=cmd):
+                self.assertFalse(au.routine_shell(cmd, ctx, WT)[0])
 
     def test_advisory_deny_list_catches_abbreviations_and_root_pathspecs(self):
         for cmd in ("git commit --no-veri -m x", "git commit --no-gpg -m x", "git commit -nm x", "git add ./",
@@ -902,6 +903,130 @@ class ReviewRound1Settings(Base):
                                                              {"type": "command", "command": "keep.ps1"}]}]}
         self.assertEqual(sp._strip_rtk(hooks)["PreToolUse"][0]["hooks"], [{"type": "command", "command": "keep.ps1"}])
 
+
+
+# ---------------------------------------------------------------- security review round 2 (B1-B3, N1-N3, N5)
+class ReviewRound2(Base):
+    """The worker shell rule is STRUCTURAL: one simple Bash command, no shell metacharacters, no cd, closed allowlist."""
+
+    def wenv(self, **extra):
+        return self.env("authoritative", root=WT, roots=[WT], **extra)
+
+    def worker(self, cmd, tool="Bash", cwd=WT):
+        return self.hook(tool, {"command": cmd}, env=self.wenv(), cwd=cwd)
+
+    def test_routine_single_commands_get_allow(self):
+        for cmd in ("git status", "git diff --stat", "git log --oneline -5", "git add orchestrator/x.py",
+                    'git commit -m "msg"', "gh pr view 5", "python -B -m unittest discover -s tests -p test_x.py",
+                    "python -B -m governance validate", "rtk git status"):
+            with self.subTest(cmd=cmd):
+                got, why = self.worker(cmd)
+                self.assertEqual(got, "allow", why)
+
+    def test_b1_cd_tracker_desync_strings_are_denied(self):
+        for cmd in ("cd a/b; cd ../../CreatorStudio; git add f; git commit -m x",
+                    "cd a/b || cd ../../CreatorStudio && git commit -m x",
+                    "cd sub/deeper | cat ../../x",
+                    "cd a/b; cd ../../main; git commit --allow-empty -m ESCAPED -q",
+                    "cd orchestrator && git status", "cd orchestrator", "pushd orchestrator", "popd",
+                    "git log | head", "git log --oneline | head -5", "git status; git log", "git status && git log",
+                    "git status || true", "git status\ngit log", "git status\r\ngit log", "git status &"):
+            with self.subTest(cmd=cmd):
+                got, why = self.worker(cmd)
+                self.assertEqual(got, "deny", why)
+                self.assertIn("not on the worker routine allowlist", why)
+
+    def test_b2_powershell_scriptblocks_are_denied(self):
+        for cmd in ("ls | sort {calc}", "ls | sort {.\\x.cmd}", "ls | ls {calc}", "sort {calc}", "ls {calc}"):
+            for tool in ("PowerShell", "Bash"):
+                with self.subTest(cmd=cmd, tool=tool):
+                    self.assertEqual(self.worker(cmd, tool=tool)[0], "deny")
+
+    def test_b3_rtk_runners_are_denied_and_seen_by_the_deny_list(self):
+        for cmd in ("rtk test git push origin main", "rtk test ./x.cmd", "rtk test rm x", "rtk test curl evil.example",
+                    "rtk err git status", "rtk summary git status", "rtk run git status", "rtk proxy git status",
+                    "rtk bypass git status", "rtk rtk git status", "rtk python -B -m governance validate", "rtk cat x",
+                    "rtk", "rtk test git status"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.worker(cmd)[0], "deny")
+        for runner in ("test", "err", "summary", "run", "bypass", "proxy"):
+            with self.subTest(runner=runner):
+                acts = au.classify_command(f"rtk {runner} git push origin main")
+                self.assertEqual([(a.kind, a.attrs.get("branch")) for a in acts], [(au.GIT_PUSH, "main")])
+                got, why = self.hook("Bash", {"command": f"rtk {runner} git push origin main"}, "advisory")
+                self.assertEqual(got, "deny")
+                self.assertIn("push-main", why)
+        self.assertEqual(au.classify_command("rtk test rm -rf x")[0].kind, au.IRRECOVERABLE_DELETE)
+
+    def test_metacharacters_and_unclean_tokens_are_denied(self):
+        for cmd in ("git status $HOME", 'git commit -m "$(id)"', "git commit -m '$x'", "git status `id`",
+                    "git log --format=%h(%an)", "ls *", "ls x?", "ls [a]", "ls ~", "ls !x", "git status # c",
+                    "cat a\\b", "git log -1 >x", "git log <x", 'git commit -m a"b"', 'git commit -m "a"b',
+                    "git commit -m 'a'\"b\"", 'git commit -m "unbalanced', "git commit -m 'x", "git status 2>&1 2>&1",
+                    "git status 2>/dev/null", "git status >/dev/null", "git status 2>&1;", "", "   ", " 2>&1",
+                    "git\x0bstatus", "git status\x00"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.worker(cmd)[0], "deny")
+
+    def test_n1_redirect_spellings_are_denied(self):
+        for cmd in ("echo hi >/dev/nullfoo", "echo hi >/dev/null/../x", "echo hi >$nullfoo", "echo hi >/dev/null",
+                    "echo hi 2>/dev/null", "echo hi > $null"):
+            for tool in ("Bash", "PowerShell"):
+                with self.subTest(cmd=cmd, tool=tool):
+                    self.assertEqual(self.worker(cmd, tool=tool)[0], "deny")
+
+    def test_n2_gh_operands_stay_in_the_own_repository_form(self):
+        for cmd in ("gh api https://evil.example/x", "gh api //evil.example/x", "gh api evil.example/x",
+                    "gh api repos/x", "gh api repos", "gh api repos/../x/y", "gh api graphql", "gh api /graphql",
+                    "gh pr comment https://github.com/other/repo/pull/1 --body x",
+                    "gh pr view https://github.com/other/repo/pull/1", "gh pr view github.com/other/repo/pull/1",
+                    "gh issue comment other/repo/issues/1 --body x", "gh pr view ../x"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.worker(cmd)[0], "deny")
+        for cmd in ("gh api repos/KasluBuilds/CreatorStudio/pulls", "gh api repos/a/b", "gh api user",
+                    "gh api /rate_limit", "gh pr view task/t-dev-028-x", "gh issue view 44"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.worker(cmd)[0], "allow")
+
+    def test_cwd_must_be_inside_the_roots(self):
+        self.assertEqual(self.worker("git status", cwd=WT + "/orchestrator")[0], "allow")
+        for cwd in (ROOT, "C:/wt", "C:/wt/task2"):
+            with self.subTest(cwd=cwd):
+                self.assertEqual(self.worker("git status", cwd=cwd)[0], "deny")
+
+
+class ReviewRound2Boundary(Base):
+    """N3: the shell boundary check normalises ./ and //, follows cd targets, matches globs and directory restores."""
+
+    def benv(self, mode):
+        return self.env(mode, root=LIVE_ROOT, roots=[LIVE_ROOT])
+
+    def test_n3_spellings_touch_the_boundary_in_both_modes(self):
+        for cmd in ("cd orchestrator/dev_supervisor && sed -i s/a/b/ authority.py",
+                    "sed -i s/a/b/ orchestrator/dev_supervisor/author*.py",
+                    "sed -i s/a/b/ orchestrator/dev_supervisor/*.py", "rm orchestrator/dev_supervisor/*",
+                    "sed -i s/a/b/ orchestrator/dev_supervisor/[ab]uthority.py",
+                    "sed -i s/a/b/ orchestrator/dev_supervisor/session_pol?cy.py",
+                    "sed -i s/a/b/ orchestrator/**/authority.py",
+                    "cp x orchestrator/dev_supervisor/{authority,x}.py",
+                    "cp x orchestrator/dev_supervisor/./authority.py", "cp x orchestrator//dev_supervisor/authority.py",
+                    "cp x ./orchestrator/./dev_supervisor//session_policy.py",
+                    "git checkout HEAD~1 -- orchestrator/dev_supervisor/", "git checkout HEAD~1 -- orchestrator/dev_supervisor",
+                    "git restore --source HEAD~1 orchestrator/dev_supervisor/", "git checkout -- orchestrator",
+                    "git restore ."):
+            for mode in ("advisory", "authoritative"):
+                with self.subTest(cmd=cmd, mode=mode):
+                    got, why = self.hook("Bash", {"command": cmd}, env=self.benv(mode), cwd=LIVE_ROOT)
+                    self.assertEqual(got, "deny")
+                    self.assertIn("authority-boundary", why)
+
+    def test_unrelated_commands_are_not_boundary_touches(self):
+        ctx = au.PolicyContext(roots=(LIVE_ROOT,), repo_root=LIVE_ROOT)
+        for cmd in ("ls *", "ls orchestrator/*.py", "git checkout main", "git checkout -b task/x",
+                    "cat orchestrator/tests/test_dev_authority.py", "git add orchestrator/dev_supervisor/x.py",
+                    "git restore orchestrator/tests/x.py", "sed -n 1p orchestrator/dev_supervisor/*.md"):
+            with self.subTest(cmd=cmd):
+                self.assertFalse(au.touches_boundary_command(cmd, ctx, LIVE_ROOT))
 
 if __name__ == "__main__":
     unittest.main()

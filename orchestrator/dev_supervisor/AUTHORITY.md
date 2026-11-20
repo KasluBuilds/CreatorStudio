@@ -46,15 +46,16 @@ prompt. New autonomous kinds: `spawn_subagent`, `web_read`. New protected kinds:
 ## Limits (read these)
 - A bare `git push` or `git push origin HEAD` while on `main`, and `git push --repo=origin main`, cannot be recognised from command text; rely on branch protection and the
   merge gates for that case. `authority_grants.json` is only a path the policy refuses to write; nothing reads it yet.
-- Commands wrapped by `&`, `cmd /c`, `bash -c`, `env X=1 ...` are not unwrapped (only `rtk` is); quoted text containing
+- Commands wrapped by `&`, `cmd /c`, `bash -c`, `env X=1 ...` are not unwrapped (only `rtk <cmd>` and `rtk
+  bypass|test|err|summary|run|proxy <cmd>` are, since review round 2); quoted text containing
   `;` or `|` is split like a command; `git reset --hard`, `git branch -D` and `gh api --method DELETE` are not classified.
 - Reads of secrets via `printenv KEY`, a bare `$env:KEY`, `grep` on `.env` or the `Grep` tool are not caught in
   advisory mode (in authoritative mode a worker shell segment naming a secret file is refused).
 - Shell text is open-world: in advisory mode (Main) the hook is a deny-list over recognised patterns, not a sandbox
   (since review round 1 it also catches abbreviated `--no-verify`/`--no-gpg-sign`/`--force`/`--mirror`/`--delete`/
   `--all` and root pathspecs such as `./`, `:`, `:/`, `x/..` for `git add`). In authoritative mode (workers) it is a
-  closed allowlist: command, subcommand, exact options and path arguments (STANDING_AUTONOMY.md), still parsed from
-  text. Scripts that do the protected thing internally (for example test code run by the allowed `python -m
+  STRUCTURAL rule since review round 2: one simple Bash command with no shell metacharacters and no `cd`, then a
+  closed allowlist of command, subcommand, exact options and path arguments (STANDING_AUTONOMY.md). Scripts that do the protected thing internally (for example test code run by the allowed `python -m
   unittest`) are not caught.
 - A session that can write its own hook settings or env can switch the hook off; the hook protects against mistakes
   and shortcuts, and must be installed by the supervisor into settings the session does not control.

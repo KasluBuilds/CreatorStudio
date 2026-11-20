@@ -327,6 +327,7 @@ _READERS = re.compile(r"^(cat|type|get-content|gc|less|more|head|tail|bat|cp|cop
 _KILLERS = re.compile(r"^(taskkill|stop-process|kill|pkill|killall|spps)$", re.I)
 _PAID_HOSTS = re.compile(r"(api\.anthropic\.com|api\.openai\.com|generativelanguage\.googleapis\.com|api\.cohere\.|api\.mistral\.ai)", re.I)
 _SECRET_ENV = re.compile(r"(\$env:|\$\{?env:|%|\$)\w*(API[_-]?KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)\w*", re.I)
+_RTK_RUNNERS = ("bypass", "test", "err", "summary", "run", "proxy")
 _RESOLVE_READ = re.compile(r"^(get|list|is|read|find|search|describe|inspect|status|info|has|count|export_info)", re.I)
 
 
@@ -357,11 +358,11 @@ def classify_command(command: str) -> List[Action]:
         if not tok:
             continue
         head = tok[0].lower().replace(".exe", "")
-        if head == "rtk" and len(tok) > 1:           # `rtk <cmd>` and `rtk bypass <cmd>` wrap another command
-            tok = tok[2:] if tok[1].lower() == "bypass" else tok[1:]
-            if not tok:
-                continue
-            head = tok[0].lower().replace(".exe", "")
+        while head == "rtk" and len(tok) > 1:        # `rtk <cmd>`, and `rtk bypass|test|err|summary|run|proxy <cmd>`
+            tok = tok[2:] if tok[1].lower() in _RTK_RUNNERS else tok[1:]      # which execute <cmd>, wrap a command
+            head = tok[0].lower().replace(".exe", "") if tok else ""
+        if not tok:
+            continue
         low = [t.lower() for t in tok]
         for m in re.finditer(r">>?\s*(\"[^\"]+\"|'[^']+'|[^\s;&|]+)", seg):
             tgt = m.group(1).strip("\"'")
@@ -640,18 +641,87 @@ def _rel_from(path: str, base: str) -> str:
     return a[len(b) + 1:] if b and a.startswith(b + "/") else ""
 
 
+def _glob_regex(glob: str) -> "re.Pattern[str]":
+    """A shell glob as a regex over a normalised lower-case path: ``*``/``?`` stay inside one path component."""
+    out, i = [], 0
+    while i < len(glob):
+        c = glob[i]
+        if glob.startswith("**", i):
+            out.append(".*")
+            i += 2
+            continue
+        if c == "*":
+            out.append("[^/]*")
+        elif c == "?":
+            out.append("[^/]")
+        elif c == "[" and "]" in glob[i + 2:]:
+            j = glob.index("]", i + 2)
+            body = glob[i + 1:j]
+            out.append("[" + ("^" + body[1:] if body[:1] == "!" else body).replace("\\", "\\\\") + "]")
+            i = j + 1
+            continue
+        else:
+            out.append(re.escape(c))
+        i += 1
+    return re.compile("".join(out) + r"\Z")
+
+
+def _possible_cwds(command: str, cwd: str, ctx: PolicyContext) -> List[str]:
+    """Every directory the command could run in: the payload cwd, the repo root and each ``cd`` target (resolved
+    against every earlier candidate, whether or not the ``cd`` would succeed)."""
+    bases = [_norm(b) for b in (cwd, ctx.repo_root) if b and _is_abs(b.replace("\\", "/"))]
+    for seg in _SPLIT.split(command or ""):
+        tok = _tokens(seg)
+        if len(tok) >= 2 and tok[0].lower() in ("cd", "pushd", "chdir", "set-location", "sl"):
+            target = next((t for t in tok[1:] if not t.startswith("-")), "")
+            for b in list(bases):
+                r = resolve_shell_path(target, b)
+                if r and r not in bases and len(bases) < 32:
+                    bases.append(r)
+    return bases
+
+
 def touches_boundary_command(command: str, ctx: PolicyContext, cwd: str = "") -> bool:
-    """A shell command that names a boundary path: absolute, or relative to the payload cwd or the repo root.
-    Substring match on the text (see STANDING_AUTONOMY.md for what this cannot catch)."""
+    """A shell command that names a boundary path: absolute, or relative to the payload cwd, the repo root or any
+    ``cd`` target in the command; ``./`` and ``//`` spellings, globs that could match a boundary file, and a
+    directory-level ``git checkout``/``git restore`` that contains one count too (review round 2, N3). Text-based:
+    see STANDING_AUTONOMY.md for what this cannot catch."""
     low = re.sub(r"/+", "/", (command or "").replace("\\", "/").lower())
+    while "/./" in low:
+        low = low.replace("/./", "/")
     if GRANTS_FILE in low or ".claude/settings" in low or "approvals/pending" in low or _APPROVE_CMD.search(command or ""):
         return True
     if any(d.lower() in low for d in _boundary_dirs(ctx)):
         return True
-    for f in _boundary_files(ctx):
+    files = _boundary_files(ctx)
+    for f in files:
         forms = {f.lower(), _rel_from(f, cwd), _rel_from(f, ctx.repo_root)}
         if any(x and x in low for x in forms):
             return True
+    bases = _possible_cwds(command, cwd, ctx)
+    lfiles = [f.lower() for f in files]
+    for seg in _SPLIT.split(command or ""):
+        tok = _tokens(seg)
+        low_tok = [t.lower() for t in tok]
+        restore = len(tok) > 1 and low_tok[0] in ("git", "git.exe") and any(t in ("checkout", "restore") for t in low_tok[1:])
+        for t in tok[1:]:
+            arg = t.split("=", 1)[1] if t.startswith("-") and "=" in t else t
+            if not arg or arg.startswith("-"):
+                continue
+            for b in bases:
+                r = resolve_shell_path(arg, b)
+                if r is None:
+                    continue
+                r = r.lower()
+                if _GLOB_CHARS.search(arg) or _BRACE_EXPANSION.search(arg):
+                    pats = [_glob_regex(_norm(alt).lower()) for alt in _brace_alternatives(r)]
+                    if any(p.match(f) for p in pats for f in lfiles):
+                        return True
+                    continue
+                if any(_inside(r, f) for f in lfiles):
+                    return True
+                if restore and any(_inside(f, r) for f in lfiles):
+                    return True               # `git checkout HEAD~1 -- orchestrator/dev_supervisor/` restores them
     return False
 
 
@@ -675,54 +745,52 @@ def evaluate_tool_call(tool: str, tool_input: Dict[str, Any], ctx: PolicyContext
 
 
 # ------------------------------------------------------------------ worker routine allowlist (authoritative mode)
-# CLOSED at every level (T-DEV-028 security review round 1): command -> subcommand -> EXACT options -> path arguments.
-# Many tools (git, gh, PowerShell) accept unambiguous prefixes of long options; an option that is not exactly on the
-# list (an abbreviation included) is refused. Path arguments are resolved against the payload cwd (and any `cd` earlier
-# in the same command) and must stay inside the environment roots (not the temp dir). If in doubt, deny: an explicit
+# STRUCTURAL rule (T-DEV-028 security review round 2). Two review rounds found bypasses that came from the policy's
+# shell parser disagreeing with the real shell (a failed or piped `cd`, PowerShell scriptblocks, `rtk test <cmd>`).
+# The worker allow path therefore no longer models shell semantics at all. A shell call gets an explicit allow only
+# when ALL of these hold; anything else is denied:
+#   1. the tool is Bash (the PowerShell tool is never allowed for a worker);
+#   2. the command is ONE simple command: after stripping one trailing ` 2>&1` it contains none of
+#      ; & | < > ` $ ( ) { } [ ] * ? ! ~ # \ CR LF (or any other control character), and every quote is a matched
+#      pair of single or double quotes forming a whole token;
+#   3. there is no cd/pushd/popd at all, and the payload cwd is inside the environment roots;
+#   4. the head is on the closed allowlist with its exact per-subcommand option lists (`rtk` only in front of
+#      git, gh, ls, grep, find, wc or diff);
+#   5. every path-like operand resolves inside the roots (not the temp dir).
+# Workers read files with the Read, Grep and Glob tools, so pipelines are not needed. If in doubt, deny: an explicit
 # allow is a promise.
 
-_SAFE_REDIRECT = re.compile(r"\s*(2>&1|[12]?>\s*/dev/null|[12]?>\s*\$null)\s*", re.I)
-_PIECE = re.compile(r"\"[^\"]*\"|'[^']*'|[^\s\"']+")
+_SHELL_META = re.compile(r"[;&|<>`$(){}\[\]*?!~#\\\x00-\x08\x0a-\x1f\x7f]")
+_SIMPLE_WORD = re.compile(r"'[^']*'|\"[^\"]*\"|[^\s'\"]+")
 _BRACE_EXPANSION = re.compile(r"\{[^}]*(,|\.\.)[^}]*\}")
 _GLOB_CHARS = re.compile(r"[*?\[]")
+RTK_PASSTHROUGH = ("git", "gh", "ls", "grep", "find", "wc", "diff")
 
 
 @dataclass(frozen=True)
 class _Tok:
     text: str
-    expands: bool = False     # unquoted or double-quoted `$`, or a PowerShell `@`/`(` expression: the shell rewrites it
-    globs: bool = False       # unquoted glob, brace expansion or a leading `~`
+    expands: bool = False     # kept for the option parser; the structural rule never produces an expanding token
+    globs: bool = False
 
 
-def shell_tokens(segment: str) -> Optional[List[_Tok]]:
-    """Shell-like words with quotes removed and expansion risk recorded; None for an unbalanced quote."""
+def simple_tokens(command: str) -> Optional[List[_Tok]]:
+    """Words of ONE simple command, or None when it does not tokenise cleanly: words are separated by spaces or
+    tabs, and a quoted word is exactly one matched pair of quotes (``a"b"``, ``"a"b`` and unbalanced quotes fail)."""
     toks: List[_Tok] = []
-    i, n = 0, len(segment)
+    i, n = 0, len(command)
     while i < n:
-        if segment[i].isspace():
+        if command[i] in " \t":
             i += 1
             continue
-        parts: List[str] = []
-        expands = globs = False
-        first = True
-        while i < n and not segment[i].isspace():
-            m = _PIECE.match(segment, i)
-            if not m:
-                return None
-            p = m.group(0)
-            if p[0] == "'":
-                parts.append(p[1:-1])
-            elif p[0] == '"':
-                parts.append(p[1:-1])
-                expands = expands or "$" in p
-            else:
-                parts.append(p)
-                expands = expands or "$" in p or (first and p[:1] == "@") or \
-                    (p not in ("\\(", "\\)") and ("(" in p or ")" in p))
-                globs = globs or bool(_GLOB_CHARS.search(p) or _BRACE_EXPANSION.search(p)) or (first and p.startswith("~"))
-            first = False
-            i = m.end()
-        toks.append(_Tok("".join(parts), expands, globs))
+        m = _SIMPLE_WORD.match(command, i)
+        if not m:
+            return None
+        if m.end() < n and command[m.end()] not in " \t":
+            return None                                   # glued pieces (a"b", "a"'b') are not a clean token
+        w = m.group(0)
+        toks.append(_Tok(w[1:-1] if w[0] in "'\"" else w))
+        i = m.end()
     return toks
 
 
@@ -1003,19 +1071,40 @@ GH_SPECS: Dict[Tuple[str, str], _Spec] = {
 }
 _GH_API = _spec(("--paginate", "-i", "--include", "--silent"), {"-X": ("GET", "get"), "--method": ("GET", "get")},
                 (r"-X(GET|get)",))
-_GH_OPERAND = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_#./:@-]*$")
+_GH_NAME = r"[A-Za-z0-9][A-Za-z0-9_.-]*"
+_GH_OPERAND = re.compile(r"^(\d+|[A-Za-z0-9][A-Za-z0-9_./-]*)$")     # a number or a branch name; never a URL (N2)
+_GH_ENDPOINT = re.compile(r"^/?" + _GH_NAME + r"(/" + _GH_NAME + r")*$")
+
+
+def _gh_operand_ok(t: str) -> bool:
+    """A PR/issue number or branch name. ``:`` (a URL scheme) is refused, as are a host-like first segment and a
+    ``/pull/`` or ``/issues/`` path, so another repository's full URL never gets an allow (N2)."""
+    if not _GH_OPERAND.match(t) or ".." in t.split("/"):
+        return False
+    first = t.split("/", 1)[0]
+    return not ("/" in t and "." in first) and not re.search(r"/(pull|pulls|issues)/", t)
+
+
+def _gh_endpoint_ok(t: str) -> bool:
+    """A relative REST endpoint (``user``, ``rate_limit``); a ``repos/...`` endpoint must start with
+    ``repos/<owner>/<repo>``. No URL, no host, no ``..``, no graphql (N2)."""
+    if not _GH_ENDPOINT.match(t) or t.startswith("//"):
+        return False
+    segs = t.lstrip("/").split("/")
+    if any(x in ("..", ".") for x in segs) or segs[0].lower() == "graphql" or "." in segs[0]:
+        return False
+    return segs[0] != "repos" or len(segs) >= 3
 
 
 def _gh_routine(args: Sequence[_Tok], cwd: str, ctx: PolicyContext) -> bool:
     texts = [a.text for a in args]
     if len(texts) >= 2 and texts[0] == "api":
         pos = _parse(args[1:], _GH_API, cwd, ctx)
-        return pos is not None and len(pos) == 1 and pos[0].text.lstrip("/").lower() != "graphql" \
-            and bool(re.match(r"^/?[A-Za-z0-9][A-Za-z0-9_./{}?=&,:-]*$", pos[0].text))
+        return pos is not None and len(pos) == 1 and _gh_endpoint_ok(pos[0].text)
     if len(texts) < 2 or (texts[0], texts[1]) not in GH_SPECS:
         return False
     pos = _parse(args[2:], GH_SPECS[(texts[0], texts[1])], cwd, ctx)
-    return pos is not None and len(pos) <= 1 and all(_GH_OPERAND.match(p.text) for p in pos)
+    return pos is not None and len(pos) <= 1 and all(_gh_operand_ok(p.text) for p in pos)
 
 
 # ---- python -m: closed module and subcommand allowlists (B4)
@@ -1162,19 +1251,18 @@ def _find_routine(args: Sequence[_Tok], cwd: str, ctx: PolicyContext) -> bool:
     return True
 
 
-def _segment_routine(tok: List[_Tok], state: Dict[str, str], ctx: PolicyContext) -> bool:
-    if not tok or any(t.expands or t.text == "--%" for t in tok):
-        return False                                      # variables, subexpressions, splatting, stop-parsing
-    if any(t.globs and (_GLOB_CHARS.match(t.text) or t.text.startswith(("{", "~")) or _BRACE_EXPANSION.search(t.text))
-           for t in tok[1:]):
-        return False                                      # a glob that could expand into options or anywhere else
+def _command_routine(tok: List[_Tok], cwd: str, ctx: PolicyContext) -> bool:
+    """One simple command (already structurally checked) against the closed allowlist."""
+    if not tok or any(t.text == "--%" for t in tok):
+        return False
     head = tok[0].text.lower()
     head = head[:-4] if head.endswith(".exe") else head
-    args, cwd = tok[1:], state["cwd"]
+    args = tok[1:]
     texts = [a.text for a in args]
-    if head == "rtk":
-        inner = args[1:] if texts[:1] == ["bypass"] else args
-        return bool(inner) and inner[0].text.lower() not in ("rtk", "rtk.exe") and _segment_routine(list(inner), state, ctx)
+    if head == "rtk":                                     # only pass-through wrappers of allowlisted commands
+        if not args or args[0].text.lower() not in RTK_PASSTHROUGH:
+            return False                                  # rtk test/err/summary/run/proxy/bypass ... execute anything
+        return _command_routine(list(args), cwd, ctx)
     if any(_sensitive_name(t) for t in texts if t and not t.startswith("-")):
         return False                                      # secrets and launchers are never named by a worker shell
     if head == "git":
@@ -1183,14 +1271,6 @@ def _segment_routine(tok: List[_Tok], state: Dict[str, str], ctx: PolicyContext)
         return _gh_routine(args, cwd, ctx)
     if head in ("python", "python3", "py"):
         return _python_routine(args, cwd, ctx)
-    if head in ("cd", "pushd"):                           # only into the roots; later segments use the new cwd
-        if len(args) != 1 or texts[0].startswith("-") or args[0].globs:
-            return False
-        r = resolve_shell_path(texts[0], cwd)
-        if r is None or not within_roots(r, ctx):
-            return False
-        state["cwd"] = r
-        return True
     if head == "pwd":
         return all(t in ("-P", "-L") for t in texts)
     if head in ("echo", "printf", "true"):
@@ -1237,29 +1317,27 @@ def _segment_routine(tok: List[_Tok], state: Dict[str, str], ctx: PolicyContext)
     return False
 
 
-def routine_shell(command: str, ctx: PolicyContext = PolicyContext(), cwd: str = "") -> Tuple[bool, str]:
-    """(True, "") when EVERY segment is on the closed worker routine allowlist; else (False, offending segment).
-
-    ``cwd`` is the payload working directory: when it is outside the roots every command is refused (a previous ``cd``
-    may have persisted). A ``cd``/``pushd`` into the roots changes the cwd used by the following segments."""
+def routine_shell(command: str, ctx: PolicyContext = PolicyContext(), cwd: str = "",
+                  tool: str = "Bash") -> Tuple[bool, str]:
+    """(True, "") when the call satisfies the STRUCTURAL worker rule (see the section comment); else (False, why)."""
+    if tool != "Bash":
+        return False, f"the {tool or '(unknown)'} tool is never allowed for a worker; use Bash"
     text = command or ""
+    if text.endswith(" 2>&1"):
+        text = text[:-len(" 2>&1")]
     if not text.strip():
         return False, "(empty command)"
-    if any(x in text for x in ("`", "$(", "<(", ">(", "${")):
-        return False, "command substitution"
+    m = _SHELL_META.search(text)
+    if m:
+        return False, f"not one simple command (character {m.group(0)!r}): {text.strip()[:120]}"
+    tok = simple_tokens(text)
+    if not tok:
+        return False, f"does not tokenise cleanly: {text.strip()[:120]}"
     start = (cwd or ctx.repo_root or "").replace("\\", "/")
     if not within_roots(start, ctx):
         return False, f"working directory {start or '(unknown)'} is outside the environment roots"
-    state = {"cwd": _norm(start)}
-    for seg in _SPLIT.split(text):
-        if not seg.strip():
-            continue
-        bare = _SAFE_REDIRECT.sub(" ", seg)
-        if re.search(r"[<>&]", re.sub(r"\"[^\"]*\"|'[^']*'", "\"\"", bare)):
-            return False, seg.strip()[:120]               # file redirection or background job
-        tok = shell_tokens(bare)
-        if not tok or not _segment_routine(tok, state, ctx):
-            return False, seg.strip()[:120]
+    if not _command_routine(tok, _norm(start), ctx):
+        return False, text.strip()[:120]
     return True, ""
 
 
@@ -1449,7 +1527,7 @@ def respond(tool: str, tool_input: Dict[str, Any], decision: Decision, ctx: Poli
         return _out("deny", "authority policy [resolve-input-dependent]: this Resolve tool is a read only according to "
                             "a caller-supplied field; workers get no allow for it")
     if tool in SHELL_TOOLS:
-        ok, seg = routine_shell(str(tool_input.get("command", "")), ctx, cwd)
+        ok, seg = routine_shell(str(tool_input.get("command", "")), ctx, cwd, tool)
         if not ok:
             return _out("deny", f"authority policy [worker-routine-allowlist]: not on the worker routine allowlist: {seg}")
         return _out("allow", "authority policy [worker-routine-allowlist]: routine command")
