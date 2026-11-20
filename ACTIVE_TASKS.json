@@ -1659,6 +1659,56 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator, protocol section 19). Deployment explicitly authorised by Lukas in session on 2026-11-20 (claim, push, PR, 8 gates, merge, supervisor restart, live check). Completed 2026-11-20: PR #98 merged as e342f5211603 through dev_supervisor.integrate (8 gates PASS; independent review APPROVE for diff cc9ea8f133a59a88 after one CHANGES_REQUESTED round). OBSERVED live after the supervisor restart: worker argv carries --settings, force push blocked by the hook, supervisor heartbeat FRESH. The live check also showed a worker could write outside its worktree (into the main checkout); fixed under T-DEV-028."
+    },
+    {
+      "id": "T-DEV-028",
+      "title": "dev_supervisor: permanent standing autonomy (closed-world tool authority, pending approvals, worker confinement, RTK-safe supervised settings)",
+      "description": "Extends the existing authority policy instead of a parallel system: every tool category (shell, files, web, subagents, MCP, publishing, internal tools, unknown) is classified; unknown tools are denied by default; workers run authoritative (explicit allow for known-routine actions, deny otherwise) so they can use permission mode dontAsk; Main keeps auto mode with deny-only enforcement; protected actions create persistent pending approval records and are denied so Main continues other work, and a human-only native prompt path executes an approved action; workers are confined to their worktree (live check of T-DEV-027 showed a worker could write into the main checkout); supervised sessions load a derived settings file (user settings minus the RTK rewrite hook, secrets never copied) so auto mode is not interrupted by command rewrites; standing authority text is part of every Main prompt.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/t-dev-028-standing-autonomy",
+      "worktree": "../CreatorStudio-worktrees/t-dev-028-standing-autonomy",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-027"
+      ],
+      "lease": {
+        "acquired": "2026-11-20T04:30:00+00:00",
+        "expires": "2026-11-21T16:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/authority.py",
+        "orchestrator/dev_supervisor/AUTHORITY.md",
+        "orchestrator/dev_supervisor/session_policy.py",
+        "orchestrator/dev_supervisor/SESSION_POLICY.md",
+        "orchestrator/dev_supervisor/launch.py",
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/lifecycle.py",
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/dev_supervisor/STANDING_AUTONOMY.md",
+        "orchestrator/tests/test_dev_authority.py",
+        "orchestrator/tests/test_dev_session_policy.py",
+        "orchestrator/tests/test_dev_loop_repair.py",
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/tests/test_dev_standing_autonomy.py"
+      ],
+      "acceptance_criteria": [
+        "Every tool name is classified; unknown tools and unknown MCP servers are denied by default; tests cover allowed, denied, unknown and approval-required actions",
+        "Workers: authoritative hook mode, confined to their worktree (repo root of a worker is its worktree), explicit allow only for known-routine actions; dontAsk only enabled after a live proof",
+        "Main: auto mode kept, deny-only hook, never bypassPermissions",
+        "Protected actions write a persistent pending approval record and are denied with its id; a human-only native prompt path exists for an approved retry; Main cannot grant itself authority",
+        "Supervised sessions use --setting-sources project,local plus a derived settings file without the RTK rewrite hook and without secret-bearing keys",
+        "Policy is installed on every launch, restart, replacement and worker re-dispatch; standing authority is in every Main prompt",
+        "Independent review APPROVE bound to the diff hash; full suite passes; live verification through the production launch path"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_standing_autonomy.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator). Authorised by Lukas in session on 2026-11-20 (register, implement, test, integrate T-DEV-028 through the existing safety process; keep Main in auto mode; never bypassPermissions)."
     }
   ]
 }
