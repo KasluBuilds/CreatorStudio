@@ -57,6 +57,7 @@ class PolicyInstall:
     role: str
     verified: bool = False
     project_dir: str = ""       # launch cwd whose .claude/settings*.json must carry no hooks (checked again at launch)
+    statusline_chained: bool = False   # role main: the user's own statusLine runs after ours (False: ours only)
 
 
 def _posix(p: str) -> str:
@@ -168,14 +169,53 @@ def check_project_settings(project_dir: str) -> None:
             raise PolicyInstallError(f"project settings {p} sets disableAllHooks or hooks; refusing to launch")
 
 
-def build_settings(command: str, user: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Derived per-session settings: the copied user keys plus the authority PreToolUse hook, placed first."""
+def build_settings(command: str, user: Optional[Dict[str, Any]] = None,
+                   monitor: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Derived per-session settings: the copied user keys plus the authority PreToolUse hook, placed first.
+
+    ``monitor`` (role main only, T-DEV-030) adds the context-management commands: ``statusline`` becomes the
+    statusLine (the user's own statusLine is chained by ``context_monitor.py`` through the file named in the command,
+    see ``install``), ``notice`` a PostToolUse hook and ``precompact`` a PreCompact hook, each placed before the
+    user's own hooks of that event."""
     base = copy.deepcopy(user or {})
     hooks = base.get("hooks") if isinstance(base.get("hooks"), dict) else {}
     pre = [g for g in (hooks.get("PreToolUse") or []) if isinstance(g, dict)]
     hooks["PreToolUse"] = [{"matcher": MATCHER, "hooks": [{"type": "command", "command": command}]}] + pre
+    if monitor:
+        for event, key in (("PostToolUse", "notice"), ("PreCompact", "precompact")):
+            theirs = [g for g in (hooks.get(event) or []) if isinstance(g, dict)]
+            hooks[event] = [{"matcher": MATCHER, "hooks": [{"type": "command", "command": monitor[key]}]}] + theirs
+        base["statusLine"] = {"type": "command", "command": monitor["statusline"]}
     base["hooks"] = hooks
     return base
+
+
+def monitor_script() -> str:
+    try:
+        from . import context_monitor
+    except ImportError:  # pragma: no cover - standalone import
+        import context_monitor  # type: ignore
+    return context_monitor.__file__
+
+
+def monitor_commands(state_dir: os.PathLike, chain_file: Optional[str] = None, python: Optional[str] = None,
+                     script: Optional[str] = None) -> Dict[str, str]:
+    """The three context_monitor.py commands (always-quoted paths, same rules as the authority hook command)."""
+    py, sc, st = _quote(_posix(python or sys.executable)), _quote(_posix(script or monitor_script())), \
+        _quote(_posix(str(state_dir)))
+    base = f"{py} -I -B {sc}"
+    status = f"{base} statusline --state-dir {st}" + (f" --chain-file {_quote(_posix(chain_file))}" if chain_file else "")
+    return {"statusline": status, "notice": f"{base} notice --state-dir {st}",
+            "precompact": f"{base} precompact --state-dir {st}"}
+
+
+def user_statusline_command(user: Dict[str, Any]) -> Optional[str]:
+    """The user's own statusLine command (type ``command`` with a non-empty command string), else None."""
+    sl = user.get("statusLine")
+    if isinstance(sl, dict) and sl.get("type") == "command" and isinstance(sl.get("command"), str) \
+            and sl["command"].strip():
+        return sl["command"]
+    return None
 
 
 def approvals_dir(state_dir: os.PathLike) -> Path:
@@ -205,7 +245,7 @@ def boundary_paths(script: Optional[str] = None, user_settings: Optional[os.Path
     """Files no session may write or name in a shell command: the hook script of the installed command, the live
     authority.py and session_policy.py, and the user settings file the derived settings are built from."""
     out = [_posix(os.path.abspath(script or authority.__file__)), _posix(os.path.abspath(authority.__file__)),
-           _posix(os.path.abspath(__file__)),
+           _posix(os.path.abspath(__file__)), _posix(os.path.abspath(monitor_script())),
            _posix(str(Path(user_settings) if user_settings is not None else default_user_settings()))]
     return list(dict.fromkeys(out))
 
@@ -273,7 +313,20 @@ def install(state_dir: os.PathLike, session_id: str, role: str, repo_root: str, 
     cmd = hook_command(python)
     env = policy_env(repo_root, roots, owned_paths, grants, role=role, approvals=approvals_dir(state_dir),
                      boundary=boundary_paths(None, user_settings))
-    wanted = build_settings(cmd, load_user_settings(user_settings))
+    user = load_user_settings(user_settings)
+    monitor, chained = None, False
+    if role == "main":
+        theirs = user_statusline_command(user)
+        chain_file = None
+        if theirs:                     # keep the user's own statusLine: ours runs first, then theirs (same stdin)
+            chain_file = str(path.with_name(path.name[:-len(".settings.json")] + ".statusline-chain.json"))
+            try:
+                _atomic_write(Path(chain_file), json.dumps({"command": theirs}) + "\n")
+                chained = True
+            except OSError as exc:
+                raise PolicyInstallError(f"statusLine chain file could not be written: {exc.__class__.__name__}") from None
+        monitor = monitor_commands(state_dir, chain_file, python)
+    wanted = build_settings(cmd, user, monitor)
     try:
         _atomic_write(path, json.dumps(wanted, indent=2) + "\n")
         back = json.loads(path.read_text(encoding="utf-8"))  # read the file back: it must say what we meant
@@ -285,7 +338,7 @@ def install(state_dir: os.PathLike, session_id: str, role: str, repo_root: str, 
         verify_hook(cmd, env, repo_root, run)
         _VERIFIED[(str(path), cmd)] = wanted
     return PolicyInstall(str(path), cmd, env, str(uuid.UUID(str(session_id))), role, verified=bool(verify),
-                         project_dir=str(repo_root))
+                         project_dir=str(repo_root), statusline_chained=chained)
 
 
 def argv_with_policy(argv: Sequence[str], inst: PolicyInstall) -> List[str]:

@@ -33,11 +33,13 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Proto
 
 try:
     from .evidence import Evidence, Label
+    from .github_log import scrub as sensitivity_scrub
     from .github_log import sensitivity_flags
     from .state_store import StateStore, StoreError, contains_secret, parse_iso, utc_iso
     from .workers import Worker
 except ImportError:  # pragma: no cover - standalone import
     from evidence import Evidence, Label  # type: ignore
+    from github_log import scrub as sensitivity_scrub  # type: ignore
     from github_log import sensitivity_flags  # type: ignore
     from state_store import StateStore, StoreError, contains_secret, parse_iso, utc_iso  # type: ignore
     from workers import Worker  # type: ignore
@@ -45,7 +47,8 @@ except ImportError:  # pragma: no cover - standalone import
 __all__ = ["HANDOFF_SCHEMA_VERSION", "HANDOFF_KIND", "EVIDENCE_LABELS", "HandoffError", "HandoffRecord",
            "VerificationReport", "VerifiedHandoff", "RefCheckers", "GitRefChecker", "GhPrChecker", "build_handoff",
            "worker_entries", "pressure_to_resource", "content_hash", "validate_schema", "write_handoff",
-           "verify_handoff", "require_verified", "render_markdown", "handoff_dir", "SAFE", "NOT_SAFE"]
+           "verify_handoff", "require_verified", "render_markdown", "handoff_dir", "SAFE", "NOT_SAFE",
+           "build_mechanical_handoff", "read_active_tasks"]
 
 HANDOFF_SCHEMA_VERSION = 1
 HANDOFF_KIND = "dev_handoff"
@@ -139,6 +142,95 @@ def worker_entries(workers: Iterable[Worker]) -> List[Dict[str, Any]]:
                     "branch": w.branch, "worktree": w.worktree, "session_id": w.session_id, "model": w.model,
                     "provider": w.provider})
     return out
+
+
+MECHANICAL_WORKER_STATUSES = ("ASSIGNED", "STARTING", "RUNNING", "STALE", "STOPPING", "FAILED", "BLOCKED", "LOST")
+_NOISY_EVENT_PREFIXES = ("handoff_", "compaction_decision", "request_", "session_registered")
+
+
+def _plain(text: Any, limit: int = 200) -> str:
+    """A recorded string made safe for a public-log-grade handoff: credential/path/opaque text redacted, capped."""
+    return sensitivity_scrub(text, limit)
+
+
+def read_active_tasks(path: Any) -> List[Dict[str, Any]]:
+    """ACTIVE tasks of ACTIVE_TASKS.json as {task_id, title, branch, depends_on}; [] when missing or unreadable."""
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+        tasks = doc["tasks"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    out = []
+    for t in tasks if isinstance(tasks, list) else []:
+        if isinstance(t, dict) and t.get("status") == "ACTIVE" and isinstance(t.get("id"), str):
+            out.append({"task_id": t["id"], "title": t.get("title") or "", "branch": t.get("branch") or "",
+                        "depends_on": [d for d in (t.get("depends_on") or []) if isinstance(d, str)]})
+    return out
+
+
+def build_mechanical_handoff(*, session_id: str, pressure: Optional[Mapping[str, Any]], tasks: Sequence[Mapping[str, Any]],
+                             workers: Iterable[Worker], events: Sequence[Mapping[str, Any]] = (),
+                             approvals: Sequence[Mapping[str, Any]] = (),
+                             pr_lister: Optional[Callable[[], Sequence[Mapping[str, Any]]]] = None,
+                             head_of: Optional[Callable[[str], Optional[str]]] = None, usage: Any = None,
+                             event_limit: int = 15, role: str = "main", with_titles: bool = True,
+                             created_at: Optional[str] = None) -> Dict[str, Any]:
+    """A handoff assembled ONLY from recorded state (T-DEV-030): ACTIVE tasks, the worker registry (live or failed),
+    open pull requests (UNAVAILABLE without ``pr_lister``), git heads of the task branches (``head_of`` returns None
+    when a branch does not resolve, which is then left out), pending approvals and the last supervisor events. No
+    model-written text and no transcript. Raises ``HandoffError`` like ``build_handoff``."""
+    ratio = (pressure or {}).get("ratio")
+    ratio_v = ratio.value if isinstance(ratio, Evidence) and ratio.available else (
+        ratio.get("value") if isinstance(ratio, Mapping) else None)
+    pct = f"{float(ratio_v):.0%}" if isinstance(ratio_v, (int, float)) and not isinstance(ratio_v, bool) else "unknown"
+    task_graph = [{"task_id": t["task_id"], "title": _plain(t.get("title"), 160) if with_titles else "",
+                   "status": "ACTIVE", "depends_on": list(t.get("depends_on") or [])[:20]} for t in tasks][:MAX_ITEMS]
+    branches, commits = [], []
+    for t in tasks:
+        b = t.get("branch") or ""
+        sha = None
+        if b and head_of is not None:
+            try:
+                sha = head_of(b)
+            except Exception:  # noqa: BLE001 - an unresolvable head is simply left out
+                sha = None
+        if b and sha and _SHA.match(sha):
+            branches.append(b)
+            commits.append({"sha": sha, "branch": b, "subject": f"head of the branch of {t['task_id']}"})
+    ev = [{"claim": "mechanical handoff built only from recorded state (ACTIVE_TASKS.json, worker registry, git heads, "
+                    "supervisor events, pending approvals); no transcript text and no model-written summary",
+           "label": "OBSERVED", "source": "supervisor"}]
+    prs: List[Dict[str, Any]] = []
+    if pr_lister is None:
+        ev.append({"claim": "open pull requests: UNAVAILABLE (no gh runner injected)", "label": "UNAVAILABLE",
+                   "source": "supervisor"})
+    else:
+        try:
+            for p in list(pr_lister())[:50]:
+                if isinstance(p.get("number"), int) and not isinstance(p.get("number"), bool) and p["number"] > 0:
+                    prs.append({"number": p["number"], "state": str(p.get("state") or "OPEN")[:20],
+                                "branch": str(p.get("headRefName") or p.get("branch") or "")[:200]})
+        except Exception as e:  # noqa: BLE001
+            ev.append({"claim": f"open pull requests: UNAVAILABLE (gh failed: {e.__class__.__name__})",
+                       "label": "UNAVAILABLE", "source": "supervisor"})
+    shown = [e for e in events if isinstance(e.get("kind"), str) and not e["kind"].startswith(_NOISY_EVENT_PREFIXES)]
+    for e in shown[-max(0, event_limit):]:
+        ev.append({"claim": _plain(f"event {e['kind']} at {e.get('ts', '')}", 120), "label": "OBSERVED",
+                   "source": "supervisor_events"})
+    blockers = [_plain(f"pending approval {a.get('id')}: {a.get('tool')} ({a.get('rule')})", 160)
+                for a in approvals if isinstance(a, Mapping)][:50]
+    registry = [w for w in workers if w.status in MECHANICAL_WORKER_STATUSES][-MAX_ITEMS:]
+    return build_handoff(
+        session_id=session_id, role=role, created_at=created_at,
+        objective=f"Mechanical handoff for the Main session {str(session_id)[:8]} at context {pct}: continue "
+                  "supervising the ACTIVE tasks and workers recorded here",
+        plan=["Read this handoff, then continue the ACTIVE tasks listed in the task graph",
+              "Check workers with: python -B -m dev_supervisor workers"],
+        task_graph=task_graph, workers=worker_entries(registry), branches=branches, commits=commits,
+        pull_requests=prs, evidence=ev, blockers=blockers, context=pressure, usage=usage,
+        next_actions=["Add your own notes with: python -B -m dev_supervisor handoff --input <facts.json> --yes "
+                      "if something is not in the recorded state",
+                      "Pending approvals are resolved only by Lukas; continue unrelated work"])
 
 
 def build_handoff(*, session_id: str, role: str, objective: str, decisions: Sequence[str] = (),

@@ -459,13 +459,17 @@ class PressureTests(Base):
     def test_warn_edge_at(self):
         self.assertEqual(self.lvl(600)["level"].value, "warn")
 
+    def test_prepare_handoff_edges(self):
+        self.assertEqual(self.lvl(699)["level"].value, "warn")
+        self.assertEqual(self.lvl(700)["level"].value, "prepare_handoff")
+
     def test_compact_edges(self):
-        self.assertEqual(self.lvl(799)["level"].value, "warn")
+        self.assertEqual(self.lvl(799)["level"].value, "prepare_handoff")
         self.assertEqual(self.lvl(800)["level"].value, "compact")
 
     def test_replace_edges(self):
-        self.assertEqual(self.lvl(919)["level"].value, "compact")
-        self.assertEqual(self.lvl(920)["level"].value, "replace")
+        self.assertEqual(self.lvl(899)["level"].value, "compact")
+        self.assertEqual(self.lvl(900)["level"].value, "replace")
 
     def test_over_window(self):
         # More tokens than the window means the window table is wrong; never REPLACE on it (replacement loops, #58).
@@ -511,7 +515,9 @@ class PressureTests(Base):
 
     def test_defaults_documented_and_sane(self):
         t = tl.DEFAULT_THRESHOLDS
-        self.assertTrue(0 < t["warn"] < t["compact"] < t["replace"] <= 1)
+        self.assertTrue(0 < t["warn"] < t["prepare_handoff"] < t["compact"] < t["replace"] <= 1)
+        self.assertEqual((t["prepare_handoff"], t["compact"], t["replace"]), (0.70, 0.80, 0.90))
+        self.assertEqual(tl.DEFAULT_COMPACT_TOKENS, 400_000)
         self.assertIn("claude-sonnet-5-5", tl.DEFAULT_CONTEXT_WINDOWS)
         # The Main model (``--model opus`` resolves to claude-opus-5-5) must have a window, or a launched Main's
         # context pressure is UNAVAILABLE (observed on Main 46f52067 after the #58 transcript fix).

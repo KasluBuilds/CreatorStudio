@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Tuple
 
-from . import provider_env, session_policy
+from . import provider_env, session_policy, telemetry
 from .config import DANGEROUS_MODES, PERMISSION_MODES, Config
 from .evidence import Evidence, observed, unavailable
 from .lifecycle import LaunchHandle, LaunchSpec, LifecycleError, NotOwnedError
@@ -65,11 +65,12 @@ Operating rules:
    python -B -m dev_supervisor assign --task <id> --role <role> --branch <branch> --worktree <path> \
 --owner-stream <stream> --prompt-file <file> --yes
    The supervisor loop spawns, monitors and restarts workers; check them with: python -B -m dev_supervisor workers
-3. Check your own context pressure with: python -B -m dev_supervisor compact-check
-   When it says COMPACT or REPLACE, write a handoff (summary of recorded facts, never transcript text) as a JSON facts \
-file and run: python -B -m dev_supervisor handoff --input <facts.json> --yes
-   A session is only replaced after that handoff verifies by read-back. A fresh session does NOT replenish account \
-usage.
+3. Context is managed for you (see orchestrator/dev_supervisor/CONTEXT_MANAGEMENT.md): at 70% the supervisor writes a \
+durable handoff and a hook tells you its id; at 80% Claude Code compacts you natively; at 90% (or a failed \
+compaction) the supervisor replaces you only after a verified handoff and only while you are idle. Check with: \
+python -B -m dev_supervisor compact-check
+   You may add your own notes with: python -B -m dev_supervisor handoff --input <facts.json> --yes
+   Never clear the session yourself. A fresh session or a compaction does NOT replenish account usage.
 4. Never print, store or commit secrets, tokens or keys. The repository is public.
 5. Results stay REPORTED until verified with command output; never claim VERIFIED without evidence.
 """
@@ -102,12 +103,14 @@ class MainProfile:
     dangerously_skip_permissions: bool = False
     initial_prompt: str = DEFAULT_INITIAL_PROMPT
     name: str = SESSION_NAME
+    pressure: Optional[telemetry.PressureConfig] = None   # when set, Main is launched with native auto-compaction
 
     @classmethod
     def from_config(cls, cfg: Config) -> "MainProfile":
         return cls(model=cfg.model(MAIN_ROLE), executable=cfg.claude_executable,
                    permission_mode=cfg.main_permission_mode,
-                   dangerously_skip_permissions=cfg.dangerously_skip_permissions is True)
+                   dangerously_skip_permissions=cfg.dangerously_skip_permissions is True,
+                   pressure=telemetry.PressureConfig.from_config(cfg))
 
 
 def _uuid(session_id: str) -> str:
@@ -244,11 +247,27 @@ class InteractiveMainLauncher:
             argv = session_policy.argv_with_policy(argv, inst)
         except session_policy.PolicyInstallError as e:
             raise LaunchError(f"authority policy could not be installed; Main not opened: {str(e)[:200]}") from None
-        handle = self.terminal.open(argv, cwd or self.cwd, env=inst.env)
+        env = dict(inst.env)
+        pct = self.autocompact_percent(profile)
+        if pct is not None:
+            env[telemetry.AUTOCOMPACT_ENV] = str(pct)       # Claude Code compacts itself natively at this percentage
+        handle = self.terminal.open(argv, cwd or self.cwd, env=env)
         pid = int(handle.pid)
         self._handles[pid] = handle
-        self.launched.append({"session_id": _uuid(session_id), "pid": pid})
+        self.launched.append({"session_id": _uuid(session_id), "pid": pid, "autocompact_pct": pct})
         return pid, argv, prompt
+
+    def autocompact_percent(self, profile: MainProfile) -> Optional[int]:
+        """Integer 1..100 for CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: min(compact ratio, compact_tokens / window). The window
+        is the configured one for the model id, else the newest statusLine-observed window; with neither only the ratio
+        applies (a model alias such as ``opus`` needs ``context_windows`` in the config for the token guard to apply).
+        None when the profile carries no pressure configuration."""
+        p = profile.pressure
+        if p is None:
+            return None
+        window = p.window_for(profile.model) or telemetry.latest_observed_window(
+            self.store.directory / telemetry.CONTEXT_SUBDIR)
+        return p.compact_percent(window)
 
     # ProcessLauncher protocol (used by replacement.replace_session)
     def launch(self, spec: LaunchSpec) -> LaunchHandle:

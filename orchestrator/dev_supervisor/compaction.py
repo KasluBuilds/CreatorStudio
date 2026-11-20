@@ -33,12 +33,16 @@ except ImportError:  # pragma: no cover - standalone import
     from state_store import StateStore  # type: ignore
     from telemetry import PressureConfig  # type: ignore
 
-__all__ = ["NONE", "WARN", "COMPACT", "REPLACE", "ACTIONS", "CompactionDecision", "CompactionRequester", "decide",
-           "record_decision", "request_compaction", "USAGE_NOTE"]
+__all__ = ["NONE", "WARN", "PREPARE_HANDOFF", "COMPACT", "REPLACE", "ACTIONS", "CompactionDecision",
+           "CompactionRequester", "decide", "record_decision", "request_compaction", "USAGE_NOTE", "ContextTracker",
+           "CONTEXT_DOC", "LEVEL_RANK"]
 
-NONE, WARN, COMPACT, REPLACE = "NONE", "WARN", "COMPACT", "REPLACE"
-ACTIONS = (NONE, WARN, COMPACT, REPLACE)
-_LEVEL_TO_ACTION = {"ok": NONE, "warn": WARN, "compact": COMPACT, "replace": REPLACE}
+NONE, WARN, PREPARE_HANDOFF, COMPACT, REPLACE = "NONE", "WARN", "PREPARE_HANDOFF", "COMPACT", "REPLACE"
+ACTIONS = (NONE, WARN, PREPARE_HANDOFF, COMPACT, REPLACE)
+_LEVEL_TO_ACTION = {"ok": NONE, "warn": WARN, "prepare_handoff": PREPARE_HANDOFF, "compact": COMPACT,
+                    "replace": REPLACE}
+LEVEL_RANK = {"ok": 0, "warn": 1, "prepare_handoff": 2, "compact": 3, "replace": 4}
+CONTEXT_DOC = "context_mgmt"
 USAGE_NOTE = ("context pressure is a per-session figure, not account usage; compacting or starting a fresh session "
               "does NOT replenish account usage")
 DEFAULT_HANDOFF_MAX_AGE_S = 300.0
@@ -96,7 +100,10 @@ def decide(pressure: Optional[Mapping[str, Any]], *, idle: Any, verified: Option
     ``record_decision``)."""
     cfg = config or PressureConfig()
     now_ts = datetime.now(timezone.utc).timestamp() if now is None else float(now)
-    dec = CompactionDecision(action=NONE, reason="", thresholds=dict(cfg.thresholds), session_id=session_id)
+    win_ev = _as_evidence((pressure or {}).get("window"))
+    window = win_ev.value if win_ev is not None and win_ev.available and isinstance(win_ev.value, int) else None
+    thr = cfg.effective(window)          # the absolute cost guard (compact_tokens) needs the window
+    dec = CompactionDecision(action=NONE, reason="", thresholds=dict(thr), session_id=session_id)
     ratio_ev = _as_evidence((pressure or {}).get("ratio"))
     if ratio_ev is None or not ratio_ev.available:
         why = ratio_ev.reason if ratio_ev is not None else "no pressure supplied"
@@ -118,15 +125,19 @@ def decide(pressure: Optional[Mapping[str, Any]], *, idle: Any, verified: Option
         dec.blocked_by.append("pressure_unavailable")
         return dec
     dec.ratio = ratio
-    dec.level = cfg.level(ratio)
+    dec.level = cfg.level(ratio, window)
     dec.action = _LEVEL_TO_ACTION[dec.level]
-    t = cfg.thresholds
+    t = thr
     pct = f"{ratio:.1%} [{dec.pressure_label}]"
     if dec.action == NONE:
         dec.reason = f"context pressure {pct} is below the warn threshold {t['warn']:.0%}"
         return dec
     if dec.action == WARN:
         dec.reason = f"context pressure {pct} reached the warn threshold {t['warn']:.0%}; no action requested"
+        return dec
+    if dec.action == PREPARE_HANDOFF:
+        dec.reason = (f"context pressure {pct} reached the prepare_handoff threshold {t['prepare_handoff']:.0%}; the "
+                      "supervisor writes a durable handoff (nothing is compacted or replaced yet)")
         return dec
     limit = t["compact"] if dec.action == COMPACT else t["replace"]
     base = f"context pressure {pct} reached the {dec.action.lower()} threshold {limit:.0%}"
@@ -149,6 +160,109 @@ def decide(pressure: Optional[Mapping[str, Any]], *, idle: Any, verified: Option
 
 def record_decision(store: StateStore, decision: CompactionDecision) -> Dict[str, Any]:
     return store.append_event("compaction_decision", **decision.to_dict())
+
+
+# ------------------------------------------------------------------ unattended context management (T-DEV-030)
+
+PREPARE_REFRESH_S = 1800.0        # a prepared handoff older than this is rewritten while pressure stays high
+BOUNDARY_SLACK_S = 60.0           # a compact_boundary this much before our first observation of the crossing still counts
+STARTED_GRACE_S = 300.0           # after a PreCompact marker, wait this long before counting observations as failures
+DEFAULT_FAILED_OBSERVATIONS = 6
+
+
+def _fresh_state(session_id: str) -> Dict[str, Any]:
+    return {"session_id": session_id,
+            "prepare": {"active": False, "handoff_id": None, "prepared_at": None, "count": 0},
+            "compact": {"state": "none", "crossed_at": None, "consecutive": 0, "last_obs": None, "started": False,
+                        "started_at": None, "boundary_at": None, "result": None}}
+
+
+class ContextTracker:
+    """Per-session context-management state in the store document ``context_mgmt`` (so a supervisor restart keeps it
+    and never repeats an action). The transition functions are pure (they mutate the dict they are given and return
+    the events to record); the supervisor does the I/O around them.
+
+    compact state: none -> pending (>= compact crossed, native compaction expected) -> boundary_seen (a
+    ``compact_boundary`` transcript record after the crossing) -> none again with a COMPACTED event once usage is
+    below prepare_handoff. pending -> failed (COMPACT_FAILED) after K consecutive NEW observations at >= compact with no
+    boundary record (and no recent PreCompact marker)."""
+
+    def __init__(self, store: StateStore) -> None:
+        self.store = store
+
+    def load(self, session_id: str) -> Dict[str, Any]:
+        doc = self.store.read(CONTEXT_DOC, default=None)
+        if not isinstance(doc, dict) or doc.get("session_id") != session_id:
+            return _fresh_state(session_id)
+        base = _fresh_state(session_id)
+        base["prepare"].update(doc.get("prepare") or {})
+        base["compact"].update(doc.get("compact") or {})
+        return base
+
+    def save(self, st: Dict[str, Any]) -> None:
+        self.store.write(CONTEXT_DOC, st)
+
+    @staticmethod
+    def prepare_action(st: Dict[str, Any], level: str, now: float, refresh_s: float = PREPARE_REFRESH_S) -> str:
+        """'prepare' (new crossing), 'refresh' (still high, handoff old), 'clear' (back below) or 'none'."""
+        p, rank = st["prepare"], LEVEL_RANK.get(level, 0)
+        if rank >= LEVEL_RANK["prepare_handoff"]:
+            if not p["active"]:
+                return "prepare"
+            if p["prepared_at"] is None or now - float(p["prepared_at"]) > refresh_s:
+                return "refresh"
+            return "none"
+        return "clear" if p["active"] else "none"
+
+    @staticmethod
+    def step_compaction(st: Dict[str, Any], *, level: str, ratio: Optional[float], label: str,
+                        obs_key: Optional[str], boundary_ts: Optional[float], started_ts: Optional[float],
+                        now: float, k: int = DEFAULT_FAILED_OBSERVATIONS) -> List[Tuple[str, Dict[str, Any]]]:
+        c, rank, events = st["compact"], LEVEL_RANK.get(level, 0), []
+        high = rank >= LEVEL_RANK["compact"]
+        below_prepare = rank < LEVEL_RANK["prepare_handoff"]
+        info = {"session_id": st["session_id"], "ratio": ratio, "pressure_label": label}
+        if c["state"] == "none":
+            if high:
+                c.update(state="pending", crossed_at=now, consecutive=1, last_obs=obs_key, started=False,
+                         started_at=None, boundary_at=None, result=None)
+                events.append(("compaction_expected", {**info, "k": k}))
+            return events
+        crossed = float(c["crossed_at"] or now)
+        if c["state"] in ("pending", "failed") and started_ts is not None and not c["started"] \
+                and started_ts >= crossed - BOUNDARY_SLACK_S:
+            c.update(started=True, started_at=started_ts)
+            events.append(("compaction_started", {**info, "marker": "PreCompact hook"}))
+        if c["state"] in ("pending", "failed") and boundary_ts is not None and boundary_ts >= crossed - BOUNDARY_SLACK_S:
+            c.update(state="boundary_seen", boundary_at=boundary_ts)
+            events.append(("compact_boundary_seen", {**info, "boundary_epoch": round(boundary_ts, 3)}))
+        if c["state"] == "boundary_seen":
+            if below_prepare:
+                events.append(("COMPACTED", {**info, "verified": True, "boundary_epoch": round(float(c["boundary_at"]), 3),
+                                              "evidence": "compact_boundary record in the transcript and usage "
+                                                          "below the prepare_handoff threshold"}))
+                c.update(state="none", result="COMPACTED", consecutive=0, last_obs=None)
+            return events
+        if c["state"] == "pending":
+            if high:
+                if obs_key is not None and obs_key != c["last_obs"]:
+                    c["last_obs"] = obs_key
+                    in_grace = c["started"] and c["started_at"] is not None and now - float(c["started_at"]) < STARTED_GRACE_S
+                    if not in_grace:
+                        c["consecutive"] = int(c["consecutive"]) + 1
+                    if c["consecutive"] >= k:
+                        c.update(state="failed", result="COMPACT_FAILED")
+                        events.append(("COMPACT_FAILED", {**info, "observations": c["consecutive"],
+                                                          "reason": "usage stayed at or above the compact threshold "
+                                                                    "with no compact_boundary record"}))
+            elif below_prepare or rank < LEVEL_RANK["compact"]:
+                c.update(state="none", consecutive=0, last_obs=None, result="cleared_without_boundary")
+                events.append(("compaction_crossing_cleared", {**info, "reason": "usage fell below compact with no "
+                                                                                "compact_boundary record: NOT verified"}))
+        elif c["state"] == "failed" and below_prepare:
+            c.update(state="none", consecutive=0, last_obs=None)
+            events.append(("compact_failed_cleared", info))
+        return events
 
 
 class CompactionRequester(Protocol):

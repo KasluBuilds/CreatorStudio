@@ -18,7 +18,9 @@ nothing here is a real machine value)::
       "wave_id": "<wave id whose lane worktrees doctor should check, or omit>",
       "models": {"main": "opus", "worker": "sonnet", "cheap": "haiku", "strongest": "opus", "standard": "sonnet"},
       "context_windows": {"<full model id as written in the transcript>": 200000},
-      "thresholds": {"warn": 0.60, "compact": 0.80, "replace": 0.92},
+      "thresholds": {"warn": 0.60, "prepare_handoff": 0.70, "compact": 0.80, "replace": 0.90},
+      "compact_tokens": 400000,
+      "compact_failed_observations": 6,
       "main_permission_mode": null,
       "worker_permission_mode": null,
       "dangerously_skip_permissions": false,
@@ -67,7 +69,9 @@ CONFIG_NAME = "config.json"
 PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")  # claude 2.1.316
 DANGEROUS_MODES = ("bypassPermissions",)
 DEFAULT_MODELS = {"main": "opus", "worker": "sonnet", "cheap": "haiku", "strongest": "opus", "standard": "sonnet"}
-DEFAULT_THRESHOLDS = {"warn": 0.60, "compact": 0.80, "replace": 0.92}
+DEFAULT_THRESHOLDS = {"warn": 0.60, "prepare_handoff": 0.70, "compact": 0.80, "replace": 0.90}
+DEFAULT_COMPACT_TOKENS = 400_000       # T-DEV-030 absolute cost guard (None disables); see CONTEXT_MANAGEMENT.md
+DEFAULT_COMPACT_FAILED_OBSERVATIONS = 6
 DEFAULT_OMNIROUTE = "http://localhost:20128"
 
 
@@ -85,6 +89,8 @@ class Config:
     models: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_MODELS))
     context_windows: Dict[str, int] = field(default_factory=dict)   # merged over telemetry.DEFAULT_CONTEXT_WINDOWS
     thresholds: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_THRESHOLDS))
+    compact_tokens: Optional[int] = DEFAULT_COMPACT_TOKENS
+    compact_failed_observations: int = DEFAULT_COMPACT_FAILED_OBSERVATIONS
     main_permission_mode: Optional[str] = None
     worker_permission_mode: Optional[str] = None
     dangerously_skip_permissions: bool = False
@@ -159,14 +165,20 @@ def validate(cfg: Config) -> None:
             isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in cfg.context_windows.values()):
         raise ConfigError("context_windows must map model ids to positive integers")
     t = cfg.thresholds
-    if not isinstance(t, dict) or set(t) != {"warn", "compact", "replace"}:
-        raise ConfigError("thresholds need exactly warn, compact and replace")
+    if not isinstance(t, dict) or set(t) != {"warn", "prepare_handoff", "compact", "replace"}:
+        raise ConfigError("thresholds need exactly warn, prepare_handoff, compact and replace")
     try:
-        ok = 0 < float(t["warn"]) <= float(t["compact"]) <= float(t["replace"]) <= 1
+        ok = (0 < float(t["warn"]) <= float(t["prepare_handoff"]) <= float(t["compact"]) <= float(t["replace"]) <= 1)
     except (TypeError, ValueError):
         ok = False
     if not ok:
-        raise ConfigError("thresholds must satisfy 0 < warn <= compact <= replace <= 1")
+        raise ConfigError("thresholds must satisfy 0 < warn <= prepare_handoff <= compact <= replace <= 1")
+    ct = cfg.compact_tokens
+    if ct is not None and (isinstance(ct, bool) or not isinstance(ct, int) or ct <= 0):
+        raise ConfigError("compact_tokens must be a positive integer or null")
+    k = cfg.compact_failed_observations
+    if isinstance(k, bool) or not isinstance(k, int) or k < 1:
+        raise ConfigError("compact_failed_observations must be a positive integer")
     if not isinstance(cfg.github_issue, int) or isinstance(cfg.github_issue, bool) or cfg.github_issue < 0:
         raise ConfigError("github_issue must be a non-negative integer")
     if cfg.github_repo and (cfg.github_repo.count("/") != 1 or any(c.isspace() for c in cfg.github_repo)):
@@ -231,6 +243,8 @@ def example() -> Dict[str, Any]:
         "models": dict(DEFAULT_MODELS),
         "context_windows": {"<full model id as written in the transcript>": 200000},
         "thresholds": dict(DEFAULT_THRESHOLDS),
+        "compact_tokens": DEFAULT_COMPACT_TOKENS,
+        "compact_failed_observations": DEFAULT_COMPACT_FAILED_OBSERVATIONS,
         "main_permission_mode": None,
         "worker_permission_mode": None,
         "dangerously_skip_permissions": False,
