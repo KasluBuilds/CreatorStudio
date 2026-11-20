@@ -206,6 +206,16 @@
         "orchestrator/dev_supervisor/live_autonomy.py",
         "orchestrator/dev_supervisor/LIVE_AUTONOMY.md"
       ]
+    },
+    "AGR-RSV-TAKEOVER-01": {
+      "description": "Lukas decided in session on 2026-11-20 that Main (claude:repository-coordinator) takes over the expired tasks T-RSV-002, T-CRD-001 and T-RSR-001. The package owner of resolve_executor (claude:resolve-stream) is gone (lease expired 2026-11-18, no uncommitted work). Under that decision T-RSV-002, now owned by claude:repository-coordinator, may continue editing the resolve_executor package and its test file. REPORTED: the decision was given in session to Main; the package owner entry itself is unchanged until Lukas reassigns it.",
+      "task_ids": [
+        "T-RSV-002"
+      ],
+      "paths": [
+        "orchestrator/resolve_executor/",
+        "orchestrator/tests/test_resolve_executor.py"
+      ]
     }
   },
   "tasks": [
@@ -747,20 +757,21 @@
       "id": "T-RSV-002",
       "title": "Safe, validated DaVinci Resolve execution layer (M-RSV-02)",
       "description": "Build orchestrator/resolve_executor/: typed operation requests, deterministic validation (no Resolve calls), exact frame/timebase arithmetic, a replaceable adapter (offline fake plus a live adapter over the local in-app bridge), read-after-write verification, operation log, checkpoints, bounded retries, failure classification and recovery recommendations, render monitoring and export verification. Capability inventory of the Resolve MCP tools and scripting API with honest test status. Live tests only on a disposable Resolve project with synthetic media, outputs only inside an already allowed output root. Investigate the historical 95/100-frame discrepancy.",
-      "owner": "claude:resolve-stream",
+      "owner": "claude:repository-coordinator",
       "branch": "task/t-rsv-002",
       "worktree": "../CreatorStudio-worktrees/t-rsv-002",
       "status": "ACTIVE",
       "depends_on": [],
       "lease": {
-        "acquired": "2026-11-17T22:17:56+00:00",
-        "expires": "2026-11-18T22:17:56+00:00"
+        "acquired": "2026-11-20T16:00:00+00:00",
+        "expires": "2026-11-22T16:00:00+00:00"
       },
       "exclusive_resources": [
         "resolve"
       ],
       "integration_agreements": [
-        "AGR-GOV-REGISTRY-01"
+        "AGR-GOV-REGISTRY-01",
+        "AGR-RSV-TAKEOVER-01"
       ],
       "owned_paths": [
         "orchestrator/resolve_executor/",
@@ -790,7 +801,7 @@
         "cd orchestrator && python -B -m governance scope --base origin/main",
         "python -B dashboard/tracker_check.py --against origin/main"
       ],
-      "integration_notes": "Assigned directly by Lukas in session 2026-11-17, who also authorized this session to open and merge its own pull requests after technical self-review once every required check passes (no ChatGPT or human code review is claimed). Holds the exclusive resource 'resolve' for live tests on a disposable project only. Synthetic media only; never MVI_0879.MOV or any real footage. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; only this task's own records are edited. Does not touch tools/, launchers, .mcp.json or the bridge configuration."
+      "integration_notes": "Assigned directly by Lukas in session 2026-11-17, who also authorized this session to open and merge its own pull requests after technical self-review once every required check passes (no ChatGPT or human code review is claimed). Holds the exclusive resource 'resolve' for live tests on a disposable project only. Synthetic media only; never MVI_0879.MOV or any real footage. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; only this task's own records are edited. Does not touch tools/, launchers, .mcp.json or the bridge configuration. TAKEOVER 2026-11-20: Lukas decided in session on 2026-11-20 that Main (claude:repository-coordinator, the dev_supervisor Repository Coordinator) takes over this expired task from claude:resolve-stream (lease expired 2026-11-18T22:17Z; the old local worktree had no uncommitted work). Main continues on the same branch by adding commits only (no force-push, the previous history is kept), merged main into it, and from now on integrates through dev_supervisor.integrate with an independent reviewer worker and all 8 gates; the earlier self-merge authorization of the previous session is not used. Live Resolve tests need the bridge started by Lukas and a disposable fixture project; until then live evidence stays NOT TESTED."
     },
     {
       "id": "T-DEV-001",

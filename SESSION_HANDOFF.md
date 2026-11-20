@@ -86,7 +86,7 @@ Status record dated **2026-11-18**. Baseline commit **`93a9a829e073`** on `main`
 
 | Task | Owner | Branch | Status | Lease expires | Owns |
 |---|---|---|---|---|---|
-| T-RSV-002 Safe, validated DaVinci Resolve execution layer (M-RSV-02) | claude:resolve-stream | `task/t-rsv-002` | ACTIVE | 2026-11-18T22:17:56+00:00 | orchestrator/resolve_executor/, orchestrator/tests/test_resolve_executor.py, AI_Creator_Studio_Documentation/RESOLVE_INTEGRATION.md, AI_Creator_Studio_Documentation/TECHNICAL_ARCHITECTURE.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
+| T-RSV-002 Safe, validated DaVinci Resolve execution layer (M-RSV-02) | claude:repository-coordinator | `task/t-rsv-002` | ACTIVE | 2026-11-22T16:00:00+00:00 | orchestrator/resolve_executor/, orchestrator/tests/test_resolve_executor.py, AI_Creator_Studio_Documentation/RESOLVE_INTEGRATION.md, AI_Creator_Studio_Documentation/TECHNICAL_ARCHITECTURE.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
