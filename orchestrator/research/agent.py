@@ -12,9 +12,11 @@ import dataclasses
 import datetime as dt
 from typing import Callable, Optional, Union
 
+from . import ledger as _ledger
 from .attestation import DEFAULT_TRUST, TrustPolicy
 from .discovery import (DiscoveryRequest, TopicCandidate, WeeklyReport, rank_candidates)
 from .models import (Attestation, AudienceProfile, BriefStatus, BriefType, Citation, Claim, ClaimKind, ClaimStatus,
+                     ContradictionResolution,
                      CreativeAngle, FootageConnection, FormatStudy, HookPayoff, IndependenceGroup, Perspective,
                      QualityTier, ResearchBrief, ReviewStatus, Source, SourceType, Stance, TopicKind,
                      Uncertainty, VisualOpportunity)
@@ -105,9 +107,15 @@ class BriefBuilder:
         self._event_date = event_date
         self._catalog = SourceCatalog()
         self._alias: dict[str, str] = {}
-        self._trust = agent.trust.bound_to(brief_id)   # verification only; attestations are valid for THIS brief id
+        self._brief_id = brief_id
         self.brief = ResearchBrief(brief_id=brief_id, topic=topic, audience=audience,
                                    created_at=agent.today(), brief_type=brief_type, topic_kind=topic_kind)
+
+    @property
+    def _trust(self) -> TrustPolicy:
+        """Verification only. Attestations are valid for THIS brief id and the brief's CURRENT topic kind, so a
+        change of kind after review makes them stop verifying instead of silently keeping them alive."""
+        return self._agent.trust.bound_to(self._brief_id, self.brief.topic_kind)
 
     # --- evidence
     def add_source(self, s: Source) -> str:
@@ -163,6 +171,7 @@ class BriefBuilder:
         kw.pop("status", None)
         claim = Claim(id=id, text=text, kind=kind, citations=[self._resolve(c) for c in (cites or [])], **kw)
         self.brief.claims.append(claim)
+        _ledger.record(self.brief)          # every citation (contradictions above all) enters the append-only ledger
         return self
 
     def restance(self, claim_id: str, source_id: str, new_stance: Stance, *, locator: str,
@@ -182,6 +191,34 @@ class BriefBuilder:
             cit.excerpt_proof = proof
         if cit.assessed_stance is None and review is not ReviewStatus.UNREVIEWED:
             cit.assessed_stance = new_stance
+        _ledger.record(self.brief)
+        return self
+
+    def resolve_contradiction(self, entry_id: str, rationale: str, attestation: Attestation) -> "BriefBuilder":
+        """Attach a human's resolution of one recorded contradiction (see ledger.py). Refused unless it verifies
+        now; the contradiction stays in the ledger and in the caveats either way."""
+        entry = next((e for e in self.brief.evidence_ledger if e.entry_id == entry_id), None)
+        if entry is None:
+            raise KeyError(f"unknown ledger entry '{entry_id}'")
+        claim = next((c for c in self.brief.claims if c.id == entry.claim_id), None)
+        from .attestation import sha256_text
+        res = ContradictionResolution(entry_id, rationale, attestation)
+        v = self._trust.verify_resolution(res, entry, sha256_text(claim.text) if claim is not None else "",
+                                          self._agent.today())
+        if not v.ok:
+            raise ValueError("resolution rejected: " + "; ".join(v.reasons))
+        self.brief.resolutions.append(res)
+        return self
+
+    def attach_ledger_seal(self, seal: Attestation) -> "BriefBuilder":
+        """Attach the orchestrator-signed seal over the ledger head (call after build(); any later change to the
+        ledger invalidates it). Refused unless it verifies for the ledger as it is now."""
+        _ledger.record(self.brief)
+        v = self._trust.verify_ledger_seal(seal, self.brief.brief_id, _ledger.head(self.brief.evidence_ledger),
+                                           len(self.brief.evidence_ledger), self._agent.today())
+        if not v.ok:
+            raise ValueError("ledger seal rejected: " + "; ".join(v.reasons))
+        self.brief.ledger_seal = seal
         return self
 
     def attach_retrieval(self, source_id: str, record) -> "BriefBuilder":
@@ -271,9 +308,11 @@ class BriefBuilder:
     # --- finish
     def build(self, reference_texts=()) -> tuple[ResearchBrief, ValidationReport]:
         b, today, trust = self.brief, self._agent.today(), self._trust
+        _ledger.record(b)                                   # nothing assessed below is outside the ledger
         for c in b.claims:                                  # (a manually set `controversial` flag is never reset)
             a = assess_claim(c, b.sources, today=today, topic_kind=b.topic_kind, trust=trust,
-                             independence=b.independence_attestations)
+                             independence=b.independence_attestations, ledger=b.evidence_ledger,
+                             resolutions=b.resolutions)
             c.status = a.status
             c.status_reasons = list(a.reasons)
             c.evidence_route = a.route
