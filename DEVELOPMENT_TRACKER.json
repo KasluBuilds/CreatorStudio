@@ -987,7 +987,7 @@
         {
           "id": "S-RSR-001-00",
           "title": "Step 0: claim branch",
-          "status": "READY_FOR_REVIEW",
+          "status": "COMPLETED",
           "acceptance_criteria": [
             "T-RSR-001 is registered as ACTIVE with a 24-hour lease, owned paths, acceptance criteria and test requirements",
             "AGR-GOV-REGISTRY-01 extended to T-RSR-001; no other task's record is edited",
@@ -998,20 +998,53 @@
             {
               "type": "observation",
               "summary": "Claim branch created from origin/main 18e970e in a new worktree; only ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md and CHANGELOG.md change."
+            },
+            {
+              "type": "pull_request",
+              "summary": "Claim PR #32 merged into main (merge commit shown); reviewed head 6c667680333aab8837b87c2131433a48b08ce124. Merge confirmed on GitHub by Claude (state MERGED, mergedAt 2026-11-17T22:12:47Z) and the merge commit is an ancestor of this branch after a fast-forward.",
+              "ref": "https://github.com/KasluBuilds/CreatorStudio/pull/32",
+              "commit": "469b95dda98365c8b9f23824e9f11684c3d6b1a2"
             }
-          ]
+          ],
+          "completion": {
+            "reviewed_by_chatgpt": true,
+            "lukas_confirmed": true,
+            "date": "2026-11-17",
+            "source": "REPORTED: ChatGPT, as delegated integrator, merged claim PR #32 (merge commit 469b95dda98365c8b9f23824e9f11684c3d6b1a2) under Lukas's standing delegation and told Claude in this session. This is ChatGPT's delegated approval, not a claim that Lukas personally reviewed the claim. Claude verified only that PR #32 is MERGED on GitHub and that the merge commit is an ancestor of the working branch."
+          }
         },
         {
           "id": "S-RSR-001-01",
           "title": "Step 1: remediate F-01, F-02, F-04, F-05, F-06, F-07 with adversarial tests",
-          "status": "PLANNED",
+          "status": "READY_FOR_REVIEW",
           "acceptance_criteria": [
             "Each finding reproduced against current code, fixed within orchestrator/research/ and covered by adversarial regression tests",
             "F-02 external signer dependency reported honestly",
             "Full suite and all governance validators pass",
             "Only orchestrator/research/ and test_research.py change besides the shared registry files"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Dedicated Research tests, run by Claude in this session on the branch (Research tests 284 before this step, 354 after; 70 new adversarial regression tests). Synthetic data only.",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_research.py",
+              "result": "Ran 354 tests: OK"
+            },
+            {
+              "type": "test_run",
+              "summary": "Full suite, run by Claude in this session on the branch after merging origin/main 3f0a953 (the 2 skips are symlink-related tests in files this step did not change).",
+              "command": "cd orchestrator && python -B -I -m unittest discover -s tests",
+              "result": "Ran 1604 tests: OK (skipped=2)"
+            },
+            {
+              "type": "observation",
+              "summary": "Attack reproduction (Claude, this session, same script against origin/main 0129423 and the fixed tree): F-01 topic_kind flip partial->verified (fixed: partial); F-04 5 invented URLs scored 0.75 lead evidence and an untrusted gatherer's receipt was accepted (fixed: 0.25, refused); F-05 clearing the assessed stance or deleting the contradicting citation kept VERIFIED (fixed: partial + CONTRADICTION_ERASED); F-06 30 tier-B origins scored 1.00 = one tier-A, a contradicted fact among 30 verified scored 0.97 (fixed: 0.85 vs 1.00, 0.35); F-07 relevance overall=0.99 with evidence 0 and text_origin='human' on an unattested page validated (fixed: rejected); F-02: the policy accepted any in-process callable and had no separated-verifier client (fixed: RemoteVerifier + require_separated_verifier; the external service is still missing)."
+            },
+            {
+              "type": "observation",
+              "summary": "Changed paths: orchestrator/research/ (attestation, ledger [new], models, sources, scoring, validation, outputs, agent, __init__, README [new]) and orchestrator/tests/test_research.py, plus the task's own registry/tracker/changelog/handoff records. No Asset, Creative Director, orchestrator, governance or shared-document change. Schema research-brief/0.5; signer-contract change (context_id = bind_context(brief id, topic kind), new scopes, text_origin signed); research->creative_director/0.3 unchanged. Not VERIFIED on real data."
+            }
+          ]
         }
       ]
     },
