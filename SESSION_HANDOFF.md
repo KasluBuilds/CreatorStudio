@@ -4,7 +4,7 @@
 
 # Session handoff
 
-Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`.
+Status record dated **2026-11-18**. Baseline commit **`93a9a829e073`** on `main`.
 
 ## User-action gates (things Lukas must be told at a milestone)
 
@@ -26,19 +26,19 @@ Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`
 
 ## Progress (computed from PROJECT_STATUS.json)
 
-- Implementation: **36.9%**  
-- Verification: **13.4%**  
+- Implementation: **43.0%**  
+- Verification: **16.5%**  
 - 29 milestones, total weight 164. Verification never exceeds implementation. Weights are PROPOSED: drafted by an AI session and not yet reviewed by Lukas, so these figures are provisional. 
 - How to read them: *implementation* is the weighted share of milestones whose code exists (half credit if in progress); *verification* is the weighted share demonstrated at the level evidence supports. Neither measures effort, time left, or whether the product works on real footage.
 - Milestones verified on reviewed real input: 0 of 29 (none).
-- Milestones whose verification rests only on *reported* (not re-observed) evidence: M-RSV-01.
+- Milestones whose verification rests only on *reported* (not re-observed) evidence: none.
 
 | Phase | Weight | Implemented | Verified |
 |---|---:|---:|---:|
 | Before Phase 4 | 10 | 0.0% | 0.0% |
 | Governance | 6 | 100.0% | 37.5% |
 | Phase 0 | 5 | 100.0% | 50.0% |
-| Phase 1 | 10 | 0.0% | 0.0% |
+| Phase 1 | 10 | 100.0% | 50.0% |
 | Phase 2 | 22 | 59.1% | 29.5% |
 | Phase 3 | 21 | 47.6% | 16.7% |
 | Phase 4 | 22 | 65.9% | 19.3% |
@@ -76,7 +76,7 @@ Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`
 | M-RSR-01 | Research Agent offline foundation | 6 | IMPLEMENTED | UNIT_ISOLATED (IN_PROGRESS) |
 | M-RSR-02 | Live research providers and pipeline integration | 5 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-RSV-01 | Resolve Free scripting, bridge and MCP baseline | 5 | IMPLEMENTED | INTEGRATION (IN_PROGRESS) |
-| M-RSV-02 | Safe, validated Resolve operations | 10 | NOT_STARTED | NONE (NOT_STARTED) |
+| M-RSV-02 | Safe, validated Resolve operations | 10 | IMPLEMENTED | INTEGRATION (IN_PROGRESS) |
 | M-SFE-01 | Short-form repurposing and vertical export | 8 | NOT_STARTED | NONE (NOT_STARTED) |
 | M-SHT-01 | Shot, transition and candidate detection with CLI | 5 | IMPLEMENTED | INTEGRATION (IN_PROGRESS) |
 | M-SPK-01 | Speaker attribution and Creator DNA eligibility | 4 | IMPLEMENTED | INTEGRATION (IN_PROGRESS) |
@@ -86,7 +86,7 @@ Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`
 
 | Task | Owner | Branch | Status | Lease expires | Owns |
 |---|---|---|---|---|---|
-| T-RSV-002 Safe, validated DaVinci Resolve execution layer (M-RSV-02) | claude:resolve-stream | `task/t-rsv-002` | ACTIVE | 2026-11-18T22:17:56+00:00 | orchestrator/resolve_executor/, orchestrator/tests/test_resolve_executor.py, AI_Creator_Studio_Documentation/RESOLVE_INTEGRATION.md, AI_Creator_Studio_Documentation/TECHNICAL_ARCHITECTURE.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
+| T-RSV-002 Safe, validated DaVinci Resolve execution layer (M-RSV-02) | claude:repository-coordinator | `task/t-rsv-002` | ACTIVE | 2026-11-22T16:00:00+00:00 | orchestrator/resolve_executor/, orchestrator/tests/test_resolve_executor.py, AI_Creator_Studio_Documentation/RESOLVE_INTEGRATION.md, AI_Creator_Studio_Documentation/TECHNICAL_ARCHITECTURE.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
@@ -128,6 +128,7 @@ Unresolved ownership: `creator_state`, `media_analysis`, `speaker_attribution`, 
 3. Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.
 4. Lukas to confirm, in ChatGPT, that the weekly "Phase 6 Readiness Check" automation can read the repository (public since 2026-11-17) and to report the result of its first completed run; until then its successful access is NOT VERIFIED.
 5. Deferred from wave w01 (waves/w01-acquisition-providers-review/DEFERRED.md): Research providers (M-RSR-02, offline and transport-injected) to be scheduled in a future wave after PR #32 lands or is withdrawn, and the Creator review workflow (M-DNA-03) after PR #34 lands or is withdrawn; Q30 and Q39 (review workflow shape, how the creator is identified) remain decisions for Lukas.
+6. Lukas: decide whether Resolve renders may be written into CreatorStudio\Projects (bridge output allowlist; currently only the Movies folder). Needed before long-form renders inside project folders.
 
 ## Where things live
 

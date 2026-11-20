@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-17",
+  "updated": "2026-11-18",
   "repository": "https://github.com/KasluBuilds/CreatorStudio",
   "authority": "Authoritative for current milestone status and progress. Design and decisions stay authoritative in AI_Creator_Studio_Documentation/. Scoring rules: orchestrator/governance/status.py and PROJECT_OPERATING_PROTOCOL.md section 9.",
   "weights_status": "PROPOSED",
@@ -31,7 +31,8 @@
     "Decide Q11 (transcription engine) so M-MED-02 can start; it unblocks real-input work for Creator DNA and Creative Director.",
     "Lukas decides whether to approve the milestone weights (weights_status) and who owns the UNRESOLVED packages.",
     "Lukas to confirm, in ChatGPT, that the weekly \"Phase 6 Readiness Check\" automation can read the repository (public since 2026-11-17) and to report the result of its first completed run; until then its successful access is NOT VERIFIED.",
-    "Deferred from wave w01 (waves/w01-acquisition-providers-review/DEFERRED.md): Research providers (M-RSR-02, offline and transport-injected) to be scheduled in a future wave after PR #32 lands or is withdrawn, and the Creator review workflow (M-DNA-03) after PR #34 lands or is withdrawn; Q30 and Q39 (review workflow shape, how the creator is identified) remain decisions for Lukas."
+    "Deferred from wave w01 (waves/w01-acquisition-providers-review/DEFERRED.md): Research providers (M-RSR-02, offline and transport-injected) to be scheduled in a future wave after PR #32 lands or is withdrawn, and the Creator review workflow (M-DNA-03) after PR #34 lands or is withdrawn; Q30 and Q39 (review workflow shape, how the creator is identified) remain decisions for Lukas.",
+    "Lukas: decide whether Resolve renders may be written into CreatorStudio\\Projects (bridge output allowlist; currently only the Movies folder). Needed before long-form renders inside project folders."
   ],
   "evidence": {
     "E-FULLSUITE-0001": {
@@ -266,6 +267,34 @@
       "date": "2026-11-17",
       "summary": "REPORTED by the asset agent (not re-observed by the Coordinator; harness and logs are outside the repository and uncommitted): an anonymous, Lukas-authorised live Openverse run. A search returned 20 parseable results; a CC0 JPEG (159,612 bytes) and PNG (6,579 bytes) were downloaded over HTTPS from exact allow-listed result hosts, passed content-type and magic-byte checks, were hashed, and stayed QUARANTINED with a licence snapshot; fail-closed on HTTP 404 (Openverse license_url with trailing deed.en/) and HTTP 429 (Wikimedia SVG). Not observed: redirects, licence drift over time, other providers, audio/video, SVG, legal clearance; run 1's response was not captured.",
       "ref": "AI_Creator_Studio_Documentation/ASSETS.md section 8.8"
+    },
+    "E-RSV-UNIT-0001": {
+      "id": "E-RSV-UNIT-0001",
+      "type": "test_run",
+      "date": "2026-11-18",
+      "summary": "T-RSV-002 offline suite for orchestrator/resolve_executor: frame/rate arithmetic (first/last/one-frame/100-frame, mixed rates, non-zero start, invalid ranges, the 95/100 case), validation and allowlists, every operation against the fake adapter, read-after-write mismatches, idempotency, interrupted and uncertain outcomes, render failure/timeout/invalid files, bridge client signing and failure classes, layering. No Resolve, no media.",
+      "ref": "orchestrator/tests/test_resolve_executor.py",
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_resolve_executor.py",
+      "result": "Ran 85 tests: OK (skipped=1; the live smoke test needs CREATOR_STUDIO_RESOLVE_LIVE=1)",
+      "commit": "7bddffe1f66c0376dac4b95a6532851600a7175e"
+    },
+    "E-RSV-UNIT-0002": {
+      "id": "E-RSV-UNIT-0002",
+      "type": "test_run",
+      "date": "2026-11-20",
+      "summary": "T-RSV-002 step S-RSV-002-01 offline takeover review (Main's takeover under AGR-RSV-TAKEOVER-01). Offline suite after fixes: frame regression at every supported timeline rate (first/last/one/100 frames, start timecodes 00:00:00:00 to 10:00:00:00, ranges past the file end, the inclusive-end trap), the two arithmetic candidates for the 95/100 case, unsupported and foreign requests, output allowlist and file-name rules, unfinished mutations without an idempotency key, unexpected exceptions, render monitoring, ffprobe through an injected runner, README capability table equal to the code. Unit level, fake adapter only: no Resolve call, no live suite, no footage. Two symlink tests skip on the review machine and the live smoke test skips without CREATOR_STUDIO_RESOLVE_LIVE=1.",
+      "ref": "orchestrator/tests/test_resolve_executor.py",
+      "command": "python -B -I -m unittest discover -s orchestrator/tests -p test_resolve_executor.py",
+      "result": "Ran 112 tests: OK (skipped=3)",
+      "commit": "47843db9a584a084578c4c863ea3a615fbbaa893"
+    },
+    "E-RSV-LIVE-0001": {
+      "id": "E-RSV-LIVE-0001",
+      "type": "observation",
+      "date": "2026-11-18",
+      "summary": "Live suite against DaVinci Resolve Free 21.0.4.5 (version and edition read live through the in-app bridge) on new disposable projects with ffmpeg-generated synthetic media, code at the commit of E-RSV-UNIT-0001: 26 of 26 checks passed (run run_20261118_002837). Established: half-open source ranges (pixel-verified by decoding a render), absolute timeline frames, floor conversion for mixed rates, the historical 95/100 explained (25 fps clip in a 24 fps timeline with endFrame 99) and reproduced, Resolve accepting past-end ranges (frozen last frame) and reporting success for overlaps while placing nothing (both refused by the executor), integer-only timeline rate setting (NTSC via the project rate), WAV frame counts, multitrack/sync/gaps, transforms and crop, markers, Text+ titles, item removal with checkpoint, renders (MP4 H.264/H.265, 1920x1080, 1080x1920, with/without audio, inclusive MarkOut range) verified with ffprobe, timeout stop, bridge-unavailable and wrong-project refusals; audio level SetProperty returns False and AddTransition is absent. No real footage; the bridge configuration was read, not changed.",
+      "ref": "AI_Creator_Studio_Documentation/RESOLVE_INTEGRATION.md sections 11-14; orchestrator/resolve_executor/live_suite.py",
+      "observer": "claude:resolve-stream (T-RSV-002 session; evidence file kept on the local machine)"
     }
   },
   "milestones": [
@@ -341,10 +370,11 @@
       "verification": {
         "state": "IN_PROGRESS",
         "level": "INTEGRATION",
-        "summary": "Real Resolve and disposable media, per project documents only; not re-observed in the governance session.",
+        "summary": "Real Resolve and disposable media. Originally per project documents only; re-observed on 2026-11-18 by T-RSV-002 (bridge health, project/timeline/media operations and renders through the in-app bridge).",
         "evidence": [
           "E-REP-RESOLVE-BASELINE",
-          "E-REP-RESOLVE-MCP"
+          "E-REP-RESOLVE-MCP",
+          "E-RSV-LIVE-0001"
         ]
       },
       "depends_on": [],
@@ -352,8 +382,8 @@
       "open_questions": [
         "Only a subset of the 37 MCP tools has been exercised.",
         "Test the OmniRoute fallback with MCP.",
-        "Inspect the bridge output-root allowlist before exporting into Projects.",
-        "Free 21.1 may no longer expose Python scripting; compatibility with other versions is unknown."
+        "Free 21.1 may no longer expose Python scripting; compatibility with other versions is unknown.",
+        "The bridge output-root allowlist was inspected on 2026-11-18: still only the Movies folder; exports into Projects need a deliberate decision."
       ],
       "blockers": []
     },
@@ -365,21 +395,28 @@
       "weight": 10,
       "weight_rationale": "Largest single technical risk: the whole editing engine rests on reliable Resolve operations; ROADMAP lists nine untested areas.",
       "implementation": {
-        "state": "NOT_STARTED",
-        "summary": "None of the nine ROADMAP Phase 1 items is done; only the Phase 0 baseline exists."
+        "state": "IMPLEMENTED",
+        "summary": "orchestrator/resolve_executor (T-RSV-002): typed operations, pure validation, capability inventory, executor with identity/precondition checks, read-after-write verification, idempotency journal, checkpoints, recovery classes, render monitoring and ffprobe export verification, live bridge adapter and offline fake. Frame-accurate source in/out, multitrack and sync, transforms, titles (Text+), audio placement, render status and 9:16 export are implemented; audio levels/fades, transitions and subtitle tracks are refused because Resolve Free 21.0 offers no safe API (documented limits)."
       },
       "verification": {
-        "state": "NOT_STARTED",
-        "level": "NONE",
-        "summary": "Nothing to verify yet.",
-        "evidence": []
+        "state": "IN_PROGRESS",
+        "level": "INTEGRATION",
+        "summary": "Exercised live on Resolve Free 21.0.4.5 with synthetic media on disposable projects (26/26 checks, previous session, evidence file machine-local) plus 112 offline tests (unit level; the 2026-11-20 takeover review made no Resolve call and did not re-observe the live run). Not used on real footage or reviewed by a human, so not VERIFIED. Not tested live: Resolve-reported render failures, a bridge restart mid-mutation, 30/50/59.94/60 fps timelines.",
+        "evidence": [
+          "E-RSV-UNIT-0001",
+          "E-RSV-UNIT-0002",
+          "E-RSV-LIVE-0001"
+        ]
       },
       "depends_on": [
         "M-RSV-01"
       ],
-      "commit": null,
+      "commit": "7bddffe1f66c0376dac4b95a6532851600a7175e",
       "open_questions": [
-        "Why a nominal 100-frame source range produced a 95-frame item is unexplained."
+        "Whether exports may go into CreatorStudio\\Projects: the bridge's allowed output root is still only the Movies folder (a decision for Lukas; nothing was broadened).",
+        "Visual correctness of transforms and titles is checked by readback only, not by pixels.",
+        "Separately appended video and audio parts are placed in sync but not linked.",
+        "Audio levels, fades and transitions need the Resolve UI or a Fairlight preset on Free 21.0."
       ],
       "blockers": []
     },
@@ -1061,8 +1098,8 @@
     }
   ],
   "computed": {
-    "implementation_percent": 36.9,
-    "verification_percent": 13.4,
+    "implementation_percent": 43.0,
+    "verification_percent": 16.5,
     "total_weight": 164,
     "milestone_count": 29
   },

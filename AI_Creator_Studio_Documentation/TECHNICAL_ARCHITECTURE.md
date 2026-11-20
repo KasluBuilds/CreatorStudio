@@ -24,7 +24,21 @@ Use Claude for high-context creative reasoning, planning, critique and complex d
 Python and FFmpeg can handle media probing, file operations, waveform/silence analysis, frame extraction, image resizing, validation, metadata, checksums and repeatable transformations. Resolve remains the editing/rendering environment where its API is needed.
 
 ### Resolve integration
-Claude Code MCP client → local MCP server → in-app Resolve bridge → Resolve scripting API.
+Two paths, for different callers (details: `RESOLVE_INTEGRATION.md` section 10):
+- Interactive: Claude Code MCP client → local MCP server → in-app Resolve bridge → Resolve scripting API.
+- Pipeline (implemented 2026-11-18, `T-RSV-002`; offline takeover review 2026-11-20): edit plan →
+  `orchestrator/resolve_executor` (typed operations → capability gate (unknown, NOT_TESTED and UNSUPPORTED requests
+  are refused first) → pure validation → idempotency journal (explicit key or `op:<op_id>`) → identity/precondition
+  checks → fsynced journal `begin` → mutation → read-after-write verification → journal `finish`) → replaceable
+  adapter (live: in-app bridge; offline: in-memory fake) → Resolve. Renders are verified from the file with ffprobe.
+  The LLM never issues raw API calls on this path. Status: implemented and unit-tested offline; core operations were
+  exercised live on synthetic media (`E-RSV-LIVE-0001`, previous session). M-RSV-02 is not VERIFIED (no real footage,
+  no human review).
+
+Responsibilities stay separate: Creative Director (story), Editor Agent (editing decisions and the structured plan),
+validator (deterministic correctness and safety, no Resolve calls), Resolve executor (timeline operations and
+readback), QC (inspection of the result). The executor depends on no other orchestrator package and on no LLM
+provider.
 
 ### Storage
 - Project manifests and state.
@@ -77,6 +91,14 @@ Prefer high-level, validated operations such as:
 - `export_platform_variants()`
 
 These are proposed wrapper functions, not confirmed existing MCP tools. Underlying MCP tools should be used only after their schema and behavior are inspected.
+
+Implemented so far (`resolve_executor`, live-exercised on Resolve Free 21.0.4.5 with synthetic media): inspect
+project/timeline, create project/timeline, import media, add track, append source segments (positioned, half-open
+source ranges, mixed rates), transforms and crop, markers, Text+ titles, remove items, save/checkpoint, render with
+monitoring and export verification. Explicitly refused: audio levels/fades/EQ, transitions, subtitle tracks,
+insert/overwrite edits (no safe API on 21.0). Capability statuses (VERIFIED / IMPLEMENTED / NOT_TESTED / UNSUPPORTED)
+live in `resolve_executor/capabilities.py` and are mirrored in its README; IMPLEMENTED-only items include Resolve-reported
+render failures and interrupted-mutation handling (offline fault injection, never provoked live). `create_timeline_from_plan()` waits for the edit-plan schema (`M-EDT-01`).
 
 Batch operations where safe. Avoid hundreds of tiny calls when a single validated high-level operation can do the job. Serialize Resolve mutations because the bridge is single-threaded.
 
