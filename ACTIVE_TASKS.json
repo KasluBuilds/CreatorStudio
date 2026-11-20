@@ -1706,6 +1706,51 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator). Authorised by Lukas in session on 2026-11-20 (register, implement, test, integrate T-DEV-028 through the existing safety process; keep Main in auto mode; never bypassPermissions). Completed 2026-11-20: PR #101 merged as 8b175455bb86 through dev_supervisor.integrate (8 gates PASS). Independent security review: 3 opus rounds (CHANGES_REQUESTED x2 with real bypasses incl. git --upload-pack exec, cd-tracker desync, PowerShell scriptblocks, rtk test exec; APPROVE round 3 after the structural worker shell rule), PR-bound APPROVE for diff ed837652b5da6806. OBSERVED live after supervisor restart (production launch path): worker argv has --settings and --setting-sources project,local; derived settings without the RTK hook and without env/apiKeyHelper; worker in permission mode dontAsk ran git status/log, Read, Grep and its own Write with no prompt; pipe, write outside the worktree, force push denied; tools/ write and rm queued as pending approvals. Main profile verified only by a headless probe with the real installer (auto mode, force push denied, protected write queued, no RTK rewrite); the interactive Main launch with the hook is NOT yet observed (next Main launch). Follow-ups: advisory classify_command misses rtk global flags (rtk -v git push), gh -R other host, unittest arbitrary dotted names, approvals list needs --dir outside hooked sessions."
+    },
+    {
+      "id": "T-DEV-029",
+      "title": "dev_supervisor: standing-autonomy follow-ups (review posting under the structural rule, advisory rtk flags, gh/unittest operand limits, approvals dir default, supervisor tick latency)",
+      "description": "Follow-ups found by the T-DEV-028 security review and by the first real work under dontAsk workers: review packets must tell workers how to post (Write a file in the worktree, gh pr comment --body-file <relative file>, tests via discover -s orchestrator/tests without cd); advisory classify_command must unwrap rtk global flags (rtk -v git push); gh -R/--repo must be the own repository; python -m unittest only discover/test module names inside the worktree; authority approvals list/approve default to the configured state directory; supervisor ticks take about 68 s instead of 15 s (profile and fix, e.g. avoid re-parsing the Main transcript every tick).",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/t-dev-029-autonomy-followups",
+      "worktree": "../CreatorStudio-worktrees/t-dev-029-autonomy-followups",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-028"
+      ],
+      "lease": {
+        "acquired": "2026-11-20T15:10:00+00:00",
+        "expires": "2026-11-22T15:10:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/authority.py",
+        "orchestrator/dev_supervisor/AUTHORITY.md",
+        "orchestrator/dev_supervisor/STANDING_AUTONOMY.md",
+        "orchestrator/dev_supervisor/review.py",
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/telemetry.py",
+        "orchestrator/dev_supervisor/compaction.py",
+        "orchestrator/tests/test_dev_standing_autonomy.py",
+        "orchestrator/tests/test_dev_review.py",
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/tests/test_dev_telemetry.py"
+      ],
+      "acceptance_criteria": [
+        "Review packet prompt tells a dontAsk worker exactly how to run tests and post its comment, and a worker following it succeeds",
+        "rtk -v/-u/--flags git push origin main is denied in advisory mode",
+        "gh -R other-owner/other-repo and full URLs are denied for workers; unittest arguments limited to discover/test modules",
+        "approvals list works without --dir",
+        "Supervisor tick duration measured before/after; target under 20 s with an idle Main",
+        "Independent review APPROVE bound to the diff hash; CI passes"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py"
+      ],
+      "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator). Routine follow-up under Lukas's standing authority of 2026-11-20; no authority boundary is widened."
     }
   ]
 }
