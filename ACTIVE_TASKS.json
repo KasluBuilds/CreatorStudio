@@ -1753,6 +1753,45 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py"
       ],
       "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator). Routine follow-up under Lukas's standing authority of 2026-11-20; no authority boundary is widened. Completed 2026-11-20: PR #104 merged as 29b0d569d87c through dev_supervisor.integrate (8 gates PASS; independent opus review APPROVE for diff b7252179719d9192). OBSERVED after supervisor restart: tick duration_ms 3.7 with per-phase timing in the heartbeat (previously about 68 s per tick; the earlier cause is not isolated, the transcript cache and handoff-verify reuse are the candidates). A dontAsk reviewer posted PR comments via --body-file before this change only when told how (PR #43); the instructions are now in every review packet."
+    },
+    {
+      "id": "T-EDT-001",
+      "title": "Validated edit-plan schema and Editor planning workflow (M-EDT-01, offline)",
+      "description": "New package orchestrator/edit_plan/: the versioned edit-plan JSON contract between creative reasoning (Creative Director output) and deterministic execution (resolve_executor). Source-range and frame validation with exact rational time (reusing resolve_executor.timebase where possible), track and operation capability validation against resolve_executor.capabilities, source-fidelity rules from EDITING_ENGINE.md (the creator's real words only, no replacement dialogue, originals immutable), deterministic plan hashing, and an offline Editor planning workflow that turns a Creative Director brief plus a source inventory into a candidate plan for human/QC review. No Resolve calls, no real footage; exports into CreatorStudio\\Projects are not authorised.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/t-edt-001-edit-plan",
+      "worktree": "../CreatorStudio-worktrees/t-edt-001-edit-plan",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-RSV-002"
+      ],
+      "lease": {
+        "acquired": "2026-11-20T17:00:00+00:00",
+        "expires": "2026-11-23T17:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/edit_plan/",
+        "orchestrator/tests/test_edit_plan.py",
+        "AI_Creator_Studio_Documentation/EDITING_ENGINE.md"
+      ],
+      "acceptance_criteria": [
+        "orchestrator/edit_plan/ defines a versioned edit-plan schema with a JSON Schema export and a typed model; unknown fields and versions fail explicitly",
+        "Every source range is validated against the source inventory with exact frame arithmetic (first/last frame, one frame, non-zero start, mixed rates, out-of-range, overlap rules)",
+        "Operations and tracks are validated against resolve_executor capabilities; unsupported operations fail explicitly instead of being dropped",
+        "Source-fidelity rules: dialogue comes only from the creator's recorded ranges, no generated speech, originals referenced read-only; violations are hard errors",
+        "Deterministic canonical serialisation and plan hash; a plan translates to resolve_executor operation requests without executing them",
+        "Offline Editor planning workflow from a Creative Director brief and a synthetic source inventory produces a candidate plan plus a validation report; no Resolve calls, no real footage",
+        "EDITING_ENGINE.md section 10 matches the implemented schema; nothing is labelled VERIFIED",
+        "Independent review APPROVE bound to the diff hash; CI full suite passes"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s orchestrator/tests -p test_edit_plan.py"
+      ],
+      "integration_notes": "Registered by Main under Lukas's standing authority (2026-11-20 instruction to start M-EDT-01). PROJECT_STATUS.json is owned by the active T-RSV-002; M-EDT-01 status there is updated when T-RSV-002 closes or by a later task. New package without a package_owners entry until Lukas assigns one."
     }
   ]
 }
