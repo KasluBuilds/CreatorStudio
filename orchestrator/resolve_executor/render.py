@@ -81,7 +81,7 @@ def run_render(ex, op: ops.RenderTimeline):
         expected_frames = spec.mark_out - spec.mark_in
     else:
         expected_frames = length
-    if os.path.exists(out_path):
+    if os.path.lexists(out_path):       # lexists: a dangling symlink at the target must not be written through
         return refused(FailureClass.PRECONDITION, f"output already exists; refusing to overwrite {out_path}")
     try:
         if a.is_rendering():

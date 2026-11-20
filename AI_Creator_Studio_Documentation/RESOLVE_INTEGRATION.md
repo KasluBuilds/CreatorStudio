@@ -6,7 +6,9 @@
 Sections 10-15 describe the safe execution layer `orchestrator/resolve_executor/` and what was **measured live** on
 2026-11-18 with synthetic media on disposable projects (live evidence `E-RSV-LIVE-0001`). "VERIFIED" in a capability
 table below means *exercised live by that suite with readback agreeing*; it is not the milestone label VERIFIED, which
-needs real input and a human review.
+needs real input and a human review. The live evidence file is machine-local (not in the repository); an offline
+takeover review on 2026-11-20 re-read the code and tests against it but made no Resolve call and did not re-observe it
+(see `orchestrator/resolve_executor/README.md`, "Acceptance-criteria audit").
 
 ## 1. Compatibility conclusion
 
@@ -176,13 +178,17 @@ Two ways reach Resolve, for different callers:
 | Claude Code → MCP server (37 tools, `{action, params}`) → bridge | an interactive LLM session | inspection, experiments, one-off work |
 | pipeline code → `resolve_executor` → bridge | the Editor/orchestrator | **every planned edit**: typed, validated, journaled, read back |
 
-The executor never exposes the raw API: an Editor submits typed requests (`operations.py`), `validation.py` checks
-them without touching Resolve, the `Executor` refuses unsupported capabilities, checks the open project and the
-timeline's rate, checks preconditions from readback (media in the pool exactly once, range inside the file, media
-part present, tracks exist, slot free), writes a journal `begin` (fsynced) before the mutation, then reads the result
-back and only reports `SUCCEEDED` when the readback equals the request. An interrupted mutation is never repeated:
-its idempotency key stays blocked until `resolve_uncertain` records what an inspection found. Renders are verified
-from the file with ffprobe. Package documentation: `orchestrator/resolve_executor/README.md`.
+The executor never exposes the raw API: an Editor submits typed requests (`operations.py`); the `Executor` first
+refuses anything that is not a registered request type or whose capability is NOT_TESTED or UNSUPPORTED (reported as
+`unsupported`, whatever else is wrong with the fields), `validation.py` then checks the request without touching
+Resolve (identifiers, ranges, media and output allowlists with symlinks resolved, render file names), the executor
+checks the open project and the timeline's rate, checks preconditions from readback (media in the pool exactly once,
+range inside the file, media part present, tracks exist, slot free), writes a journal `begin` (fsynced) before the
+mutation, then reads the result back and only reports `SUCCEEDED` when the readback equals the request. An
+interrupted mutation (lost bridge, unreadable readback, unexpected exception) is never repeated: its key (the
+`idempotency_key`, or `op:<op_id>` when none was given) stays blocked until `resolve_uncertain` records what an
+inspection found. Renders never overwrite (an existing or dangling file at the target counts as existing), judge
+completion by percentage, and are verified from the file with ffprobe. Package documentation: `orchestrator/resolve_executor/README.md`.
 
 The live adapter speaks the bridge's protocol 1.0 itself (HMAC-SHA256 over the canonical request, one connection per
 request); the token is read from the machine-local bridge config at run time and is never logged, returned or
@@ -196,7 +202,7 @@ stored. Nothing under `tools/` and no machine-local configuration was changed.
 | What are source frames counted from? | The first frame of the file (frame 0), not its timecode | same render |
 | How are timeline positions expressed? | Absolute frames including the start frame (90000 = 01:00:00:00 at 25 fps; 0 with a 00:00:00:00 start); `GetEnd()`, `GetEndFrame()` exclusive | readback; zero-start timeline with an explicit gap |
 | Different source and timeline rates? | `floor(n × timeline_rate / source_rate)` timeline frames | 100 frames of 50/29.97/24 fps in 25 fps → 50/83/104; 25 fps in 23.976 → 95; 25 fps in 24 → 96 |
-| The historical 95/100 | A 25 fps clip in a **24 fps** timeline with `endFrame` 99: floor(99 × 24/25) = 95 | read-only inspection of `MCP_TRIM_TEST`; reproduced: `[0,100)`→96, `[0,99)`→95 |
+| The historical 95/100 | Explained by the floor rule. Over the supported rates exactly two cases give 95: **(a)** 99 source frames of a 25 fps clip in a **24 fps** timeline (floor(99 × 24/25) = 95, i.e. `endFrame` 99 sent for "frames 0 to 99"), **(b)** 100 frames of a 25 fps clip in a 23.976 fps timeline. The historical timeline was read as 24 fps, which selects (a); 100 frames at 24 fps give 96. The `endFrame` the original call sent was not preserved, so (a) is INFERRED, not observed | arithmetic (exact, offline test); read-only inspection of `MCP_TRIM_TEST` and the synthetic reproduction `[0,100)`→96, `[0,99)`→95 were done by the previous session (REPORTED, evidence file machine-local); a start-timecode offset cannot change a length (offline test). To close it: re-read `MCP_TRIM_TEST` read-only (timeline rate, clip FPS, item duration and source offsets) and find the original call's `endFrame` in any log |
 | Does the MCP adapter change values? | Not involved: the executor talks to the bridge directly; the bridge passes arguments unchanged | protocol source reading; results above |
 | Is duration readback reliable? | `GetStart`/`GetEnd`/`GetDuration` yes. **`GetSourceEndFrame` no**: it read 100 for `[0,100)` but 199 for `[180,200)` and 39 for a 40-frame title; it is recorded, never used to verify | readback |
 | Range past the end of the file | **Accepted silently**: `[190,210)` of a 200-frame file became a 20-frame item whose last 10 frames freeze frame 199 | render decoded; the executor refuses such ranges |
@@ -231,6 +237,10 @@ The machine-readable inventory, with API calls, inputs, limitations and verifica
 | Subtitle-track captions | UNSUPPORTED (deliberately not tested) | third-party reports of a Resolve abort on subtitle appends; burn-in titles instead |
 | Insert/overwrite/ripple edit modes | UNSUPPORTED | no API; positioned appends only |
 | Render failure reported by Resolve itself | IMPLEMENTED, not observed live | no way found to make Resolve fail a job on synthetic media; covered offline |
+| Interrupted-mutation handling (lost bridge after sending, unreadable readback, unexpected exception) | IMPLEMENTED, not provoked live | journal `begin` stays open, key blocked until `resolve_uncertain`; offline fault injection only |
+| Timelines at 30/50/59.94/60 fps | IMPLEMENTED, not exercised live | accepted by validation; live runs used 24, 25 and 29.97 |
+| Variable-frame-rate sources; linking video+audio parts; Text+ font/colour; proxies, relink, retime, multicam, compound | NOT_TESTED | no code or no request type |
+| Drop-frame timecode | UNSUPPORTED | refused by `timebase` |
 
 ## 13. Recovery behaviour
 

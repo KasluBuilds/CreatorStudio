@@ -5,6 +5,14 @@ project's earlier history are in `AI_Creator_Studio_Documentation/DECISIONS_AND_
 before `51fcd85`, so nothing earlier is listed here and nothing is reconstructed. Every merged task adds an entry (see `PROJECT_OPERATING_PROTOCOL.md`).
 
 
+## Unreleased — task `T-RSV-002` step `S-RSV-002-01`: offline takeover review (branch `takeover/t-rsv-002`, pending integration)
+
+- Main took the task over on 2026-11-20 (`AGR-RSV-TAKEOVER-01`). Offline audit of `orchestrator/resolve_executor/` against the seven acceptance criteria (table in the package README); no Resolve call, no live suite, no footage.
+- Fixed, each with a test: an unfinished mutation without an `idempotency_key` did not block resubmission (now blocked under `op:<op_id>`); an unexpected exception while applying left the journal open without a result (now `UNCERTAIN`/`internal`; in preflight `REFUSED`/`internal`); `VerifyExport` failed open without output roots (now fails closed); unsupported or foreign requests were reported as validation errors (the capability gate now runs first); reserved Windows file names, trailing dots and dangling symlinks at the render target are refused; `probe.ffprobe`/`count_frames` take an injected `runner`.
+- Capability inventory now uses IMPLEMENTED, NOT_TESTED and UNSUPPORTED entries beyond the VERIFIED ones; a test keeps the README table equal to the code and requires every VERIFIED entry's evidence id to exist in `PROJECT_STATUS.json`.
+- 95/100: exact arithmetic shows two candidates among supported rates (99 frames, 25 fps source in a 24 fps timeline; or 100 frames in 23.976 fps); the historical case matches the first, and its `endFrame` is INFERRED, not observed. A read-only live re-inspection that would close it is listed in the README. No constant was added.
+- `test_resolve_executor.py`: 85 -> 112 tests (offline). M-RSV-02 stays implemented / verification IN_PROGRESS, not VERIFIED.
+
 ## 2026-11-18 — `T-GOV-008`: autonomous PR integration policy (issue #44)
 
 - Rule changed (Lukas's direct authorization): the Repository Coordinator (Main) may merge its own pull requests and worker pull requests when every gate of protocol section 18 passes, now including scope against the registered task, an independent reviewer worker's review bound to the diff hash, and a serialized merge with read-back. Why: full development autonomy without a human or ChatGPT in the routine merge loop. GitHub branch protection is unchanged (pull request required, `validate` required and strict, administrators enforced, no force-push, no deletion). Reserved actions stay with Lukas.

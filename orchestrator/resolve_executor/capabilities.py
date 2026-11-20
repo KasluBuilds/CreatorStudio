@@ -8,6 +8,14 @@ Status meanings (the executor enforces them):
 * NOT_TESTED   - the API or MCP tool exists but this package has no code or test for it. Refused.
 * UNSUPPORTED  - the API does not offer it on this build, or a known failure makes it unsafe. Refused.
 
+Provenance of VERIFIED: `E-RSV-LIVE-0001` (PROJECT_STATUS.json) was observed by the previous T-RSV-002 session on
+2026-11-18 at repository commit 7bddffe. Its evidence file is machine-local and was NOT re-observed in the takeover
+review, which was offline. Offline changes made since (executor gate order, fail-closed checks) are IMPLEMENTED on
+top of that and are not themselves live evidence.
+
+Entries without an `OPERATION_CAPABILITY` mapping are descriptive (behaviours, limits, things with no request type);
+the executor cannot be asked to do them, so they are refused by construction.
+
 A third-party measurement (the MCP project's `api_truth` ledger, mostly Resolve Studio) is cited as context in
 `limitations`; it never counts as VERIFIED here.
 
@@ -129,6 +137,37 @@ CAPABILITIES: Tuple[Capability, ...] = (
        "journal checkpoints + DeleteItems", VERIFIED,
        "Resolve has no scripted undo. Recovery = journal (pre-state, readback) + explicit removal of wrong items; never automatic repetition.",
        "Journal records and readback.", evidence="E-RSV-LIVE-0001"),
+    # ── behaviours that are not request kinds: descriptive entries with their honest status ──
+    _c("render_failure_reported_by_resolve", "render monitoring",
+       "GetRenderJobStatus (Error text, CompletionPercentage)", "render get_job_status",
+       "part of RenderTimeline", IMPLEMENTED,
+       "A job whose Error field is set is classified render_failed and the output is not trusted. Resolve never failed a job on synthetic media, so this path was never observed live; it is covered with the offline fake only.",
+       "Offline fake (render_behaviour='error')."),
+    _c("interrupted_mutation_handling", "recovery",
+       "none (journal logic)", "none", "every mutating request", IMPLEMENTED,
+       "An unknown outcome (lost bridge after sending, unreadable readback, unexpected exception) leaves the journal 'begin' open and blocks the idempotency key (or 'op:<op_id>') until resolve_uncertain records an inspection; nothing is repeated automatically. Offline fault injection only; a real bridge restart in the middle of a mutation was not provoked live.",
+       "Offline fault injection and journal state."),
+    _c("create_timeline_high_frame_rates", "timeline creation", "Timeline.SetSetting(timelineFrameRate)", "timeline set_setting",
+       "CreateTimeline(..., frame_rate in 30/50/59.94/60)", IMPLEMENTED,
+       "Validation accepts 23.976, 24, 25, 29.97, 30, 50, 59.94 and 60. Live runs used 24, 25, 29.97 and the 23.976 source-rate conversion; 48/50/60 fps timelines were not exercised live.",
+       "timeline_info read back: rate."),
+    _c("drop_frame_timecode", "timecode", "none", "none", "not a request type", UNSUPPORTED,
+       "timebase refuses drop-frame separators rather than miscount; only non-drop timecode is implemented.", "n/a"),
+    _c("variable_frame_rate_sources", "media", "MediaPoolItem.GetClipProperty('FPS')", "media_pool_item get_clip_property",
+       "AppendSegment of a VFR file", NOT_TESTED,
+       "Resolve reports one FPS per clip; nothing here detects or conditions variable-frame-rate media. Not exercised; the frame arithmetic assumes a constant rate.",
+       "Refused: no code path distinguishes VFR media; use constant-rate (or conformed) media only."),
+    _c("link_video_audio_clips", "clip insertion", "TimelineItem link state (no scripting call known)", "none",
+       "not a request type", NOT_TESTED,
+       "A 'video_audio' append places both parts in sync on separate tracks but does not link them as one clip.",
+       "n/a"),
+    _c("text_plus_styling", "titles and text", "Fusion Text+ inputs (Font, Color, Background)", "fusion_comp set_input",
+       "not a request type", NOT_TESTED,
+       "Only StyledText, Size and Center are set; font, colour, background and safe-area styling are not implemented.",
+       "n/a"),
+    _c("proxy_relink_retime_multicam_compound", "advanced editing", "various", "various", "not a request type",
+       NOT_TESTED, "No request type exists for proxies, relinking, retiming, multicam, compound clips or Fusion beyond Text+.",
+       "n/a"),
 )
 
 CAPABILITY_BY_NAME: Dict[str, Capability] = {c.name: c for c in CAPABILITIES}

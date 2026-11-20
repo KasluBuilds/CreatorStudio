@@ -1061,7 +1061,7 @@ class TestMeasuredResolveBehaviour(unittest.TestCase):
                          .evidence["expect"]["duration"], 95)
         d = [rig.ex.execute(AppendSegment(f"b{e}", timeline="T24", media_path=p, source=FrameRange(0, e)))
              .evidence["expect"]["duration"] for e in (100, 99)]
-        self.assertEqual(d, [96, 95])                                   # the historical 95 was [0, 99) at 24 fps
+        self.assertEqual(d, [96, 95])                                   # [0, 99) at 24 fps gives 95 (hypothesis (a))
 
     def test_title_on_a_nested_timeline_at_another_rate_is_converted_exactly(self):
         rig = Rig(self)
@@ -1100,6 +1100,364 @@ class TestMeasuredResolveBehaviour(unittest.TestCase):
         self.assertEqual(clip_frames({"Frames": "", "FPS": 24.0, "Type": "Video", "Duration": "00:00:10:00"}),
                          (None, None))
         self.assertEqual(clip_frames({"Frames": "", "FPS": 24.0, "Type": "Audio", "Duration": "bad"}), (None, None))
+
+
+RATES = ("23.976", "24", "25", "29.97", "30", "50", "59.94", "60")
+
+
+class TestFrameRegression(unittest.TestCase):
+    """S-RSV-002-01 offline review: frame/timebase cases at the executor level (fake adapter, no Resolve)."""
+
+    def test_the_95_candidates_are_exactly_two_and_differ_in_end_frame_and_timeline_rate(self):
+        # Offline arithmetic (floor rule): which supported (source, timeline) rates turn n source frames into 95?
+        hits = [(n, s, t) for n in (99, 100, 101) for s in RATES for t in RATES
+                if tb.timeline_duration_for_source(n, s, t) == 95]
+        self.assertEqual(hits, [(99, "25", "24"), (100, "25", "23.976")])
+
+    def test_inclusive_end_frame_is_the_off_by_one_trap(self):
+        # A human's In 0 / Out 99 is FrameRange.from_inclusive(0, 99) == [0, 100): 100 frames.
+        self.assertEqual(FrameRange.from_inclusive(0, 99).length, 100)
+        # Sending the inclusive last frame as the exclusive end loses a frame (99 frames, not 100) ...
+        self.assertEqual(FrameRange(0, 99).length, 99)
+        # ... and mistaking the exclusive end for inclusive overruns the file by one frame, which is refused.
+        rig = Rig(self, media={"a.mov": {"frames": 100, "fps": "25"}})
+        rig.setup_timeline()
+        over = FrameRange.from_inclusive(0, 100)
+        rig.fake.calls.clear()
+        r = rig.ex.execute(AppendSegment("o", timeline="Main", media_path=rig.paths["a.mov"], source=over))
+        self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.PRECONDITION))
+        self.assertNotIn("append", rig.fake.calls)
+
+    def test_timeline_start_offset_never_changes_a_clip_length(self):
+        for tl_rate, want in (("25", 100), ("24", 96)):
+            for tc in ("00:00:00:00", "00:00:10:00", "01:00:00:00", "10:00:00:00"):
+                rig = Rig(self)
+                assert rig.ex.execute(CreateProject("p", name="P")).ok
+                assert rig.ex.execute(ImportMedia("i", paths=(rig.paths["a.mov"],))).ok
+                r = rig.ex.execute(CreateTimeline("t", name="Main", frame_rate=tl_rate, width=1920, height=1080,
+                                                  start_timecode=tc))
+                self.assertTrue(r.ok, (tl_rate, tc, r.to_dict()))
+                start = tb.timecode_to_frames(tc, tl_rate)
+                r = rig.ex.execute(AppendSegment("a", timeline="Main", media_path=rig.paths["a.mov"],
+                                                 source=FrameRange(0, 100)))
+                self.assertTrue(r.ok, r.to_dict())
+                (it,) = rig.items()
+                self.assertEqual((it["start"], it["end"] - it["start"]), (start, want), (tl_rate, tc))
+
+    def test_first_and_last_frame_and_100_frames_at_every_timeline_rate(self):
+        for tl_rate in RATES:
+            rig = Rig(self, media={"a.mov": {"frames": 100, "fps": "25"}})
+            rig.setup_timeline(rate=tl_rate)
+            p = rig.paths["a.mov"]
+            for n, rng in enumerate((FrameRange(0, 1), FrameRange(99, 100), FrameRange(0, 100))):
+                want = tb.timeline_duration_for_source(rng.length, "25", tl_rate)
+                r = rig.ex.execute(AppendSegment(f"s{n}", timeline="Main", media_path=p, source=rng))
+                if want == 0:
+                    self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.PRECONDITION),
+                                     (tl_rate, rng))
+                else:
+                    self.assertTrue(r.ok, (tl_rate, rng, r.to_dict()))
+                    self.assertEqual(r.evidence["expect"]["duration"], want, (tl_rate, rng))
+            spans = [it["end"] - it["start"] for it in rig.items()]
+            self.assertEqual(sum(spans), sum(tb.timeline_duration_for_source(x, "25", tl_rate) for x in (1, 1, 100)))
+
+    def test_invalid_ranges_never_reach_resolve(self):
+        rig = Rig(self, media={"a.mov": {"frames": 100, "fps": "25"}})
+        rig.setup_timeline()
+        p = rig.paths["a.mov"]
+        rig.fake.calls.clear()
+        for rng in (FrameRange(100, 101), FrameRange(50, 101), FrameRange(0, 101)):
+            r = rig.ex.execute(AppendSegment(f"o{rng.start}-{rng.end}", timeline="Main", media_path=p, source=rng))
+            self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.PRECONDITION), rng)
+        for bad in ((5, 5), (6, 5), (-1, 3)):
+            with self.assertRaises(TimebaseError):
+                FrameRange(*bad)
+        r = rig.ex.execute(AppendSegment("none", timeline="Main", media_path=p, source=None))
+        self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.VALIDATION))
+        self.assertNotIn("append", rig.fake.calls)
+        self.assertEqual(rig.items(), [])
+
+    def test_timecode_round_trip_for_non_zero_starts_at_ntsc_rates(self):
+        for rate in RATES:
+            for tc in ("00:00:00:00", "00:00:10:00", "01:00:00:00", "10:00:00:00", "23:59:59:00"):
+                self.assertEqual(tb.frames_to_timecode(tb.timecode_to_frames(tc, rate), rate), tc, (rate, tc))
+
+
+class TestSafetyGates(unittest.TestCase):
+    """Unsupported operations, output allowlist and interrupted mutations (acceptance criterion 3)."""
+
+    def test_unsupported_is_reported_as_unsupported_whatever_else_is_wrong(self):
+        rig = Rig(self)
+        rig.setup_timeline()
+        rig.fake.calls.clear()
+        for op in (SetClipAudioLevel("v"), AddTransition("t"), AddSubtitle("s")):    # fields left at defaults
+            r = rig.ex.execute(op)
+            self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.UNSUPPORTED), op)
+        self.assertEqual(rig.fake.calls, [])
+
+    def test_foreign_requests_are_refused_as_unsupported(self):
+        from dataclasses import dataclass
+        from resolve_executor.operations import Operation
+
+        @dataclass(frozen=True)
+        class RawCall(Operation):          # an Operation subclass nobody registered
+            KIND = "raw_call"
+            method: str = "DeleteAllClips"
+
+        rig = Rig(self)
+        rig.setup_timeline()
+        rig.fake.calls.clear()
+        for op in ({"kind": "raw_call", "method": "Quit"}, "DeleteProject", None, RawCall("x")):
+            r = rig.ex.execute(op)
+            self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.UNSUPPORTED), op)
+        self.assertEqual(rig.fake.calls, [])
+
+    def test_verify_export_fails_closed_without_output_roots(self):
+        rig = Rig(self)
+        path = os.path.join(rig.out, "f.mp4")
+        open(path, "w").close()
+        ex = Executor(rig.fake, Policy(), prober=fake_probe)
+        r = ex.execute(VerifyExport("v", path=path))
+        self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.VALIDATION))
+        self.assertIn("no allowed output roots", r.message)
+
+    def test_render_target_cannot_escape_the_output_root(self):
+        rig = Rig(self)
+        pol = rig.ex.policy
+        for target in (rig.media_dir, os.path.join(rig.out, "..", "media"), os.path.dirname(rig.out),
+                       os.path.join(rig.out, "..")):
+            spec = RenderSpec(target, "o")
+            problems = validate(RenderTimeline("r", timeline="M", spec=spec), pol)
+            self.assertTrue(any("outside the allowed output roots" in p for p in problems), (target, problems))
+
+    def test_symlink_inside_the_output_root_pointing_outside_is_refused(self):
+        rig = Rig(self)
+        link = os.path.join(rig.out, "escape")
+        try:
+            os.symlink(rig.media_dir, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks are not available here")
+        problems = validate(RenderTimeline("r", timeline="M", spec=RenderSpec(link, "o")), rig.ex.policy)
+        self.assertTrue(any("outside the allowed output roots" in p for p in problems), problems)
+
+    def test_render_file_names(self):
+        rig = Rig(self)
+        for name in ("CON", "nul", "COM1", "lpt9.take", "name.", "a/b", "a\\b", "..", "-x", ""):
+            problems = validate(RenderTimeline("r", timeline="M", spec=RenderSpec(rig.out, name)), rig.ex.policy)
+            self.assertTrue(any("file_name" in p for p in problems), (name, problems))
+        self.assertEqual(validate(RenderTimeline("r", timeline="M", spec=RenderSpec(rig.out, "scene_1.v2")),
+                                  rig.ex.policy), [])
+
+    def test_a_dangling_symlink_at_the_output_path_is_not_overwritten(self):
+        rig = Rig(self)
+        rig.setup_timeline()
+        assert rig.ex.execute(AppendSegment("a", timeline="Main", media_path=rig.paths["a.mov"],
+                                            source=FrameRange(0, 10))).ok
+        target = os.path.join(rig.root, "elsewhere.mp4")
+        link = os.path.join(rig.out, "o.mp4")
+        try:
+            os.symlink(target, link)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks are not available here")
+        r = rig.ex.execute(RenderTimeline("r", timeline="Main", spec=RenderSpec(rig.out, "o")))
+        self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.PRECONDITION))
+        self.assertFalse(os.path.exists(target))
+
+    def test_unfinished_attempt_without_an_idempotency_key_blocks_resubmission(self):
+        rig = Rig(self)
+        rig.setup_timeline()
+        p = rig.paths["a.mov"]
+        rig.fake.faults["append"] = ["raise_after"]
+        rig.fake.faults["track_items"] = ["ok", "unavailable"]
+        op = AppendSegment("nokey", timeline="Main", media_path=p, source=FrameRange(0, 10))
+        r = rig.ex.execute(op)
+        self.assertEqual(r.outcome, Outcome.UNCERTAIN)
+        self.assertEqual(rig.journal.uncertain_keys(), ["op:nokey"])
+        rig.fake.calls.clear()
+        r = rig.ex.execute(op)
+        self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.UNCERTAIN_PREVIOUS_ATTEMPT))
+        self.assertEqual(rig.fake.calls, [])
+        self.assertEqual(len(rig.items()), 1)                          # applied once, never twice
+        rig.ex.resolve_uncertain("op:nokey", True, "V1 shows one item at 90000")
+        self.assertNotEqual(rig.ex.execute(AddMarker("m", timeline="Main", frame=0)).failure,
+                            FailureClass.UNCERTAIN_PREVIOUS_ATTEMPT)
+
+    def test_unexpected_exception_while_applying_is_uncertain_and_not_repeated(self):
+        rig = Rig(self)
+        rig.setup_timeline()
+        p = rig.paths["a.mov"]
+
+        def boom(name, infos):
+            raise RuntimeError("secret-looking detail must not leak into the message")
+        rig.fake.append = boom
+        op = AppendSegment("boom", timeline="Main", media_path=p, source=FrameRange(0, 10), idempotency_key="kb")
+        r = rig.ex.execute(op)
+        self.assertEqual((r.outcome, r.failure), (Outcome.UNCERTAIN, FailureClass.INTERNAL))
+        self.assertNotIn("secret", r.message)
+        self.assertEqual(rig.journal.state_of("kb")["state"], "uncertain")
+        r = rig.ex.execute(op)
+        self.assertEqual(r.failure, FailureClass.UNCERTAIN_PREVIOUS_ATTEMPT)
+
+    def test_unexpected_exception_in_preflight_sends_nothing(self):
+        rig = Rig(self)
+        rig.setup_timeline()
+        rig.fake.calls.clear()
+
+        def boom(*a, **k):
+            raise RuntimeError("bug")
+        rig.fake.media_items = boom
+        r = rig.ex.execute(AppendSegment("pf", timeline="Main", media_path=rig.paths["a.mov"], source=FrameRange(0, 10)))
+        self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.INTERNAL))
+        self.assertNotIn("append", rig.fake.calls)
+        self.assertEqual(rig.journal.uncertain_keys(), [])
+
+    def test_unexpected_exception_in_readback_is_uncertain(self):
+        rig = Rig(self)
+        rig.setup_timeline()
+        calls = {"n": 0}
+        real = rig.fake.track_items
+
+        def flaky(name, kind, index):
+            calls["n"] += 1
+            if calls["n"] > 1:                      # preflight read succeeds, the readback blows up
+                raise RuntimeError("bug")
+            return real(name, kind, index)
+        rig.fake.track_items = flaky
+        r = rig.ex.execute(AppendSegment("rb", timeline="Main", media_path=rig.paths["a.mov"],
+                                         source=FrameRange(0, 10), idempotency_key="krb"))
+        self.assertEqual((r.outcome, r.failure), (Outcome.UNCERTAIN, FailureClass.INTERRUPTED))
+        self.assertEqual(rig.journal.state_of("krb")["state"], "uncertain")
+
+
+class TestRenderMonitoringAndProbeRunner(unittest.TestCase):
+    def setUp(self):
+        self.rig = Rig(self)
+        self.rig.setup_timeline()
+        assert self.rig.ex.execute(AppendSegment("a", timeline="Main", media_path=self.rig.paths["a.mov"],
+                                                 source=FrameRange(0, 50), media="video_audio",
+                                                 audio_track_index=1)).ok
+
+    def test_completion_is_judged_by_percentage_not_by_localized_status_text(self):
+        real = self.rig.fake.render_status
+
+        def localized(job_id):
+            s = real(job_id)
+            return {**s, "JobStatus": "Fertig" if s.get("CompletionPercentage") == 100 else "Wird gerendert"}
+        self.rig.fake.render_status = localized
+        r = self.rig.ex.execute(RenderTimeline("r", timeline="Main", spec=RenderSpec(self.rig.out, "loc")))
+        self.assertEqual(r.outcome, Outcome.SUCCEEDED, r.to_dict())
+        pcts = [s["pct"] for s in r.evidence["samples"]]
+        self.assertEqual(pcts, sorted(pcts))                            # progress is monotonic
+        self.assertEqual(pcts[-1], 100)
+
+    def test_percentage_100_while_still_rendering_is_not_completion(self):
+        real_is = self.rig.fake.is_rendering
+        lingering = {"n": 2}
+
+        def is_rendering():
+            if self.rig.fake.p["jobs"] and all(j["_progress"] >= 100 for j in self.rig.fake.p["jobs"].values()) \
+                    and lingering["n"] > 0:
+                lingering["n"] -= 1
+                return True
+            return real_is()
+        self.rig.fake.is_rendering = is_rendering
+        r = self.rig.ex.execute(RenderTimeline("r", timeline="Main", spec=RenderSpec(self.rig.out, "linger")))
+        self.assertEqual(r.outcome, Outcome.SUCCEEDED, r.to_dict())
+        self.assertGreaterEqual(len(r.evidence["samples"]), 3)
+
+    def test_timeout_stops_the_render_and_reports_the_partial_file_state(self):
+        self.rig.fake.render_behaviour = "stall"
+        r = self.rig.ex.execute(RenderTimeline("r", timeline="Main",
+                                               spec=RenderSpec(self.rig.out, "slow", timeout_seconds=30)))
+        self.assertEqual((r.outcome, r.failure), (Outcome.FAILED, FailureClass.RENDER_TIMEOUT))
+        self.assertFalse(self.rig.fake.is_rendering())
+        self.assertIn("partial_file_exists", r.evidence)
+        self.assertEqual(self.rig.journal.state_of("op:r")["state"], "failed")   # finished, so a NEW job may follow
+
+    def test_render_destination_and_settings_are_validated_before_resolve_is_touched(self):
+        self.rig.fake.calls.clear()
+        bad = os.path.join(self.rig.media_dir)
+        r = self.rig.ex.execute(RenderTimeline("r", timeline="Main", spec=RenderSpec(bad, "x")))
+        self.assertEqual((r.outcome, r.failure), (Outcome.REFUSED, FailureClass.VALIDATION))
+        r = self.rig.ex.execute(RenderTimeline("r2", timeline="Main",
+                                               spec=RenderSpec(self.rig.out, "x", width=1919)))
+        self.assertEqual(r.failure, FailureClass.VALIDATION)
+        self.assertEqual(self.rig.fake.calls, [])
+
+    def _runner(self, stdout="", returncode=0, stderr="", raises=None):
+        seen = []
+
+        def run(cmd, **kw):
+            seen.append((cmd, kw))
+            if raises:
+                raise raises
+            return mock.Mock(returncode=returncode, stdout=stdout, stderr=stderr)
+        run.seen = seen
+        return run
+
+    def test_ffprobe_with_an_injected_runner(self):
+        path = os.path.join(self.rig.out, "f.mp4")
+        with open(path, "wb") as fh:
+            fh.write(b"x" * 10)
+        run = self._runner(json.dumps(FFPROBE_DOC))
+        info = probe_mod.ffprobe(path, executable="ffprobe-x", runner=run)
+        cmd, kw = run.seen[0]
+        self.assertEqual((cmd[0], cmd[-1], isinstance(cmd, list)), ("ffprobe-x", path, True))     # argv list, no shell
+        self.assertNotIn("shell", kw)
+        self.assertEqual(info.size_bytes, 10)
+        self.assertEqual(probe_mod.verify_media(info, {"video_codec": "H264", "frames": 100, "audio": True}), [])
+        for kwargs, code in ((dict(returncode=1, stderr="Invalid data"), "unreadable"),
+                             (dict(stdout="not json"), "unreadable"),
+                             (dict(raises=probe_mod.subprocess.TimeoutExpired("ffprobe", 1)), "probe_timeout"),
+                             (dict(raises=FileNotFoundError()), "ffprobe_unavailable")):
+            with self.assertRaises(probe_mod.ProbeError) as cm:
+                probe_mod.ffprobe(path, executable="ffprobe-x", runner=self._runner(**kwargs))
+            self.assertEqual(cm.exception.code, code, kwargs)
+        self.assertEqual(probe_mod.count_frames(path, executable="x", runner=self._runner("100\n")), 100)
+        self.assertIsNone(probe_mod.count_frames(path, executable="x", runner=self._runner("n/a")))
+        self.assertIsNone(probe_mod.count_frames(path, executable="x", runner=self._runner(returncode=1)))
+        self.assertIsNone(probe_mod.count_frames(
+            path, executable="x", runner=self._runner(raises=probe_mod.subprocess.TimeoutExpired("x", 1))))
+
+    def test_a_render_judged_by_the_file_with_an_injected_ffprobe_result(self):
+        # The executor's prober is injectable: a file ffprobe says has 49 frames fails a 50-frame render.
+        doc = json.loads(json.dumps(FFPROBE_DOC))
+        doc["streams"][0].update({"nb_frames": "49", "r_frame_rate": "25/1"})
+        self.rig.ex.prober = lambda path: probe_mod.parse_ffprobe_json(path, 4096, doc)
+        # the fake writes a descriptor file, which the injected prober ignores
+        r = self.rig.ex.execute(RenderTimeline("r", timeline="Main", spec=RenderSpec(self.rig.out, "short")))
+        self.assertEqual((r.outcome, r.failure), (Outcome.FAILED, FailureClass.EXPORT_INVALID))
+        self.assertIn("49 video frames, expected 50", r.message)
+
+
+class TestCapabilityInventoryConsistency(unittest.TestCase):
+    def test_all_four_statuses_are_in_use_and_unexecutable_ones_are_refused_by_construction(self):
+        used = {c.status for c in caps.CAPABILITIES}
+        self.assertEqual(used, {caps.VERIFIED, caps.IMPLEMENTED, caps.NOT_TESTED, caps.UNSUPPORTED})
+        for kind, name in caps.OPERATION_CAPABILITY.items():
+            self.assertIn(name, caps.CAPABILITY_BY_NAME, kind)
+        names = [c.name for c in caps.CAPABILITIES]
+        self.assertEqual(len(names), len(set(names)))                   # no duplicate entries
+
+    def test_every_operation_class_is_mapped_and_nothing_extra_is(self):
+        self.assertEqual({cls.KIND for cls in ALL_OPERATIONS}, set(caps.OPERATION_CAPABILITY))
+
+    def test_readme_inventory_table_matches_the_code(self):
+        text = (PKG / "README.md").read_text(encoding="utf-8")
+        rows = {}
+        for line in text.splitlines():
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) >= 4 and parts[1].startswith("`") and parts[1].endswith("`") and parts[2] in (
+                    caps.VERIFIED, caps.IMPLEMENTED, caps.NOT_TESTED, caps.UNSUPPORTED):
+                rows[parts[1].strip("`")] = parts[2]
+        self.assertEqual(rows, {c.name: c.status for c in caps.CAPABILITIES})
+
+    def test_nothing_is_verified_without_the_recorded_evidence_id_in_project_status(self):
+        status = json.loads((Path(__file__).resolve().parents[2] / "PROJECT_STATUS.json").read_text(encoding="utf-8"))
+        ids = set(status.get("evidence", {}))
+        for c in caps.CAPABILITIES:
+            if c.status == caps.VERIFIED:
+                self.assertIn(c.evidence, ids, c.name)
 
 
 @unittest.skipUnless(os.environ.get("CREATOR_STUDIO_RESOLVE_LIVE") == "1",

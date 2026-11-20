@@ -2,8 +2,9 @@
 
 Lifecycle of every request (`Executor.execute`):
 
-1. **Validate** (pure, `validation.validate`): a bad request never reaches Resolve.
-2. **Capability gate** (`capabilities`): NOT_TESTED and UNSUPPORTED requests are refused explicitly.
+1. **Capability gate** (`capabilities`): an unknown request type, and any NOT_TESTED or UNSUPPORTED kind, is refused
+   explicitly as UNSUPPORTED, before anything else.
+2. **Validate** (pure, `validation.validate`): a bad request never reaches Resolve.
 3. **Idempotency** (journal): a key already done returns ALREADY_DONE; a key with an unfinished attempt is refused
    (UNCERTAIN_PREVIOUS_ATTEMPT) until `resolve_uncertain` records what Resolve actually did.
 4. **Identity and preconditions** (adapter reads): the expected project is open, the timeline exists with the
@@ -117,15 +118,30 @@ class Executor:
     def execute(self, op: ops.Operation) -> OperationResult:
         kind = getattr(op, "KIND", type(op).__name__)
         op_id = getattr(op, "op_id", "?")
-        problems = validate(op, self.policy)
-        if problems:
-            return OperationResult(op_id, kind, Outcome.REFUSED, FailureClass.VALIDATION, "; ".join(problems),
-                                   {"problems": problems})
+        if not isinstance(op, ops.Operation) or type(op) not in ops.ALL_OPERATIONS:
+            return OperationResult(op_id, kind, Outcome.REFUSED, FailureClass.UNSUPPORTED,
+                                   "not a supported operation request: only the typed requests in operations.py are "
+                                   "accepted; there is no raw-call request", {"type": type(op).__name__})
+        # The capability gate runs BEFORE detailed validation so that an unsupported kind is always reported as
+        # UNSUPPORTED, whatever else is wrong with its fields.
         cap = capability_for(op.KIND)
         if cap.status not in EXECUTABLE:
             return OperationResult(op_id, kind, Outcome.REFUSED, FailureClass.UNSUPPORTED,
                                    f"{cap.name} is {cap.status}: {cap.limitations}", {"capability": cap.to_dict()})
+        problems = validate(op, self.policy)
+        if problems:
+            return OperationResult(op_id, kind, Outcome.REFUSED, FailureClass.VALIDATION, "; ".join(problems),
+                                   {"problems": problems})
         key = getattr(op, "idempotency_key", None)
+        if not key and op.MUTATING:
+            # Without an explicit key the journal still records the attempt under "op:<op_id>"; an unfinished one
+            # blocks the same request being resubmitted, exactly like an explicit key.
+            implicit = f"op:{op.op_id}"
+            if self.journal.state_of(implicit)["state"] == "uncertain":
+                return OperationResult(op_id, kind, Outcome.REFUSED, FailureClass.UNCERTAIN_PREVIOUS_ATTEMPT,
+                                       f"a previous attempt of {implicit!r} never finished; inspect Resolve and call "
+                                       f"resolve_uncertain({implicit!r}, ...) first",
+                                       {"idempotency_key": implicit})
         if key:
             st = self.journal.state_of(key)
             if st["state"] == "done":
@@ -288,6 +304,10 @@ class Executor:
             out = Outcome.REFUSED if exc.failure in NOTHING_SENT or exc.failure in TRANSIENT else Outcome.FAILED
             return OperationResult(op.op_id, op.KIND, out, exc.failure, f"preflight read failed: {exc.message}",
                                    exc.details)
+        except Exception as exc:     # a bug before anything was sent: nothing changed, say so
+            return OperationResult(op.op_id, op.KIND, Outcome.REFUSED, FailureClass.INTERNAL,
+                                   f"preflight failed unexpectedly ({type(exc).__name__}); nothing was sent",
+                                   {"exception": type(exc).__name__})
         if op.DESTRUCTIVE and self.checkpoint_before_destructive:
             try:
                 self.checkpoint(f"before_{op.op_id}", getattr(op, "timeline", None))
@@ -309,9 +329,15 @@ class Executor:
                 if exc.failure is FailureClass.BRIDGE_UNAVAILABLE:
                     return self._finish(key, op, Outcome.FAILED, exc.failure, "bridge unavailable; nothing was sent",
                                         {"error": exc.to_dict()}, attempts)
+            except Exception as exc:
+                # An unexpected error while the mutation may have been sent: effect unknown, journal entry stays
+                # OPEN, never repeated automatically.
+                return OperationResult(op.op_id, op.KIND, Outcome.UNCERTAIN, FailureClass.INTERNAL,
+                                       f"unexpected {type(exc).__name__} while applying; the effect is unknown",
+                                       {"exception": type(exc).__name__, "idempotency_key": key}, attempts)
             try:
                 verdict, evidence = prep.check(returned)
-            except (AdapterError, _Precondition) as exc:
+            except Exception as exc:
                 # The mutation may have landed and we cannot see. Leave the journal entry OPEN.
                 msg = exc.message if hasattr(exc, "message") else str(exc)
                 return OperationResult(op.op_id, op.KIND, Outcome.UNCERTAIN, FailureClass.INTERRUPTED,

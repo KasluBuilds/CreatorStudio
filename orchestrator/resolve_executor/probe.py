@@ -85,7 +85,9 @@ def parse_ffprobe_json(path: str, size: int, doc: Mapping[str, Any]) -> MediaInf
                      duration=str(fmt["duration"]) if fmt.get("duration") else None, streams=tuple(streams))
 
 
-def ffprobe(path: str, *, executable: Optional[str] = None, timeout: int = 60) -> MediaInfo:
+def ffprobe(path: str, *, executable: Optional[str] = None, timeout: int = 60,
+            runner: Optional[Callable[..., Any]] = None) -> MediaInfo:
+    """Probe `path`. `runner` replaces `subprocess.run` (same signature) so tests can inject ffprobe's output."""
     exe = executable or shutil.which("ffprobe")
     if not exe:
         raise ProbeError("ffprobe_unavailable", "ffprobe was not found; the export cannot be verified")
@@ -93,10 +95,13 @@ def ffprobe(path: str, *, executable: Optional[str] = None, timeout: int = 60) -
         raise ProbeError("missing", f"no file at {path}")
     size = os.path.getsize(path)
     try:
-        proc = subprocess.run([exe, "-v", "error", "-print_format", "json", "-show_format", "-show_streams", path],
-                              capture_output=True, text=True, timeout=timeout, check=False)
+        proc = (runner or subprocess.run)(
+            [exe, "-v", "error", "-print_format", "json", "-show_format", "-show_streams", path],
+            capture_output=True, text=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired:
         raise ProbeError("probe_timeout", "ffprobe did not finish")
+    except OSError as exc:
+        raise ProbeError("ffprobe_unavailable", f"ffprobe could not be started ({type(exc).__name__})")
     if proc.returncode != 0:
         raise ProbeError("unreadable", (proc.stderr or "ffprobe failed").strip()[:300])
     try:
@@ -106,14 +111,19 @@ def ffprobe(path: str, *, executable: Optional[str] = None, timeout: int = 60) -
     return parse_ffprobe_json(path, size, doc)
 
 
-def count_frames(path: str, *, executable: Optional[str] = None, timeout: int = 300) -> Optional[int]:
+def count_frames(path: str, *, executable: Optional[str] = None, timeout: int = 300,
+                 runner: Optional[Callable[..., Any]] = None) -> Optional[int]:
     """Decode-count video frames (slow but exact) when the container has no nb_frames."""
     exe = executable or shutil.which("ffprobe")
     if not exe:
         return None
-    proc = subprocess.run([exe, "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries",
-                           "stream=nb_read_frames", "-of", "default=nokey=1:noprint_wrappers=1", path],
-                          capture_output=True, text=True, timeout=timeout, check=False)
+    try:
+        proc = (runner or subprocess.run)(
+            [exe, "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries",
+             "stream=nb_read_frames", "-of", "default=nokey=1:noprint_wrappers=1", path],
+            capture_output=True, text=True, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        return None
     return _i((proc.stdout or "").strip()) if proc.returncode == 0 else None
 
 

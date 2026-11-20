@@ -21,6 +21,8 @@ _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.()-]{0,99}$")       # project/time
 _FILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$")      # render output base names
 SUPPORTED_TIMELINE_RATES = ("23.976", "24", "25", "29.97", "30", "50", "59.94", "60")
 RENDER_FORMATS = {"mp4": ("H264", "H265"), "mov": ("H264", "H265")}
+_WINDOWS_RESERVED = frozenset({"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
+                               *(f"LPT{i}" for i in range(1, 10))})
 MAX_DIMENSION = 8192
 MAX_TEXT = 500
 PAGES = ("media", "cut", "edit", "fusion", "color", "fairlight", "deliver")
@@ -125,8 +127,12 @@ def validate_render_spec(spec, problems: List[str], policy: Policy) -> None:
     for label, v in (("width", spec.width), ("height", spec.height)):
         if _check_int(label, v, problems, 16, MAX_DIMENSION) and v % 2:
             problems.append(f"{label} {v} must be even for 4:2:0 H.264/H.265")
-    if not isinstance(spec.file_name, str) or not _FILE_NAME.match(spec.file_name) or ".." in spec.file_name:
-        problems.append(f"file_name {spec.file_name!r} must be 1-120 characters of letters, digits, _ . - and no path")
+    if not isinstance(spec.file_name, str) or not _FILE_NAME.match(spec.file_name) or ".." in spec.file_name \
+            or spec.file_name.endswith("."):
+        problems.append(f"file_name {spec.file_name!r} must be 1-120 characters of letters, digits, _ . - and no path "
+                        f"(no '..', no trailing '.')")
+    elif spec.file_name.split(".")[0].upper() in _WINDOWS_RESERVED:
+        problems.append(f"file_name {spec.file_name!r} is a reserved Windows device name")
     if not isinstance(spec.target_dir, str) or not os.path.isabs(spec.target_dir or ""):
         problems.append("target_dir must be an absolute path")
     elif not policy.allowed_output_roots:
@@ -259,7 +265,9 @@ def validate(op: ops.Operation, policy: Policy) -> List[str]:
     elif isinstance(op, ops.VerifyExport):
         if not isinstance(op.path, str) or not os.path.isabs(op.path or ""):
             problems.append("path must be absolute")
-        elif policy.allowed_output_roots and not _real_inside(op.path, policy.allowed_output_roots):
+        elif not policy.allowed_output_roots:
+            problems.append("no allowed output roots are configured")      # fail closed, like every other path
+        elif not _real_inside(op.path, policy.allowed_output_roots):
             problems.append("path is outside the allowed output roots")
     return problems
 
