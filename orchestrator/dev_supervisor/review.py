@@ -310,13 +310,25 @@ Files in this packet: `diff.patch`, `files.txt`, `task.md` (owned paths and acce
 
 ## What to inspect
 1. Correctness: does the change do what the acceptance criteria in `task.md` require, including edge cases?
-2. Tests: are they meaningful, offline and synthetic? RUN them (from `orchestrator/`:
-   `python -B -I -m unittest discover -s tests -p <module>` for the touched modules, then the full suite) and record
-   the exact result lines.
+2. Tests: are they meaningful, offline and synthetic? RUN them (see "How to work under the worker rule" for the exact
+   command form, for the touched modules, then the full suite) and record the exact result lines.
 3. Regressions: behaviour of existing modules, public names, file formats.
 4. Security: secrets, tokens, absolute user paths in tracked files, shell injection, path traversal, network in tests.
 5. Architecture and conventions: owned paths respected (any file outside them is BLOCKING), repo rules in CLAUDE.md,
    no claim of VERIFIED without evidence.
+
+## How to work under the worker rule
+Your shell is confined to ONE simple Bash command per call: no `cd`, pipes, `;`, `&&`, redirections, `$` or
+backticks. A command outside the allowlist is denied, so use these exact forms:
+- Run tests from the worktree root with NO `cd`:
+  `python -B -I -m unittest discover -s orchestrator/tests -p <module>.py` (one module per call, for example
+  `-p test_dev_review.py`; `-p` takes a plain file name, no `*` glob).
+- Read the packet files (`diff.patch`, `files.txt`, `task.md`) and the repository with the Read, Grep and Glob tools,
+  not with `cat`, `grep` or pipelines.
+- To post your review: use the Write tool to save the whole comment, marker line first, to `review-comment.md` in the
+  worktree root, then run exactly:
+  `gh pr comment {n} --body-file review-comment.md`
+- Never pass `--body` with multi-line text, and never write a file outside the worktree.
 
 ## Findings
 Classify every finding as BLOCKING (must change before merge) or NON-BLOCKING (suggestion). Verdict is

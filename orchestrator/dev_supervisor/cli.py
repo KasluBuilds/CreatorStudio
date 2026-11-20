@@ -61,6 +61,7 @@ EXIT_PRESSURE_UNAVAILABLE, EXIT_ACTION_DUE = 3, 4
 REQUESTS_SUBDIR = "requests"
 GITHUB_SUBDIR = "github_log"
 HANDOFF_FRESH_FOR_REPLACE_S = 1800.0   # a handoff older than this is not used for an automatic replacement
+HANDOFF_VERIFY_TTL_S = 120.0           # the loop re-verifies a handoff for the compaction decision at most this often
 FACT_KEYS = ("objective", "decisions", "plan", "task_graph", "branches", "worktrees", "commits", "pull_requests",
              "tests", "evidence", "blockers", "next_actions")
 RunFn = Callable[..., Tuple[int, str, str]]
@@ -104,6 +105,8 @@ class Services:
     out: TextIO = field(default_factory=lambda: sys.stdout)
     env: Optional[Dict[str, str]] = None
     policy_install: Callable[..., Any] = session_policy.install
+    timer: Callable[[], float] = time.monotonic          # tick duration measurement (injectable for tests)
+    usage_cache: telemetry.UsageTailCache = field(default_factory=telemetry.UsageTailCache)
 
     def store(self, create: bool = True) -> StateStore:
         root = self.config.repository_root()
@@ -224,7 +227,7 @@ def main_observation(svc: Services, session_id: Optional[str]) -> Tuple[Optional
     sess = find_session(svc.read_sessions(cfg.sessions_directory(), pid_alive=svc.pid_alive), session_id)
     cwd = sess["cwd"].value if sess is not None and sess["cwd"].available else None
     path = telemetry.find_transcript(cfg.projects_directory(), session_id, cwd)
-    return sess, telemetry.context_pressure(path, _pressure_config(cfg))
+    return sess, telemetry.context_pressure(path, _pressure_config(cfg), cache=svc.usage_cache)
 
 
 def _ser(x: Any) -> Any:
@@ -286,6 +289,10 @@ def _repo_root(cfg: Config) -> Path:
 HEARTBEAT_FILE = "supervisor_heartbeat.json"
 
 
+def _ms(seconds: float) -> float:
+    return round(max(0.0, float(seconds)) * 1000.0, 1)
+
+
 def heartbeat_view(store: StateStore, now: float) -> Dict[str, Any]:
     """Persisted supervisor heartbeat with its age: MISSING (absent/unreadable), STALE (> 3 x poll), else FRESH."""
     try:
@@ -297,14 +304,21 @@ def heartbeat_view(store: StateStore, now: float) -> Dict[str, Any]:
     except (OSError, ValueError, KeyError, TypeError):
         return {"state": "MISSING"}
     age = max(0.0, now - ts)
-    return {**hb, "state": "STALE" if age > 3 * interval else "FRESH", "age_s": round(age, 1)}
+    try:                                   # a slow but alive loop (one tick takes longer than the poll) is not STALE
+        last = max(0.0, float(hb.get("duration_ms") or 0.0)) / 1000.0
+    except (TypeError, ValueError):
+        last = 0.0
+    limit = max(3 * interval, 3 * last)
+    return {**hb, "state": "STALE" if age > limit else "FRESH", "age_s": round(age, 1), "stale_after_s": round(limit, 1)}
 
 
 def _heartbeat_text(hb: Dict[str, Any]) -> str:
     if hb["state"] == "MISSING":
         return "MISSING (no supervisor loop has written one)"
+    dur = hb.get("duration_ms")
     return (f"{hb['state']} age {hb['age_s']}s tick {hb.get('tick')} pid {hb.get('pid')} "
-            f"main_alive={hb.get('main_alive')} workers={hb.get('worker_count')}")
+            f"main_alive={hb.get('main_alive')} workers={hb.get('worker_count')} "
+            f"last_tick_duration_ms={dur if dur is not None else 'unknown'}")
 
 
 def _authoritative_main(store: StateStore) -> Optional[str]:
@@ -349,6 +363,7 @@ class SupervisorLoop:
         self.main_launcher = InteractiveMainLauncher(store, svc.terminal, MainProfile.from_config(self.cfg),
                                                      str(self.root), policy_install=svc.policy_install)
         self.last_action: Optional[str] = None
+        self._verify_cache: Dict[str, Tuple[float, Optional[bool]]] = {}
         self.ticks = 0
         self.watch_main = True       # False with start --no-main: the loop supervises workers only
 
@@ -453,6 +468,19 @@ class SupervisorLoop:
                             f"new session {_short(res.new_session_id)}"))
         return res.to_dict()
 
+    def _verified(self, hid: str) -> Optional[bool]:
+        """Handoff verification for the compaction decision, reused for HANDOFF_VERIFY_TTL_S. Verification runs git
+        and gh ref checkers; while Main sits at compact/replace pressure that used to run on EVERY tick. The actual
+        replacement still verifies afresh (``replace_main``), so a cached answer never authorises anything."""
+        now = self.svc.clock()
+        hit = self._verify_cache.get(hid)
+        if hit is not None and 0 <= now - hit[0] < HANDOFF_VERIFY_TTL_S:
+            return hit[1]
+        rep = handoff.verify_handoff(self.store, hid, self.svc.ref_checkers_factory(self.cfg, self.root))
+        result = rep.verified if rep.safe else None
+        self._verify_cache = {hid: (now, result)}          # only the newest handoff matters
+        return result
+
     def check_pressure(self) -> Dict[str, Any]:
         main = read_main(self.store)
         sid = main.get("session_id")
@@ -465,8 +493,7 @@ class SupervisorLoop:
             latest = latest_handoff_for(self.store, sid)
             if latest is not None and self.svc.clock() - latest[1] <= HANDOFF_FRESH_FOR_REPLACE_S:
                 hid = latest[0]
-                rep = handoff.verify_handoff(self.store, hid, self.svc.ref_checkers_factory(self.cfg, self.root))
-                verified = rep.verified if rep.safe else None
+                verified = self._verified(hid)
         dec = compaction.decide(pressure, idle=idle, verified=verified, config=_pressure_config(self.cfg),
                                 now=self.svc.clock(), session_id=sid or "")
         if dec.action != self.last_action:
@@ -488,24 +515,36 @@ class SupervisorLoop:
 
     def tick(self) -> Dict[str, Any]:
         self.ticks += 1
+        timer = self.svc.timer
+        t0 = timer()
         requests = self.process_requests()
+        t1 = timer()
         workers = self.sup.tick()
+        t2 = timer()
         main = read_main(self.store)
         alive = self.main_alive(main)
         pressure = self.check_pressure() if alive else None
+        t3 = timer()
         if not alive and main.get("status") == "RUNNING":
             write_main(self.store, status="EXITED", ended_at=utc_iso(self.svc.clock()))
             self.store.append_event("main_exited", session_id=main.get("session_id"))
             if main.get("session_id"):
                 replacement.mark_exited(self.store, main["session_id"])
-        self.write_heartbeat(alive, main.get("session_id"), len(self.sup.registry.list()))
+        phases = {"requests": _ms(t1 - t0), "workers": _ms(t2 - t1), "main_and_pressure": _ms(t3 - t2)}
+        self.write_heartbeat(alive, main.get("session_id"), len(self.sup.registry.list()),
+                             duration_ms=_ms(timer() - t0), phase_ms=phases)
         return {"tick": self.ticks, "requests": requests, "workers": workers, "main_alive": alive,
                 "pressure": pressure}
 
-    def write_heartbeat(self, main_alive: bool, main_session_id: Optional[str], worker_count: int) -> None:
+    def write_heartbeat(self, main_alive: bool, main_session_id: Optional[str], worker_count: int,
+                        duration_ms: Optional[float] = None, phase_ms: Optional[Dict[str, float]] = None) -> None:
         body = {"pid": os.getpid(), "tick": self.ticks, "utc": utc_iso(self.svc.clock()),
                 "main_alive": bool(main_alive), "main_session_id": main_session_id, "worker_count": worker_count,
                 "poll_interval_s": float(self.cfg.poll_interval_s)}
+        if duration_ms is not None:        # how long this tick took (excluding the poll sleep and this write)
+            body["duration_ms"] = duration_ms
+        if phase_ms:
+            body["phase_ms"] = phase_ms
         try:
             self.store.atomic_write_bytes(self.store.directory / HEARTBEAT_FILE,
                                           (json.dumps(body, sort_keys=True) + "\n").encode("utf-8"))
