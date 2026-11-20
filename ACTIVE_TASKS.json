@@ -1667,14 +1667,11 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/t-dev-028-standing-autonomy",
       "worktree": "../CreatorStudio-worktrees/t-dev-028-standing-autonomy",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-027"
       ],
-      "lease": {
-        "acquired": "2026-11-20T04:30:00+00:00",
-        "expires": "2026-11-21T16:00:00+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
@@ -1708,7 +1705,7 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_standing_autonomy.py",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator). Authorised by Lukas in session on 2026-11-20 (register, implement, test, integrate T-DEV-028 through the existing safety process; keep Main in auto mode; never bypassPermissions)."
+      "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator). Authorised by Lukas in session on 2026-11-20 (register, implement, test, integrate T-DEV-028 through the existing safety process; keep Main in auto mode; never bypassPermissions). Completed 2026-11-20: PR #101 merged as 8b175455bb86 through dev_supervisor.integrate (8 gates PASS). Independent security review: 3 opus rounds (CHANGES_REQUESTED x2 with real bypasses incl. git --upload-pack exec, cd-tracker desync, PowerShell scriptblocks, rtk test exec; APPROVE round 3 after the structural worker shell rule), PR-bound APPROVE for diff ed837652b5da6806. OBSERVED live after supervisor restart (production launch path): worker argv has --settings and --setting-sources project,local; derived settings without the RTK hook and without env/apiKeyHelper; worker in permission mode dontAsk ran git status/log, Read, Grep and its own Write with no prompt; pipe, write outside the worktree, force push denied; tools/ write and rm queued as pending approvals. Main profile verified only by a headless probe with the real installer (auto mode, force push denied, protected write queued, no RTK rewrite); the interactive Main launch with the hook is NOT yet observed (next Main launch). Follow-ups: advisory classify_command misses rtk global flags (rtk -v git push), gh -R other host, unittest arbitrary dotted names, approvals list needs --dir outside hooked sessions."
     }
   ]
 }
