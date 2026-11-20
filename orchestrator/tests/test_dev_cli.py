@@ -139,16 +139,20 @@ class FakeGhRunner:
 
 
 _DENY = '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny"}}'
-_HOOK_OUT = (_DENY, "", _DENY)
+_ALLOW = '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}'
 
 
 def fake_policy_install(*args, **kw):
-    """The real installer with the hook subprocess faked (writes the settings file, no process started)."""
-    n = [0]
-
+    """The real installer with the hook subprocess faked (writes the settings file, no process started). The user
+    settings path points nowhere so the test never reads the real ~/.claude/settings.json."""
     def run(cmd, **k):
-        n[0] += 1
-        return mock.Mock(returncode=0, stdout=_HOOK_OUT[(n[0] - 1) % 3])
+        stdin, env = k.get("input", ""), k.get("env") or {}
+        if "git status" in stdin:
+            out = _ALLOW if env.get("CS_AUTHORITY_MODE", "advisory") != "advisory" else ""
+        else:
+            out = _DENY
+        return mock.Mock(returncode=0, stdout=out)
+    kw.setdefault("user_settings", os.path.join(os.path.dirname(os.path.abspath(__file__)), "no-such-settings.json"))
     return session_policy.install(*args, run=run, **kw)
 
 
@@ -545,7 +549,7 @@ class CliTests(Offline):
         self.assertIn("tick 2", out)                                  # no Main is not a reason to stop here
         self.assertEqual(env.terminal.opened, [])
         spec = env.worker_launcher.specs[0]
-        self.assertEqual([spec.argv[0]] + spec.argv[3:4], ["claude", "-p"])
+        self.assertEqual([spec.argv[0]] + spec.argv[3:6], ["claude", "--setting-sources", "project,local", "-p"])
         self.assertEqual(spec.argv[spec.argv.index("--permission-mode") + 1], "acceptEdits")
         self.assertEqual(cli.pending_requests(env.store()), [])
         code, out = env.cli("workers", "--json")
@@ -799,7 +803,7 @@ class EndToEndTests(Offline):
 
         # two workers spawned headless through the L2 path (fake launcher)
         self.assertEqual(len(env.worker_launcher.specs), 2)
-        self.assertTrue(all(s.argv[1] == "--settings" and s.argv[3] == "-p" for s in env.worker_launcher.specs))
+        self.assertTrue(all(s.argv[1] == "--settings" and s.argv[3:6] == ["--setting-sources", "project,local", "-p"] for s in env.worker_launcher.specs))
         # Main launched twice: the original and its replacement, both interactive
         self.assertEqual(len(env.terminal.opened), 2)
         first, second = env.terminal.opened

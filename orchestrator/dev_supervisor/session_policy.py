@@ -16,6 +16,7 @@ Standard library only. Unit tests never start ``claude``.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -33,7 +34,10 @@ except ImportError:  # pragma: no cover
     import authority  # type: ignore
 
 ROLES = ("main", "worker", "reviewer")
-MATCHER = "Bash|PowerShell|Write|Edit|NotebookEdit|MultiEdit|Read|mcp__davinci-resolve__.*"
+MATCHER = ".*"          # every tool: authority.py classifies the closed tool table itself (T-DEV-028)
+MODES = {"main": "advisory", "worker": "authoritative", "reviewer": "authoritative"}
+SETTING_SOURCES = "project,local"   # the user's settings are merged into the derived file instead (not loaded twice)
+COPIED_USER_KEYS = ("hooks", "autoMode", "modelSettings", "model", "statusLine", "permissions")
 DENY_PROBE = "git push --force origin task/policy-probe"
 ALLOW_PROBE = "git status --short"
 
@@ -82,14 +86,74 @@ def settings_path(state_dir: os.PathLike, role: str, session_id: str) -> Path:
     return Path(state_dir) / "policy" / f"{role}-{sid}.settings.json"
 
 
-def build_settings(command: str) -> Dict[str, Any]:
-    return {"hooks": {"PreToolUse": [{"matcher": MATCHER, "hooks": [{"type": "command", "command": command}]}]}}
+def default_user_settings() -> Path:
+    return Path.home() / ".claude" / "settings.json"
+
+
+def _is_rtk(hook: Any) -> bool:
+    return isinstance(hook, dict) and str(hook.get("command", "")).lstrip().startswith("rtk ")
+
+
+def _strip_rtk(hooks: Any) -> Dict[str, Any]:
+    """The user's hooks without any ``rtk ...`` command hook (the RTK rewrite hook defeats auto mode's review)."""
+    out: Dict[str, Any] = {}
+    if not isinstance(hooks, dict):
+        return out
+    for event, groups in hooks.items():
+        if not isinstance(groups, list):
+            continue
+        kept = []
+        for g in groups:
+            if not isinstance(g, dict):
+                continue
+            inner = [h for h in (g.get("hooks") or []) if isinstance(h, dict) and not _is_rtk(h)]
+            if inner:
+                kept.append({**g, "hooks": inner})
+        if kept:
+            out[event] = kept
+    return out
+
+
+def load_user_settings(path: Optional[os.PathLike] = None) -> Dict[str, Any]:
+    """Only COPIED_USER_KEYS of the user's settings.json ({} when missing or unreadable); rtk hooks removed.
+    env, apiKeyHelper, awsAuthRefresh, otelHeadersHelper and every other key are never copied."""
+    p = Path(path) if path is not None else default_user_settings()
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    out = {k: raw[k] for k in COPIED_USER_KEYS if k in raw}
+    if "hooks" in out:
+        out["hooks"] = _strip_rtk(out["hooks"])
+    return out
+
+
+def build_settings(command: str, user: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Derived per-session settings: the copied user keys plus the authority PreToolUse hook, placed first."""
+    base = copy.deepcopy(user or {})
+    hooks = base.get("hooks") if isinstance(base.get("hooks"), dict) else {}
+    pre = [g for g in (hooks.get("PreToolUse") or []) if isinstance(g, dict)]
+    hooks["PreToolUse"] = [{"matcher": MATCHER, "hooks": [{"type": "command", "command": command}]}] + pre
+    base["hooks"] = hooks
+    return base
+
+
+def approvals_dir(state_dir: os.PathLike) -> Path:
+    return Path(state_dir) / "approvals"
 
 
 def policy_env(repo_root: str, roots: Sequence[str] = (), owned_paths: Optional[Sequence[str]] = None,
-               grants: Sequence[str] = ()) -> Dict[str, str]:
+               grants: Sequence[str] = (), role: str = "main",
+               approvals: Optional[os.PathLike] = None) -> Dict[str, str]:
+    if role not in ROLES:
+        raise PolicyInstallError(f"unknown role {role!r}")
     env = {"CS_AUTHORITY_REPO_ROOT": _posix(repo_root),
-           "CS_AUTHORITY_ROOTS": os.pathsep.join(_posix(r) for r in (list(roots) or [repo_root]))}
+           "CS_AUTHORITY_ROOTS": os.pathsep.join(_posix(r) for r in (list(roots) or [repo_root])),
+           "CS_AUTHORITY_MODE": MODES[role], "CS_AUTHORITY_ROLE": role}
+    if approvals is not None:
+        env["CS_AUTHORITY_APPROVALS_DIR"] = _posix(str(approvals))
     if owned_paths is not None:
         env["CS_AUTHORITY_OWNED_PATHS"] = json.dumps(list(owned_paths))
     if grants:
@@ -129,7 +193,9 @@ def _decision(out: str) -> Optional[str]:
 
 
 def verify_hook(command: str, env: Dict[str, str], repo_root: str, run: Callable[..., Any] = subprocess.run) -> None:
-    """Execute the exact hook command: it must deny a force push, deny malformed input, and stay silent on git status."""
+    """Execute the exact hook command: it must deny a force push, deny malformed input, and pass git status (silence in
+    advisory mode, an explicit ``allow`` in authoritative mode)."""
+    authoritative = env.get("CS_AUTHORITY_MODE", "advisory") != "advisory"
     def payload(cmd: str) -> str:
         return json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}, "cwd": repo_root})
     try:
@@ -137,7 +203,7 @@ def verify_hook(command: str, env: Dict[str, str], repo_root: str, run: Callable
         if rc != 0 or _decision(out) != "deny":
             raise PolicyInstallError(f"hook did not deny the force-push probe with valid JSON (exit {rc}, output {out[:120]!r})")
         rc, out = _run_hook(command, env, payload(ALLOW_PROBE), run)
-        if rc != 0 or out.strip():
+        if rc != 0 or (_decision(out) != "allow" if authoritative else bool(out.strip())):
             raise PolicyInstallError(f"hook did not allow the routine probe (exit {rc}, output {out[:120]!r})")
         rc, out = _run_hook(command, env, "not json", run)
         if rc != 0 or _decision(out) != "deny":
@@ -146,44 +212,48 @@ def verify_hook(command: str, env: Dict[str, str], repo_root: str, run: Callable
         raise PolicyInstallError(f"hook command could not be executed: {exc}") from exc
 
 
-_VERIFIED: set = set()      # (settings path, hook command) pairs that install() verified in this process
+_VERIFIED: Dict[Tuple[str, str], Dict[str, Any]] = {}   # (settings path, hook command) -> content install() verified
 
 
 def install(state_dir: os.PathLike, session_id: str, role: str, repo_root: str, roots: Sequence[str] = (),
             owned_paths: Optional[Sequence[str]] = None, grants: Sequence[str] = (), python: Optional[str] = None,
-            run: Callable[..., Any] = subprocess.run, verify: bool = True) -> PolicyInstall:
+            run: Callable[..., Any] = subprocess.run, verify: bool = True,
+            user_settings: Optional[os.PathLike] = None) -> PolicyInstall:
     path = settings_path(state_dir, role, session_id)
     cmd = hook_command(python)
-    env = policy_env(repo_root, roots, owned_paths, grants)
+    env = policy_env(repo_root, roots, owned_paths, grants, role=role, approvals=approvals_dir(state_dir))
+    wanted = build_settings(cmd, load_user_settings(user_settings))
     try:
-        _atomic_write(path, json.dumps(build_settings(cmd), indent=2) + "\n")
+        _atomic_write(path, json.dumps(wanted, indent=2) + "\n")
         back = json.loads(path.read_text(encoding="utf-8"))  # read the file back: it must say what we meant
     except (OSError, ValueError) as exc:
         raise PolicyInstallError(f"settings file could not be written or read back: {exc.__class__.__name__}") from None
-    if back != build_settings(cmd):
+    if back != wanted:
         raise PolicyInstallError("settings file read-back differs from what was written")
     if verify:
         verify_hook(cmd, env, repo_root, run)
-    if verify:
-        _VERIFIED.add((str(path), cmd))
+        _VERIFIED[(str(path), cmd)] = wanted
     return PolicyInstall(str(path), cmd, env, str(uuid.UUID(str(session_id))), role, verified=bool(verify))
 
 
 def argv_with_policy(argv: Sequence[str], inst: PolicyInstall) -> List[str]:
-    """``argv`` with ``--settings <file>`` inserted after the executable; refuses an unverified installation."""
+    """``argv`` with ``--settings <file> --setting-sources project,local`` inserted after the executable (the user's
+    settings are merged into the derived file, so they are not loaded twice); refuses an unverified installation."""
     if not inst.verified or (inst.settings_path, inst.hook_command) not in _VERIFIED:
         raise PolicyInstallError("policy installation was not verified by install() in this process; refusing to launch")
     if not argv:
         raise PolicyInstallError("empty argv")
     if any(a == "--settings" or a.startswith("--settings=") for a in argv):
         raise PolicyInstallError("argv already carries --settings; merge it explicitly instead")
+    if any(a == "--setting-sources" or a.startswith("--setting-sources=") for a in argv):
+        raise PolicyInstallError("argv already carries --setting-sources; refusing to guess the merge")
     try:
         on_disk = json.loads(Path(inst.settings_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         raise PolicyInstallError("settings file is missing or unreadable") from None
-    if on_disk != build_settings(inst.hook_command):
+    if on_disk != _VERIFIED[(inst.settings_path, inst.hook_command)]:
         raise PolicyInstallError("settings file content changed since verification")
-    return [argv[0], "--settings", inst.settings_path, *argv[1:]]
+    return [argv[0], "--settings", inst.settings_path, "--setting-sources", SETTING_SOURCES, *argv[1:]]
 
 
 def check_resume(inst: PolicyInstall, argv: Sequence[str]) -> bool:

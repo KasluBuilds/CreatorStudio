@@ -148,7 +148,9 @@ class ConfiguredSupervisor(Supervisor):
                                           permission_mode=self.permission_mode)
         if self.repo_root is None:
             raise session_policy.PolicyInstallError("repository root unknown; refusing an unhooked worker launch")
-        inst = self.policy_install(self.store.directory, w.session_id, "worker", str(self.repo_root),
+        # T-DEV-028: a worker is confined to its own worktree. Its repo root is the worktree, not the main checkout
+        # (OBSERVED: with repo_root = main repo a worker wrote into the main checkout).
+        inst = self.policy_install(self.store.directory, w.session_id, "worker", str(w.worktree),
                                    roots=[w.worktree])
         spec.argv = session_policy.argv_with_policy(spec.argv, inst)
         spec.env = dict(inst.env)

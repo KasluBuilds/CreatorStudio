@@ -49,7 +49,8 @@ class WorkerHook(Loop):
         spec = env.worker_launcher.specs[-1]
         self.assertEqual(spec.argv[1], "--settings")
         self.assertEqual(spec.argv[2], str(session_policy.settings_path(store.directory, "worker", w.session_id)))
-        self.assertEqual(spec.env["CS_AUTHORITY_REPO_ROOT"], str(env.repo).replace("\\", "/"))
+        # T-DEV-028: a worker's repo root is its own worktree, never the main checkout
+        self.assertEqual(spec.env["CS_AUTHORITY_REPO_ROOT"], str(env.wt / "w").replace("\\", "/"))
         self.assertEqual(spec.env["CS_AUTHORITY_ROOTS"], str(env.wt / "w").replace("\\", "/"))
 
     def test_worker_restart_keeps_settings_and_env(self):

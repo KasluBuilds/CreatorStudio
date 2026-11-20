@@ -12,6 +12,21 @@
 - Environment additions: `CS_AUTHORITY_REPO_ROOT`, `CS_AUTHORITY_ROOTS`, optional `CS_AUTHORITY_OWNED_PATHS`; grants
   only when passed explicitly.
 
+## Standing autonomy changes (T-DEV-028, implemented, unit-tested offline)
+- Matcher `.*`: the hook sees every tool; `authority.py` classifies the closed tool table.
+- Env per role: `CS_AUTHORITY_MODE` = `advisory` (main) / `authoritative` (worker, reviewer), `CS_AUTHORITY_ROLE`,
+  `CS_AUTHORITY_APPROVALS_DIR` = `<state>/approvals`.
+- Derived settings: `install(..., user_settings=None)` reads `~/.claude/settings.json` (injectable), copies only
+  `hooks, autoMode, modelSettings, model, statusLine, permissions`, removes every hook whose command starts with
+  `rtk `, and puts the authority PreToolUse hook first. `env`, `apiKeyHelper`, `awsAuthRefresh`, `otelHeadersHelper`
+  and everything else are never copied. A missing or unreadable user file gives just the authority hook.
+- `argv_with_policy` inserts `--settings <file> --setting-sources project,local` (refuses an argv that already has
+  either flag) and compares the file on disk with the exact content `install` verified.
+- `verify_hook` expects silence for `git status` in advisory mode and an explicit `allow` in authoritative mode.
+- Workers: repo root and roots are the worker's worktree (`ConfiguredSupervisor.build_spec`).
+- NOT TESTED live: `--setting-sources project,local` combined with `--settings`, and the derived file in a real
+  session. See `STANDING_AUTONOMY.md`.
+
 ## Evidence (labels follow the project convention)
 - UNIT_ISOLATED: 16 offline tests; two of them run the real hook command in a local python subprocess.
 - OBSERVED live (2026-11-19, claude 2.1.316, model haiku, throwaway git repo without a remote):
@@ -22,7 +37,8 @@
   a supervisor-launched interactive Main; replacement flow.
 
 ## Launch wiring (T-DEV-027, implemented, unit-tested offline)
-- Workers: `ConfiguredSupervisor.build_spec` calls `install(..., "worker", repo_root, roots=[worktree])` and
+- Workers: `ConfiguredSupervisor.build_spec` calls `install(..., "worker", worktree, roots=[worktree])` (T-DEV-028;
+  before it passed the main repo root) and
   `argv_with_policy`; `LaunchSpec.env` carries `inst.env` and `ClaudeCliLauncher` merges it over `provider_env.child_env()`.
   A `PolicyInstallError` makes `_launch` fail the worker (status FAILED, signature `policy_install_failed`, normal
   backoff/BLOCKED rules); nothing is launched, there is no unhooked fallback.

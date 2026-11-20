@@ -4,19 +4,27 @@ Lukas's delegation (mission of 2026-11-19) lets the engineering agent act withou
 short list of actions protected. This module turns that boundary into code:
 
 * ``decide(action, ctx)``: a pure, DEFAULT-DENY policy engine. Unknown action kinds are denied.
-* ``classify_tool_call(tool, tool_input)``: maps a Claude Code Bash/PowerShell/Write/Edit/MCP call to ``Action`` records.
-* ``python -B -m dev_supervisor.authority hook``: a Claude Code ``PreToolUse`` hook. It reads the hook JSON from stdin
-  and prints a ``permissionDecision`` of ``deny`` (protected) or ``ask`` (needs explicit authorization); it prints
-  nothing for an allowed call. Malformed input for a guarded tool fails CLOSED.
+* ``classify_tool_call(tool, tool_input, cwd)``: CLOSED-WORLD tool table (T-DEV-028). Every tool name is shell, file
+  read, file write, session-internal, subagent, web read, publishing, Resolve MCP or IDE MCP; anything else (another
+  MCP server, an unlisted or malformed name) is ``UNKNOWN_TOOL`` and denied.
+* ``python -B -m dev_supervisor.authority hook``: a Claude Code ``PreToolUse`` hook with two modes
+  (``CS_AUTHORITY_MODE``): ``advisory`` (Main, default when unset) prints nothing for ALLOW; ``authoritative``
+  (workers) prints ``allow`` only for routine calls (non-shell ALLOW, or shell whose every segment is on the routine
+  allowlist) and ``deny`` for everything else. REQUIRE_AUTHORIZATION is queued as a pending approval and denied; only
+  a call a human approved with ``approvals approve`` gets ``ask`` (advisory mode only), so the native permission
+  prompt is the final confirmation. Malformed input fails CLOSED.
+* ``python -B -m dev_supervisor.authority approvals [--dir D] list|approve <id>``: list is read-only; approve refuses
+  inside a hooked session (``CS_AUTHORITY_MODE`` set) and without an interactive terminal.
 * ``python -B -m dev_supervisor.authority check --kind K [--target T]``: evaluate one action from the command line.
 
-Honest limits (see AUTHORITY.md): shell text is open-world, so the hook is a deny-list over recognised patterns, not a
-sandbox. It stops the mistakes and shortcuts we know about; it does not stop a determined adversary. The hook is
-NOT installed into any settings file by this module. Standard library only; no network; nothing is executed.
+Honest limits (see AUTHORITY.md, STANDING_AUTONOMY.md): in advisory mode shell text is open-world, so the hook is a
+deny-list over recognised patterns, not a sandbox. Standard library only; no network; nothing is executed.
 """
 from __future__ import annotations
 
 import argparse
+import datetime
+import hashlib
 import json
 import os
 import re
@@ -24,7 +32,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Sequence, TextIO, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Optional, Sequence, TextIO, Tuple
 
 ALLOW, DENY, ASK = "ALLOW", "DENY", "REQUIRE_AUTHORIZATION"
 
@@ -38,12 +46,21 @@ PAID_API, PURCHASE, SECRET_DISCLOSURE = "paid_api", "purchase", "secret_disclosu
 ORIGINAL_MUTATION, RESOLVE_MUTATION, IRRECOVERABLE_DELETE = "original_mutation", "resolve_mutation", "irrecoverable_delete"
 SECURITY_BYPASS, FORCE_PUSH, HISTORY_REWRITE = "security_bypass", "force_push", "history_rewrite"
 OUTSIDE_ENVIRONMENT, TERMINATE_PROCESS, STAGE_ALL = "outside_environment", "terminate_process", "stage_all"
+# T-DEV-028 (standing autonomy): closed-world tool classification
+SPAWN_SUBAGENT, WEB_READ = "spawn_subagent", "web_read"                         # autonomous
+PUBLISH, IDE_EXECUTE = "publish", "ide_execute"                                 # protected, a human may authorise
+UNKNOWN_TOOL, AUTHORITY_CHANGE = "unknown_tool", "authority_change"             # protected, never lifted
 
 AUTONOMOUS_KINDS = (READ, RUN_TESTS, EDIT_FILE, CREATE_BRANCH, CREATE_WORKTREE, DISPATCH_WORKER, RECOVER_WORKER,
                     RESTART_PROCESS, RESUME_MAIN, GIT_COMMIT, GIT_PUSH, CREATE_PR, INTEGRATE_PR, UPDATE_RECORD,
-                    TERMINATE_PROCESS)  # terminate is autonomous only WITH full identity proof (checked below)
+                    TERMINATE_PROCESS,  # terminate is autonomous only WITH full identity proof (checked below)
+                    SPAWN_SUBAGENT, WEB_READ)
 PROTECTED_KINDS = (PAID_API, PURCHASE, SECRET_DISCLOSURE, ORIGINAL_MUTATION, RESOLVE_MUTATION, IRRECOVERABLE_DELETE,
-                   SECURITY_BYPASS, FORCE_PUSH, HISTORY_REWRITE, OUTSIDE_ENVIRONMENT, STAGE_ALL)
+                   SECURITY_BYPASS, FORCE_PUSH, HISTORY_REWRITE, OUTSIDE_ENVIRONMENT, STAGE_ALL,
+                   PUBLISH, IDE_EXECUTE, UNKNOWN_TOOL, AUTHORITY_CHANGE)
+# protected kinds that no grant can ever lift (subset of PROTECTED_KINDS)
+UNCONDITIONAL_KINDS = (PURCHASE, SECRET_DISCLOSURE, ORIGINAL_MUTATION, SECURITY_BYPASS, FORCE_PUSH, HISTORY_REWRITE,
+                       STAGE_ALL, OUTSIDE_ENVIRONMENT, UNKNOWN_TOOL, AUTHORITY_CHANGE)
 
 # repo-relative prefixes. Anything here is never edited silently.
 ORIGINALS_PREFIXES = ("Incoming/",)
@@ -79,6 +96,7 @@ class PolicyContext:
     allow_paid_api: bool = False                # mirrors Config.allow_paid_api; must stay False
     grants: FrozenSet[str] = frozenset()        # protected kinds a human explicitly authorised (never autonomous kinds)
     repo_root: str = ""
+    approvals_dir: str = ""                     # <state>/approvals: pending approval records (human-only grants)
 
 
 class AuthorityDenied(Exception):
@@ -181,6 +199,10 @@ def decide(action: Action, ctx: PolicyContext = PolicyContext()) -> Decision:
         return _deny("stage-explicit-files", "stage explicit paths; `git add .`/`-A` is forbidden by project rules")
     if k == OUTSIDE_ENVIRONMENT:
         return _deny("outside-environment", "actions outside the authorised project environment are not delegated")
+    if k == UNKNOWN_TOOL:
+        return _deny("unknown-tool", f"tool {action.target!r} is not in the closed tool table; default-deny")
+    if k == AUTHORITY_CHANGE:
+        return _deny("authority-boundary", "approvals, grants, hook settings and the approve command are human-only")
 
     # ---- protected kinds that a human may explicitly authorise
     if k == PAID_API:
@@ -193,6 +215,12 @@ def decide(action: Action, ctx: PolicyContext = PolicyContext()) -> Decision:
             return Decision(ALLOW, "resolve-isolated-fixture", "mutation of a synthetic fixture project")
         return Decision(ALLOW, "resolve-granted", "explicit production authorisation") if RESOLVE_MUTATION in ctx.grants \
             else Decision(ASK, "resolve-production", "Resolve mutation needs a validated plan and explicit authorisation")
+    if k in (PUBLISH, IDE_EXECUTE):
+        if k in ctx.grants:
+            return Decision(ALLOW, f"{k}-granted", "explicit authorisation")
+        if k == PUBLISH:
+            return Decision(ASK, "publish", "publishing outward-facing content needs explicit authorisation")
+        return Decision(ASK, "ide-execute", "executing code in the IDE kernel needs explicit authorisation")
     if k == IRRECOVERABLE_DELETE:
         g = _path_gate(action, ctx, mutating=True)       # never lifted by a grant: originals, secrets, outside env
         if g:
@@ -204,6 +232,8 @@ def decide(action: Action, ctx: PolicyContext = PolicyContext()) -> Decision:
         return Decision(ASK, "irrecoverable-delete", "deleting data without a recovery path needs explicit authorisation")
 
     # ---- autonomous kinds, each with the guard that keeps it routine
+    if k in (SPAWN_SUBAGENT, WEB_READ):
+        return Decision(ALLOW, "autonomous", f"{k} is a routine delegated action")
     if k in (READ, RUN_TESTS, CREATE_BRANCH, CREATE_WORKTREE, DISPATCH_WORKER, RECOVER_WORKER, RESUME_MAIN,
              CREATE_PR, UPDATE_RECORD, GIT_COMMIT):
         if k == READ and SECRET_NAME.search(_norm(action.target or "")):
@@ -393,38 +423,413 @@ def classify_command(command: str) -> List[Action]:
     return out
 
 
-def classify_tool_call(tool: str, tool_input: Dict[str, Any]) -> List[Action]:
-    t = (tool or "")
-    if t in ("Bash", "PowerShell"):
+# Closed tool table (T-DEV-028). Every tool name falls into exactly one category; anything else is UNKNOWN_TOOL.
+SHELL_TOOLS = ("Bash", "PowerShell")
+READ_TOOLS = {"Read": "file_path", "NotebookRead": "notebook_path", "LS": "path", "Glob": "path", "Grep": "path"}
+WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+INTERNAL_TOOLS = ("TodoWrite", "ToolSearch", "Monitor", "TaskStop", "TaskOutput", "ScheduleWakeup", "ListAgents",
+                  "SendMessage", "Skill", "EnterPlanMode", "ExitPlanMode", "AskUserQuestion", "CronList")
+SUBAGENT_TOOLS = ("Agent", "Task")
+WEB_TOOLS = ("WebFetch", "WebSearch")
+PUBLISH_TOOLS = ("Artifact", "ArtifactComments", "ArtifactData", "DesignSync", "PushNotification", "RemoteTrigger",
+                 "CronCreate", "CronDelete")
+PUBLISH_PREFIXES = ("mcp__claude-artifacts__", "mcp__claude_ai_Claude_Docs__", "SendToProject")
+PUBLISH_READ_ACTIONS = {"Artifact": ("read", "list"), "ArtifactData": ("get", "list", "query")}
+DOCS_PREFIX = "mcp__claude_ai_Claude_Docs__"
+DOCS_READ_TOOLS = ("read", "query", "guide", "export")
+RESOLVE_PREFIX = "mcp__davinci-resolve__"
+IDE_PREFIX = "mcp__ide__"
+_TOOL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_\-]{0,127}$")
+_MCP_NAME = re.compile(r"^mcp__[A-Za-z0-9_\-]+?__[A-Za-z0-9_\-]+$")
+
+
+def _read_actions(path: str) -> List[Action]:
+    if _norm(path).lower().rsplit("/", 1)[-1] in ("pro.ps1", "backup.ps1"):
+        return [Action(SECRET_DISCLOSURE, path)]
+    return [Action(READ, path)]
+
+
+def classify_tool_call(tool: str, tool_input: Dict[str, Any], cwd: str = "") -> List[Action]:
+    """Closed-world: every known tool maps to its actions ([] = a session-internal tool); anything else is UNKNOWN_TOOL."""
+    t = tool if isinstance(tool, str) else ""
+    if not _TOOL_NAME.match(t) or (t.startswith("mcp__") and not _MCP_NAME.match(t)):
+        return [Action(UNKNOWN_TOOL, str(tool)[:80])]
+    if t in SHELL_TOOLS:
         return classify_command(str(tool_input.get("command", "")))
-    if t in ("Write", "Edit", "NotebookEdit", "MultiEdit"):
+    if t in WRITE_TOOLS:
         path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
         return [Action(EDIT_FILE, path)]
-    if t == "Read":
-        path = str(tool_input.get("file_path", ""))
-        if _norm(path).lower().rsplit("/", 1)[-1] in ("pro.ps1", "backup.ps1"):
-            return [Action(SECRET_DISCLOSURE, path)]
-        return [Action(READ, path)]
-    if t.startswith("mcp__davinci-resolve__"):
+    if t in READ_TOOLS:
+        path = str(tool_input.get(READ_TOOLS[t]) or "")
+        if not path and t in ("Glob", "Grep", "LS"):
+            path = cwd                                  # no path: the tool searches the working directory
+        return _read_actions(path)
+    if t in INTERNAL_TOOLS:
+        return []
+    if t in SUBAGENT_TOOLS:
+        return [Action(SPAWN_SUBAGENT, t)]
+    if t in WEB_TOOLS:
+        url = str(tool_input.get("url") or "")
+        return [Action(PAID_API, url, {"via": t})] if _PAID_HOSTS.search(url) else [Action(WEB_READ, url or t)]
+    if t in PUBLISH_TOOLS or t.startswith(PUBLISH_PREFIXES):
+        verb = str(tool_input.get("action") or "").lower()
+        if verb and verb in PUBLISH_READ_ACTIONS.get(t, ()):
+            return [Action(READ, "")]
+        if t.startswith(DOCS_PREFIX) and t[len(DOCS_PREFIX):] in DOCS_READ_TOOLS:
+            return [Action(READ, "")]
+        return [Action(PUBLISH, t)]
+    if t.startswith(RESOLVE_PREFIX):
         verb = str(tool_input.get("action") or tool_input.get("method") or "")
         return [] if _RESOLVE_READ.match(verb) else [Action(RESOLVE_MUTATION, t, {"production": True, "verb": verb})]
-    return []
+    if t.startswith(IDE_PREFIX):
+        name = t[len(IDE_PREFIX):]
+        if name == "getDiagnostics":
+            return []
+        if name == "executeCode":
+            return [Action(IDE_EXECUTE, t)]
+    return [Action(UNKNOWN_TOOL, t)]
+
+
+# ------------------------------------------------------------------ authority boundary (approvals, grants, settings)
+
+_APPROVE_CMD = re.compile(r"\b(authority|approvals)\b[^\n;&|]*\bapprove\b", re.I)
+_HOOK_SETTINGS = re.compile(r"(^|/)\.claude/settings(\.local)?\.json$", re.I)
+
+
+def _boundary_dirs(ctx: PolicyContext) -> List[str]:
+    """The approvals dir and its sibling policy dir (both under the supervisor state directory)."""
+    if not ctx.approvals_dir:
+        return []
+    a = _norm(ctx.approvals_dir).rstrip("/")
+    return [a, a.rsplit("/", 1)[0] + "/policy"] if "/" in a else [a]
+
+
+def touches_boundary_path(path: str, ctx: PolicyContext) -> bool:
+    """True for the approvals dir, the policy settings dir, the grants file and Claude Code settings files."""
+    if not path:
+        return False
+    n = _norm(path)
+    if n.lower().rsplit("/", 1)[-1] == GRANTS_FILE or _HOOK_SETTINGS.search(n):
+        return True
+    p = path if _is_abs(path.replace("\\", "/")) else (ctx.repo_root.rstrip("/\\") + "/" + path if ctx.repo_root else path)
+    return any(_inside(p, d) for d in _boundary_dirs(ctx))
+
+
+def touches_boundary_command(command: str, ctx: PolicyContext) -> bool:
+    low = re.sub(r"/+", "/", (command or "").replace("\\", "/").lower())
+    if GRANTS_FILE in low or ".claude/settings" in low or "approvals/pending" in low or _APPROVE_CMD.search(command or ""):
+        return True
+    return any(d.lower() in low for d in _boundary_dirs(ctx))
 
 
 _ORDER = {ALLOW: 0, ASK: 1, DENY: 2}
 
 
-def evaluate_tool_call(tool: str, tool_input: Dict[str, Any], ctx: PolicyContext) -> Decision:
-    """Worst verdict across the actions implied by the call; ALLOW when none is recognised."""
+def evaluate_tool_call(tool: str, tool_input: Dict[str, Any], ctx: PolicyContext, cwd: str = "") -> Decision:
+    """Worst verdict across the actions implied by the call. Unknown tools are denied (closed world)."""
+    acts = classify_tool_call(tool, tool_input, cwd)
+    if tool in WRITE_TOOLS and touches_boundary_path(str(tool_input.get("file_path") or tool_input.get("notebook_path") or ""), ctx):
+        acts.append(Action(AUTHORITY_CHANGE, str(tool_input.get("file_path") or "")))
+    if tool in SHELL_TOOLS and touches_boundary_command(str(tool_input.get("command", "")), ctx):
+        acts.append(Action(AUTHORITY_CHANGE, "shell"))
     worst = Decision(ALLOW, "no-protected-action", "no protected pattern recognised")
-    for act in classify_tool_call(tool, tool_input):
+    for act in acts:
         d = decide(act, ctx)
         if _ORDER[d.verdict] > _ORDER[worst.verdict]:
             worst = d
     return worst
 
 
+# ------------------------------------------------------------------ worker routine allowlist (authoritative mode)
+
+_SAFE_REDIRECT = re.compile(r"\s*(2>&1|[12]?>\s*/dev/null|[12]?>\s*\$null)\s*", re.I)
+_GIT_ANY = ("status", "diff", "log", "show", "fetch", "pull", "rev-parse", "ls-files", "merge-base")
+_GH_VERBS = {"pr": ("view", "list", "create", "comment", "checks", "diff"), "issue": ("view", "list", "create", "comment")}
+_SIMPLE_HEADS = ("ls", "dir", "pwd", "cd", "cat", "type", "head", "tail", "wc", "grep", "diff", "echo", "test", "true",
+                 "printf")
+CREATOR_STATE_READ = ("list", "check", "resume", "log", "checkpoints", "inventory", "ingest-status", "verify-sources",
+                      "incoming-list", "incoming-inspect", "shots-plan", "shots-status", "shots-check", "--help", "-h")
+_SED_WRITE = re.compile(r"(^|[;{}/\d$!\s])[wWe](\s|$)")
+
+
+def _short_has(tok: str, letters: str) -> bool:
+    """A bundle of short flags (``-am``) that contains any of ``letters``."""
+    return bool(re.match(r"^-[A-Za-z]+$", tok)) and any(c in tok[1:] for c in letters)
+
+
+def _git_routine(tok: List[str]) -> bool:
+    i = 1
+    while i < len(tok) and tok[i].startswith("-"):
+        if tok[i] == "-C" and i + 1 < len(tok):
+            i += 2
+        elif tok[i] == "--no-pager":
+            i += 1
+        else:
+            return False                              # -c (config override) and every other global option
+    if i >= len(tok):
+        return False
+    sub, rest = tok[i].lower(), tok[i + 1:]
+    low = [t.lower() for t in rest]
+    if any(t.startswith("--output") for t in low):
+        return False
+    if sub in _GIT_ANY:
+        return True
+    if sub == "branch":
+        return not any(t in ("--delete", "--move", "--copy", "--force") or _short_has(t, "dDmMcCf") for t in rest)
+    if sub in ("checkout", "switch"):
+        return not any(t in ("--force", "--discard-changes", "--orphan", "--", ".", "--patch")
+                       or _short_has(t, "fBCp") for t in rest)
+    if sub == "add":
+        paths = [t for t in rest if not t.startswith("-")]
+        bad = any(t in (".", "--all", "--update", "--force", "*", ":/", "--patch") or _short_has(t, "Aufp")
+                  for t in rest)
+        return bool(paths) and not bad
+    if sub == "commit":
+        return not any(t in ("--no-verify", "--no-gpg-sign", "--all", "--amend") or _short_has(t, "an") for t in rest)
+    if sub == "worktree":
+        return bool(low) and low[0] in ("list", "add") and not any(t in ("-f", "--force") for t in low)
+    if sub == "stash":
+        return bool(low) and low[0] in ("list", "show", "push", "apply")
+    if sub == "remote":
+        return not low or low in (["-v"], ["--verbose"]) or (low[0] == "get-url" and len(low) <= 2)
+    if sub == "config":
+        return bool(low) and low[0] in ("--get", "--get-all") and len(low) <= 2
+    return False
+
+
+def _gh_routine(tok: List[str]) -> bool:
+    low = [t.lower() for t in tok]
+    if len(low) >= 3 and low[1] in _GH_VERBS:
+        return low[2] in _GH_VERBS[low[1]]
+    if len(low) >= 3 and low[1] == "api":
+        for j, t in enumerate(tok):
+            lt = t.lower()
+            if lt in ("-x", "--method"):
+                if j + 1 >= len(low) or low[j + 1] != "get":
+                    return False
+            elif lt.startswith("--method="):
+                if lt.split("=", 1)[1] != "get":
+                    return False
+            elif t.startswith("-X") and len(t) > 2:
+                if lt[2:] != "get":
+                    return False
+            elif lt in ("--input", "--field", "--raw-field") or lt.startswith(("--input=", "--field=", "--raw-field=")) \
+                    or (t.startswith(("-f", "-F")) and not t.startswith("--")):
+                return False
+        return True
+    return False
+
+
+def _python_routine(tok: List[str]) -> bool:
+    i = 1
+    while i < len(tok) and tok[i] in ("-B", "-I", "-BI", "-IB"):
+        i += 1
+    if i + 1 >= len(tok) or tok[i] != "-m":
+        return False
+    mod, rest = tok[i + 1], [t.lower() for t in tok[i + 2:]]
+    root = mod.split(".", 1)[0]
+    if root in ("unittest", "governance"):
+        return True
+    if root == "dev_supervisor":
+        return mod not in ("dev_supervisor.session_policy", "dev_supervisor.live_autonomy") and "--yes" not in rest
+    if root == "creator_state":
+        return mod == "creator_state" and bool(rest) and rest[0] in CREATOR_STATE_READ
+    return False
+
+
+def _segment_routine(tok: List[str], ctx: PolicyContext) -> bool:
+    head = tok[0].lower().replace(".exe", "")
+    if head == "rtk":
+        inner = tok[2:] if len(tok) > 1 and tok[1].lower() == "bypass" else tok[1:]
+        return bool(inner) and inner[0].lower() != "rtk" and _segment_routine(inner, ctx)
+    if any(SECRET_NAME.search(_norm(t)) or _norm(t).lower().rsplit("/", 1)[-1] in ("pro.ps1", "backup.ps1")
+           for t in tok[1:] if t and not t.startswith("-")):
+        return False                                  # secrets and launchers are never read by a worker shell
+    low = [t.lower() for t in tok]
+    if head == "git":
+        return _git_routine(tok)
+    if head == "gh":
+        return _gh_routine(tok)
+    if head in ("python", "python3", "py"):
+        return _python_routine(tok)
+    if head in _SIMPLE_HEADS:
+        return True
+    if head == "rg":
+        return not any(t == "--pre" or t.startswith("--pre=") for t in low)
+    if head == "find":
+        return not any(t in ("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fls", "-fprint", "-fprint0", "-fprintf")
+                       for t in low)
+    if head == "sort":
+        return not any(t.startswith(("--output", "--compress-program")) or _short_has(t, "o") for t in tok[1:])
+    if head == "uniq":
+        return len([t for t in tok[1:] if not t.startswith("-")]) <= 1     # a second operand is an output file
+    if head == "sed":
+        flags = [t for t in tok[1:] if t.startswith("-")]
+        if not any(_short_has(f, "n") for f in flags):
+            return False
+        if any(f.startswith("--in-place") or _short_has(f, "i") for f in flags):
+            return False
+        return not any(_SED_WRITE.search(t) for t in tok[1:] if not t.startswith("-"))
+    if head == "mkdir":
+        for p in tok[1:]:
+            if p.startswith("-"):
+                continue
+            if (_is_abs(p.replace("\\", "/")) and not _in_environment(p, ctx)) or _norm(p).startswith(".."):
+                return False
+        return True
+    return False
+
+
+def routine_shell(command: str, ctx: PolicyContext = PolicyContext()) -> Tuple[bool, str]:
+    """(True, "") when the head of EVERY segment is on the worker routine allowlist; else (False, offending segment)."""
+    text = command or ""
+    if not text.strip():
+        return False, "(empty command)"
+    if any(x in text for x in ("`", "$(", "<(", ">(", "${")):
+        return False, "command substitution"
+    for seg in _SPLIT.split(text):
+        if not seg.strip():
+            continue
+        bare = _SAFE_REDIRECT.sub(" ", seg)
+        if re.search(r"[<>&]", bare):
+            return False, seg.strip()[:120]           # file redirection or background job
+        tok = _tokens(bare)
+        if not tok or not _segment_routine(tok, ctx):
+            return False, seg.strip()[:120]
+    return True, ""
+
+
+# ------------------------------------------------------------------ pending approvals (human-only grants)
+
+APPROVALS_ENV, MODE_ENV, ROLE_ENV = "CS_AUTHORITY_APPROVALS_DIR", "CS_AUTHORITY_MODE", "CS_AUTHORITY_ROLE"
+ADVISORY, AUTHORITATIVE = "advisory", "authoritative"
+PENDING, APPROVED = "PENDING", "APPROVED"
+_REDACT = re.compile(r"(sk-[A-Za-z0-9_\-]{8,}|gh[pousr]_[A-Za-z0-9]{8,}|github_pat_[A-Za-z0-9_]{8,}|"
+                     r"(?i:(api[_-]?key|token|secret|password)[\"']?\s*[=:]\s*)\S+)")
+
+
+def call_hash(tool: str, tool_input: Dict[str, Any]) -> str:
+    canon = json.dumps(tool_input, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return hashlib.sha256((str(tool) + "\n" + canon).encode("utf-8")).hexdigest()
+
+
+def approval_id(h: str) -> str:
+    return h[:16]
+
+
+def _record_path(approvals_dir: str, aid: str) -> str:
+    if not re.match(r"^[0-9a-f]{16}$", aid or ""):
+        raise ValueError("approval id must be 16 hex characters")
+    return os.path.join(approvals_dir, "pending", aid + ".json")
+
+
+def input_summary(tool_input: Dict[str, Any], limit: int = 300) -> str:
+    text = _REDACT.sub("[REDACTED]", json.dumps(tool_input, sort_keys=True, ensure_ascii=False, default=str))
+    return text if len(text) <= limit else text[:limit] + "...(truncated)"
+
+
+def _utc() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def read_approval(approvals_dir: str, aid: str) -> Optional[Dict[str, Any]]:
+    try:
+        with open(_record_path(approvals_dir, aid), encoding="utf-8") as fh:
+            rec = json.load(fh)
+        return rec if isinstance(rec, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _atomic_json(path: str, data: Dict[str, Any]) -> None:
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".approval.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def queue_approval(approvals_dir: str, tool: str, tool_input: Dict[str, Any], decision: Decision,
+                   session_id: str = "", role: str = "") -> Tuple[Dict[str, Any], bool]:
+    """Write pending/<id>.json atomically unless a record for the same call exists (dedupe by sha256 of the call).
+
+    Returns (record, created). Raises OSError/ValueError when it cannot write; the hook then still denies."""
+    if not approvals_dir:
+        raise ValueError(f"{APPROVALS_ENV} is not set")
+    h = call_hash(tool, tool_input)
+    aid = approval_id(h)
+    existing = read_approval(approvals_dir, aid)
+    if existing is not None and existing.get("call_hash") == h:
+        return existing, False
+    rec = {"id": aid, "call_hash": h, "created_utc": _utc(), "session_id": str(session_id or "")[:80],
+           "role": str(role or "")[:20], "tool": str(tool)[:120], "input_summary": input_summary(tool_input),
+           "rule": decision.rule, "reason": decision.reason, "status": PENDING}
+    _atomic_json(_record_path(approvals_dir, aid), rec)
+    return rec, True
+
+
+def list_approvals(approvals_dir: str) -> List[Dict[str, Any]]:
+    try:
+        names = sorted(os.listdir(os.path.join(approvals_dir, "pending")))
+    except OSError:
+        return []
+    out = []
+    for n in names:
+        if re.match(r"^[0-9a-f]{16}\.json$", n):
+            rec = read_approval(approvals_dir, n[:-5])
+            if rec is not None:
+                out.append(rec)
+    return out
+
+
+class ApprovalRefused(Exception):
+    pass
+
+
+def approve(approvals_dir: str, aid: str, *, env: Dict[str, str], isatty: bool,
+            confirm: Optional[Callable[[Dict[str, Any]], bool]] = None) -> Dict[str, Any]:
+    """Human-only: refuses inside a hooked session (CS_AUTHORITY_MODE set) and without an interactive terminal."""
+    if MODE_ENV in env:
+        raise ApprovalRefused(f"{MODE_ENV} is set: this is a hooked session; only a human terminal may approve")
+    if not isatty:
+        raise ApprovalRefused("stdin is not an interactive terminal; only a human may approve")
+    rec = read_approval(approvals_dir, aid)
+    if rec is None:
+        raise ApprovalRefused(f"no approval record {aid}")
+    if rec.get("status") != PENDING:
+        raise ApprovalRefused(f"approval {aid} is {rec.get('status')}, not PENDING")
+    if confirm is not None and not confirm(rec):
+        raise ApprovalRefused("not confirmed")
+    rec = dict(rec, status=APPROVED, approved_utc=_utc())
+    _atomic_json(_record_path(approvals_dir, aid), rec)
+    return rec
+
+
+def approved_for(approvals_dir: str, tool: str, tool_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The APPROVED record for exactly this call (same sha256), else None."""
+    if not approvals_dir:
+        return None
+    h = call_hash(tool, tool_input)
+    rec = read_approval(approvals_dir, approval_id(h))
+    if rec and rec.get("status") == APPROVED and rec.get("call_hash") == h:
+        return rec
+    return None
+
+
 # ------------------------------------------------------------------ PreToolUse hook
+
+
+def hook_mode(env: Dict[str, str]) -> str:
+    """advisory (Main, default when unset) or authoritative (workers). An unrecognised value is authoritative."""
+    v = env.get(MODE_ENV)
+    if v is None or v.strip().lower() == ADVISORY:
+        return ADVISORY
+    return AUTHORITATIVE
 
 
 def context_from_env(env: Dict[str, str], cwd: str) -> PolicyContext:
@@ -439,22 +844,54 @@ def context_from_env(env: Dict[str, str], cwd: str) -> PolicyContext:
         owned = ()   # unparseable ownership: nothing is owned (fail closed)
     return PolicyContext(roots=roots, owned_paths=owned, allow_paid_api=False,
                          grants=frozenset(x for x in env.get("CS_AUTHORITY_GRANTS", "").split(",") if x in PROTECTED_KINDS
-                                          and x not in (PURCHASE, SECRET_DISCLOSURE, ORIGINAL_MUTATION, SECURITY_BYPASS,
-                                                        FORCE_PUSH, HISTORY_REWRITE, STAGE_ALL, OUTSIDE_ENVIRONMENT)),
-                         repo_root=env.get("CS_AUTHORITY_REPO_ROOT", cwd))
+                                          and x not in UNCONDITIONAL_KINDS),
+                         repo_root=env.get("CS_AUTHORITY_REPO_ROOT", cwd),
+                         approvals_dir=env.get(APPROVALS_ENV, ""))
+
+
+def _out(decision: str, reason: str) -> Dict[str, Any]:
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision,
+                                   "permissionDecisionReason": reason}}
 
 
 def hook_output(decision: Decision) -> Optional[Dict[str, Any]]:
+    """Advisory rendering of a bare decision (no approval queue): silence for ALLOW, else deny/ask."""
     if decision.allowed:
         return None
-    return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
-                                   "permissionDecision": "deny" if decision.verdict == DENY else "ask",
-                                   "permissionDecisionReason": f"authority policy [{decision.rule}]: {decision.reason}"}}
+    return _out("deny" if decision.verdict == DENY else "ask", f"authority policy [{decision.rule}]: {decision.reason}")
+
+
+def respond(tool: str, tool_input: Dict[str, Any], decision: Decision, ctx: PolicyContext, mode: str,
+            session_id: str = "", role: str = "") -> Optional[Dict[str, Any]]:
+    """The hook's answer for one evaluated call in the given mode (None = print nothing)."""
+    why = f"authority policy [{decision.rule}]: {decision.reason}"
+    if decision.verdict == DENY:
+        return _out("deny", why)
+    if decision.verdict == ASK:
+        if mode == ADVISORY:
+            rec = approved_for(ctx.approvals_dir, tool, tool_input)
+            if rec is not None:
+                return _out("ask", f"{why}; approval {rec.get('id')} is APPROVED by a human; confirm in the native prompt")
+        try:
+            rec, _created = queue_approval(ctx.approvals_dir, tool, tool_input, decision, session_id, role)
+            return _out("deny", f"{why}; queued as approval {rec['id']}; continue with unrelated work")
+        except Exception as exc:  # noqa: BLE001 - a queue failure must never crash the hook; it still denies
+            return _out("deny", f"{why}; the approval could not be queued ({exc.__class__.__name__}); "
+                                "continue with unrelated work")
+    if mode == ADVISORY:
+        return None
+    if tool in SHELL_TOOLS:
+        ok, seg = routine_shell(str(tool_input.get("command", "")), ctx)
+        if not ok:
+            return _out("deny", f"authority policy [worker-routine-allowlist]: not on the worker routine allowlist: {seg}")
+        return _out("allow", "authority policy [worker-routine-allowlist]: routine command")
+    return _out("allow", f"authority policy [{decision.rule}]: routine tool call")
 
 
 def run_hook(stdin: TextIO, out: TextIO, env: Optional[Dict[str, str]] = None) -> int:
     env = dict(os.environ if env is None else env)
     try:
+        mode = hook_mode(env)
         payload = json.loads(stdin.read() or "{}")
         if not isinstance(payload, dict):
             raise ValueError("payload is not an object")
@@ -462,10 +899,12 @@ def run_hook(stdin: TextIO, out: TextIO, env: Optional[Dict[str, str]] = None) -
         tin = payload.get("tool_input") or {}
         if not isinstance(tin, dict):
             raise ValueError("tool_input is not an object")
-        decision = evaluate_tool_call(tool, tin, context_from_env(env, str(payload.get("cwd") or os.getcwd())))
+        cwd = str(payload.get("cwd") or os.getcwd())
+        ctx = context_from_env(env, cwd)
+        decision = evaluate_tool_call(tool, tin, ctx, cwd)
+        res = respond(tool, tin, decision, ctx, mode, str(payload.get("session_id") or ""), env.get(ROLE_ENV, ""))
     except Exception as exc:  # noqa: BLE001 - any failure must fail closed (RecursionError, OSError, ...)
-        decision = Decision(DENY, "hook-malformed-input", f"could not evaluate the call ({exc}); failing closed")
-    res = hook_output(decision)
+        res = _out("deny", f"authority policy [hook-malformed-input]: could not evaluate the call ({exc}); failing closed")
     if res is not None:
         out.write(json.dumps(res) + "\n")
     return 0
@@ -476,13 +915,45 @@ def build_hook_command(python: str = "python", script: Optional[str] = None) -> 
     return f"{q(python)} -B {q(script or os.path.abspath(__file__))} hook"
 
 
+HOOK_MATCHER = ".*"     # every tool: the hook itself is the closed-world classifier
+
+
 def hook_settings() -> Dict[str, Any]:
     """The ``hooks`` fragment a supervised session's settings file would hold (this module never writes it)."""
-    return {"hooks": {"PreToolUse": [{"matcher": "Bash|PowerShell|Write|Edit|NotebookEdit|MultiEdit|Read|mcp__davinci-resolve__.*",
+    return {"hooks": {"PreToolUse": [{"matcher": HOOK_MATCHER,
                                       "hooks": [{"type": "command", "command": build_hook_command()}]}]}}
 
 
-def main(argv: Optional[Sequence[str]] = None, stdin: Optional[TextIO] = None, out: Optional[TextIO] = None) -> int:
+def _cmd_approvals(a: Any, out: TextIO, env: Dict[str, str], isatty: bool,
+                   ask: Callable[[str], str]) -> int:
+    d = a.dir or env.get(APPROVALS_ENV, "")
+    if not d:
+        out.write(f"approvals directory unknown: pass --dir <state>/approvals or set {APPROVALS_ENV}\n")
+        return 2
+    if a.acmd == "list":
+        recs = list_approvals(d)
+        for r in recs:
+            out.write(f"{r.get('id')} {r.get('status')} {r.get('created_utc')} {r.get('role')} {r.get('tool')} "
+                      f"[{r.get('rule')}] {r.get('input_summary')}\n")
+        if not recs:
+            out.write("no approval records\n")
+        return 0
+
+    def confirm(rec: Dict[str, Any]) -> bool:
+        out.write(json.dumps(rec, indent=2, sort_keys=True) + "\n")
+        out.flush()
+        return ask("Type APPROVE to approve this exact call: ").strip() == "APPROVE"
+    try:
+        rec = approve(d, a.id, env=env, isatty=isatty, confirm=confirm)
+    except (ApprovalRefused, ValueError, OSError) as exc:
+        out.write(f"refused: {exc}\n")
+        return 2
+    out.write(f"approved {rec['id']} at {rec['approved_utc']}; the session still confirms it in the native prompt\n")
+    return 0
+
+
+def main(argv: Optional[Sequence[str]] = None, stdin: Optional[TextIO] = None, out: Optional[TextIO] = None,
+         env: Optional[Dict[str, str]] = None, ask: Optional[Callable[[str], str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="dev_supervisor.authority", description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("hook", help="Claude Code PreToolUse hook (JSON on stdin)")
@@ -491,13 +962,26 @@ def main(argv: Optional[Sequence[str]] = None, stdin: Optional[TextIO] = None, o
     c.add_argument("--target", default="")
     c.add_argument("--attr", action="append", default=[], help="key=value (value parsed as JSON when possible)")
     sub.add_parser("settings", help="print the hooks settings fragment")
+    ap_ = sub.add_parser("approvals", help="pending approvals: list (read-only) or approve (human terminal only)")
+    ap_.add_argument("--dir", default="", help="<state>/approvals (default: $" + APPROVALS_ENV + ")")
+    asub = ap_.add_subparsers(dest="acmd", required=True)
+    asub.add_parser("list")
+    ag = asub.add_parser("approve")
+    ag.add_argument("id")
     a = ap.parse_args(argv)
     stdin, out = stdin or sys.stdin, out or sys.stdout
+    env = dict(os.environ if env is None else env)
     if a.cmd == "hook":
         return run_hook(stdin, out)
     if a.cmd == "settings":
         out.write(json.dumps(hook_settings(), indent=2) + "\n")
         return 0
+    if a.cmd == "approvals":
+        try:
+            tty = bool(stdin.isatty())
+        except (AttributeError, ValueError, OSError):
+            tty = False
+        return _cmd_approvals(a, out, env, tty, ask or input)
     attrs: Dict[str, Any] = {}
     for kv in a.attr:
         k, _, v = kv.partition("=")
@@ -505,7 +989,7 @@ def main(argv: Optional[Sequence[str]] = None, stdin: Optional[TextIO] = None, o
             attrs[k] = json.loads(v)
         except ValueError:
             attrs[k] = v
-    d = decide(Action(a.kind, a.target, attrs), context_from_env(dict(os.environ), os.getcwd()))
+    d = decide(Action(a.kind, a.target, attrs), context_from_env(env, os.getcwd()))
     out.write(f"{d.verdict} [{d.rule}] {d.reason}\n")
     return 0 if d.allowed else 2
 
