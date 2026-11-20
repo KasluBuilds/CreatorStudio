@@ -87,7 +87,6 @@ Status record dated **2026-11-17**. Baseline commit **`93a9a829e073`** on `main`
 | Task | Owner | Branch | Status | Lease expires | Owns |
 |---|---|---|---|---|---|
 | T-CRD-001 Enforce Research contract version and safety-critical signals | claude:creative-director-stream | `task/t-crd-001-impl` | ACTIVE | 2026-11-18T13:39:25+00:00 | orchestrator/creative_director/, orchestrator/tests/test_creative_director.py, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
-| T-RSR-001 Research security remediation (Assignment 6: findings F-01, F-02, F-04, F-05, F-06, F-07) | claude:research-stream | `task/t-rsr-001-claim` | ACTIVE | 2026-11-18T18:39:46+00:00 | orchestrator/research/, orchestrator/tests/test_research.py, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 | T-RSV-002 Safe, validated DaVinci Resolve execution layer (M-RSV-02) | claude:resolve-stream | `task/t-rsv-002` | ACTIVE | 2026-11-18T22:17:56+00:00 | orchestrator/resolve_executor/, orchestrator/tests/test_resolve_executor.py, AI_Creator_Studio_Documentation/RESOLVE_INTEGRATION.md, AI_Creator_Studio_Documentation/TECHNICAL_ARCHITECTURE.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.

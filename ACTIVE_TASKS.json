@@ -685,12 +685,9 @@
       "owner": "claude:research-stream",
       "branch": "task/t-rsr-001-claim",
       "worktree": "../CreatorStudio-worktrees/t-rsr-001-claim",
-      "status": "ACTIVE",
+      "status": "RELEASED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-17T18:39:46+00:00",
-        "expires": "2026-11-18T18:39:46+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
@@ -721,7 +718,7 @@
         "python -B dashboard/tracker_check.py --against origin/main",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Claim only (step 00); implementation (step 01) is not started until this claim is merged on main. Authorized by Lukas and ChatGPT (relayed in session 2026-11-17) to act as Research owner; the package owner record claude:research-stream is still REPORTED, not independently confirmed. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; each task edits only its own records. The Assignment 5 audit report is not in the repository: scope is the recovered finding summary relayed by Lukas, and the available evidence does not establish an F-03 finding. Historical counts (220 Research tests, 831 full suite) are reported, not verified. Synthetic data only. Claim PR #32 merged into main 2026-11-17T22:12:47Z (merge commit 469b95dda98365c8b9f23824e9f11684c3d6b1a2); Step 01 started in the same worktree after fast-forwarding to that commit. Step 01 (implementation) finished and submitted READY_FOR_REVIEW on this branch (task/t-rsr-001-claim, based on origin/main 3f0a953). Not merged and the lease not released by Claude. Deployment-level F-02 is NOT complete: it needs an orchestrator-side verification service and a policy-enforcing signer, which do not exist. PROJECT_STATUS.json (milestone M-RSR-01) was not edited because it is not among this task's owned paths; the integrator should record the evidence there."
+      "integration_notes": "Claim only (step 00); implementation (step 01) is not started until this claim is merged on main. Authorized by Lukas and ChatGPT (relayed in session 2026-11-17) to act as Research owner; the package owner record claude:research-stream is still REPORTED, not independently confirmed. Overlap on the four shared registry files is covered by AGR-GOV-REGISTRY-01, extended to this task; each task edits only its own records. The Assignment 5 audit report is not in the repository: scope is the recovered finding summary relayed by Lukas, and the available evidence does not establish an F-03 finding. Historical counts (220 Research tests, 831 full suite) are reported, not verified. Synthetic data only. Claim PR #32 merged into main 2026-11-17T22:12:47Z (merge commit 469b95dda98365c8b9f23824e9f11684c3d6b1a2); Step 01 started in the same worktree after fast-forwarding to that commit. Step 01 (implementation) finished and submitted READY_FOR_REVIEW on this branch (task/t-rsr-001-claim, based on origin/main 3f0a953). Not merged and the lease not released by Claude. Deployment-level F-02 is NOT complete: it needs an orchestrator-side verification service and a policy-enforcing signer, which do not exist. PROJECT_STATUS.json (milestone M-RSR-01) was not edited because it is not among this task's owned paths; the integrator should record the evidence there. RELEASED 2026-11-20 by claude:repository-coordinator (Main) under Lukas's in-session decision of 2026-11-20 to take over the expired tasks (lease expired 2026-11-18T18:39Z; no uncommitted work in the old worktree). Step 01 (PR #43, findings F-01, F-02, F-04, F-05, F-06, F-07) was merged as edef1b6062b7 through dev_supervisor.integrate after an independent review; nothing of this task is left unmerged. Further Research work is registered as a new task when it starts."
     },
     {
       "id": "T-AST-004",
