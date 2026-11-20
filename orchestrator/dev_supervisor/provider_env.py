@@ -28,6 +28,8 @@ _STRIPPED_FOR_PRO = ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_AP
                      "ANTHROPIC_SMALL_FAST_MODEL", "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY",
                      "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT", "CLAUDE_CODE_DISABLE_REASONING_EFFORT")
 
+AUTHORITY_PREFIX = "CS_AUTHORITY_"     # policy variables come only from session_policy, never from the parent
+
 PARENT_SESSION_VARS = ("CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_ENTRYPOINT",
                        "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID",
                        "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_EXECPATH")
@@ -51,4 +53,4 @@ def child_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
     """The environment for a ``claude`` child process."""
     base = dict(os.environ if base is None else base)
     stripped = PARENT_SESSION_VARS if provider(base) == "inherit" else PARENT_SESSION_VARS + _STRIPPED_FOR_PRO
-    return {k: v for k, v in base.items() if k.upper() not in stripped}
+    return {k: v for k, v in base.items() if k.upper() not in stripped and not k.upper().startswith(AUTHORITY_PREFIX)}

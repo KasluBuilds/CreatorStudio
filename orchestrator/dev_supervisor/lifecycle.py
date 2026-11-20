@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence, Tuple
 
 from . import provider_env
+from .session_policy import PolicyInstallError
 
 try:
     from .state_store import StateStore, StoreError, parse_iso, utc_iso
@@ -95,6 +96,7 @@ class LaunchSpec:
     stdout_path: str
     stderr_path: str
     max_runtime_s: float
+    env: Dict[str, str] = field(default_factory=dict)   # extra child environment (authority policy), merged last
 
 
 @dataclass
@@ -203,7 +205,7 @@ class ClaudeCliLauncher:
         if not spec.argv or any(not isinstance(a, str) for a in spec.argv):
             raise LifecycleError("argv must be a non-empty list of strings")
         argv = [self.resolve_executable()] + list(spec.argv[1:])
-        kwargs: Dict[str, Any] = {"cwd": spec.cwd, "shell": False, "close_fds": True, "env": provider_env.child_env()}
+        kwargs: Dict[str, Any] = {"cwd": spec.cwd, "shell": False, "close_fds": True, "env": {**provider_env.child_env(), **spec.env}}
         if os.name == "nt":
             kwargs["creationflags"] = (getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
                                        | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
@@ -402,7 +404,12 @@ class Supervisor:
             w.previous_session_ids.append(w.session_id)
         w.session_id = str(uuid.UUID(str(self.session_factory())))
         w.pid, w.exit_code, w.ended_at, w.stop_requested_at = None, None, None, None
-        spec = self.build_spec(w)
+        try:
+            spec = self.build_spec(w)
+        except PolicyInstallError as e:       # never launch a worker without its authority hook
+            self._event("policy_install_failed", w, error=str(e)[:200])
+            self._fail(w, "policy_install_failed")
+            return w
         w.status = WorkerStatus.STARTING
         self.registry.update(w)               # intent persisted before the launch
         self._event("launch_begin", w, session_id=w.session_id, restart_count=w.restart_count)

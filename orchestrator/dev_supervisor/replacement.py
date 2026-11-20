@@ -64,6 +64,7 @@ class SessionStatus:
     RETIRED = "RETIRED"            # cleared after the new session was confirmed
     STARTING = "STARTING"
     FAILED = "FAILED"
+    EXITED = "EXITED"              # process ended without a replacement; never authoritative
     RETIRE_FAILED = "RETIRE_FAILED"  # new session confirmed, old one could not be cleared: stop it by hand
 
 
@@ -134,9 +135,24 @@ def _set(store: StateStore, doc: Dict[str, Any], sid: str, **fields: Any) -> Non
 def register_session(store: StateStore, session_id: str, role: str) -> Dict[str, Any]:
     """Record a running session as ACTIVE and authoritative (for example the current Main)."""
     doc = load_sessions(store)
+    if role == "main":                   # only one Main is authoritative
+        for sid, rec in doc["sessions"].items():
+            if sid != session_id and rec.get("role") == "main" and rec.get("authoritative"):
+                rec["authoritative"] = False
+                rec["status"] = SessionStatus.EXITED
     _set(store, doc, session_id, role=role, status=SessionStatus.ACTIVE, authoritative=True)
     store.append_event("session_registered", session_id=session_id, role=role)
     return doc["sessions"][session_id]
+
+
+def mark_exited(store: StateStore, session_id: str) -> bool:
+    """A session whose process ended: status EXITED, non-authoritative. False if it is not recorded."""
+    doc = load_sessions(store)
+    if session_id not in doc["sessions"]:
+        return False
+    _set(store, doc, session_id, status=SessionStatus.EXITED, authoritative=False)
+    store.append_event("session_exited", session_id=session_id)
+    return True
 
 
 def reset_failures(store: StateStore, session_id: str, reason: str) -> None:

@@ -21,11 +21,17 @@
 - NOT TESTED: Write/Edit live behaviour through the installer (covered by the unit tests of `authority.py` only);
   a supervisor-launched interactive Main; replacement flow.
 
-## Not done (needs the package owner)
-`launch.py` does not call this module yet. Until it does, **no supervisor-launched Main or worker has the hook**.
-The integration is three lines per launch path (`install`, `argv_with_policy`, merge `env`), plus a startup check that
-refuses to launch when `PolicyInstallError` is raised. `launch.py`, `cli.py` and `config.py` currently carry another
-session's uncommitted `main-host` changes (worktree `dev-supervisor-main-terminal-host`), so editing them now would collide.
+## Launch wiring (T-DEV-027, implemented, unit-tested offline)
+- Workers: `ConfiguredSupervisor.build_spec` calls `install(..., "worker", repo_root, roots=[worktree])` and
+  `argv_with_policy`; `LaunchSpec.env` carries `inst.env` and `ClaudeCliLauncher` merges it over `provider_env.child_env()`.
+  A `PolicyInstallError` makes `_launch` fail the worker (status FAILED, signature `policy_install_failed`, normal
+  backoff/BLOCKED rules); nothing is launched, there is no unhooked fallback.
+- Main: `InteractiveMainLauncher.open_main` installs with role `main`, roots = exactly: repo root, the sibling
+  `CreatorStudio-worktrees` folder, the supervisor store directory, and `~/.claude/projects/<slug>` (slug = repo root
+  path with every non-alphanumeric character replaced by `-`, so Main can read supervisor state and its own memory), inserts `--settings`, and passes `inst.env` to `Terminal.open(..., env=)`
+  (`NewConsoleTerminal` merges it over the child env). Installation failure raises `LaunchError`; Main is not opened.
+- Both paths take an injectable installer (`Services.policy_install`) so tests never start a hook process.
+- NOT TESTED live: a supervisor-launched interactive Main and a supervisor-launched worker actually running the hook.
 
 ## Review round 1 changes and remaining limits
 - Verification now parses the hook output as JSON (`hookSpecificOutput.hookEventName == PreToolUse`, `permissionDecision`)
