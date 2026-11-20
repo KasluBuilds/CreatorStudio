@@ -699,7 +699,7 @@ WORKER_ALLOW = [
     "gh api repos/KasluBuilds/CreatorStudio/pulls", "gh api -X GET repos/x/y",
     'python -B -m unittest discover -s tests -p "test_dev_x.py"', "python -B -I -m unittest discover -s tests -p test_dev_x.py",
     "python -B -m unittest discover -s tests -p test_x.py",
-    "python -B -m unittest tests.test_dev_authority -v", "python -B -m governance validate",
+    "python -B -m unittest orchestrator.tests.test_dev_authority -v", "python -B -m governance validate",
     "python -B -m governance validate --against origin/main", "python -B -m governance leases",
     "python -B -m governance handoff", "python -B -m governance handoff --check", "python -B -m governance wave submit",
     "python -B -m governance wave status", "python -B -m governance wave status w03 --json",
@@ -1031,6 +1031,220 @@ class ReviewRound2Boundary(Base):
                     "git restore orchestrator/tests/x.py", "sed -n 1p orchestrator/dev_supervisor/*.md"):
             with self.subTest(cmd=cmd):
                 self.assertFalse(au.touches_boundary_command(cmd, ctx, LIVE_ROOT))
+
+class Followups029(Base):
+    """T-DEV-029: reviewer command forms, rtk global flags, gh --repo, unittest targets, approvals default dir."""
+
+    def wenv(self, **extra):
+        return self.env("authoritative", root=WT, roots=[WT], **extra)
+
+    def worker(self, cmd, cwd=WT, **extra):
+        return self.hook("Bash", {"command": cmd}, env=self.wenv(**extra), cwd=cwd)
+
+    def advisory(self, cmd):
+        return self.hook("Bash", {"command": cmd}, "advisory")
+
+    # ---- 1. the commands a reviewer prompt tells the worker to run
+    def test_reviewer_command_forms_are_allowed(self):
+        for cmd in ("gh pr comment 5 --body-file review-comment.md",
+                    "gh pr comment 123 --body-file review-comment.md 2>&1",
+                    "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_review.py",
+                    "python -B -I -m unittest discover -s orchestrator/tests -t . -p test_dev_cli.py",
+                    "python -B -I -m unittest discover -s orchestrator/tests -t orchestrator -p test_dev_cli.py",
+                    "python -B -I -m unittest discover -s orchestrator/tests"):
+            with self.subTest(cmd=cmd):
+                got, why = self.worker(cmd)
+                self.assertEqual(got, "allow", why)
+
+    def test_reviewer_command_forms_deny_the_unsafe_variants(self):
+        for cmd in ("gh pr comment 5 --body-file ../review-comment.md",
+                    "gh pr comment 5 --body-file C:/elsewhere/review-comment.md",
+                    "gh pr comment 5 --body-file ~/review-comment.md",
+                    "gh pr comment 5 --body-file .env",
+                    "gh pr comment 5 --body-file",
+                    'gh pr comment 5 --body "line one\nline two"',
+                    "gh pr comment 5 --body-file review-comment.md --web",
+                    "gh pr comment 5 6 --body-file review-comment.md",
+                    "gh pr merge 5",
+                    'python -B -I -m unittest discover -s orchestrator/tests -p "test_dev_*.py"',
+                    "python -B -I -m unittest discover -s orchestrator/tests -p ../x.py",
+                    "python -B -I -m unittest discover -s orchestrator/tests -p tests/test_x.py",
+                    "python -B -I -m unittest discover -s C:/elsewhere -p test_x.py",
+                    "python -B -I -m unittest discover -s ../x -p test_x.py",
+                    "python -B -I -m unittest discover -s orchestrator/tests -t C:/elsewhere",
+                    "python -B -I -m unittest discover -s orchestrator/tests extra"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.worker(cmd)[0], "deny")
+
+    # ---- 2. rtk global flags before the subcommand
+    def test_advisory_rtk_global_flags_are_unwrapped(self):
+        for cmd in ("rtk -v git push origin main", "rtk -u git push origin main",
+                    "rtk --skip-env git push origin main", "rtk -vv -u git push origin main",
+                    "rtk -v test git push origin main", "rtk test -v git push origin main",
+                    "rtk --skip-env -u bypass git push origin main"):
+            with self.subTest(cmd=cmd):
+                acts = au.classify_command(cmd)
+                self.assertEqual([(a.kind, a.attrs.get("branch")) for a in acts], [(au.GIT_PUSH, "main")])
+                got, why = self.advisory(cmd)
+                self.assertEqual(got, "deny")
+                self.assertIn("push-main", why)
+
+    def test_advisory_rtk_flags_force_push_and_other_inner_commands(self):
+        for cmd in ("rtk --skip-env git push --force origin task/x", "rtk -v git push -f origin task/x",
+                    "rtk -u git push origin +task/x"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(au.classify_command(cmd)[0].kind, au.FORCE_PUSH)
+                got, why = self.advisory(cmd)
+                self.assertEqual(got, "deny")
+                self.assertIn("force-push", why)
+        self.assertEqual(au.classify_command("rtk -v git add .")[0].kind, au.STAGE_ALL)
+        self.assertEqual(au.classify_command("rtk -u rm -rf x")[0].kind, au.IRRECOVERABLE_DELETE)
+        self.assertEqual(au.classify_command("rtk -v git commit --no-verify -m x")[0].kind, au.SECURITY_BYPASS)
+
+    def test_advisory_rtk_flags_do_not_deny_a_routine_inner_command(self):
+        for cmd in ("rtk -v git status", "rtk -u git push origin task/x", "rtk --skip-env git log --oneline"):
+            with self.subTest(cmd=cmd):
+                self.assertIsNone(self.advisory(cmd)[0])
+        self.assertEqual(au.classify_command("rtk -v"), [])
+        self.assertEqual(au.classify_command("rtk -v -u"), [])
+
+    def test_worker_never_allows_rtk_with_flags(self):
+        for cmd in ("rtk -v git status", "rtk -u git status", "rtk --skip-env git status", "rtk -v test git status"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.worker(cmd)[0], "deny")
+
+    # ---- 3. gh -R/--repo must be the own repository
+    def test_worker_gh_repo_flag_is_the_own_repository_only(self):
+        own = "KasluBuilds/CreatorStudio"
+        for cmd in (f"gh pr view 5 --repo {own}", f"gh pr view 5 -R {own}", f"gh pr view 5 --repo={own}",
+                    f"gh pr list --repo {own} --state open", f"gh pr diff 5 -R {own}",
+                    f"gh pr checks 5 --repo {own}", f"gh issue view 44 --repo {own}",
+                    f"gh issue list -R {own}", f"gh pr view 5 --repo {own.lower()}"):
+            with self.subTest(cmd=cmd):
+                got, why = self.worker(cmd)
+                self.assertEqual(got, "allow", why)
+        for cmd in ("gh pr view 5 --repo other/repo", "gh pr view 5 -R other/repo", "gh pr view 5 --repo=other/repo",
+                    f"gh pr view 5 --repo https://github.com/{own}", f"gh pr view 5 -R github.com/{own}",
+                    f"gh pr view 5 --repo git@github.com:{own}.git", "gh pr view 5 --repo CreatorStudio",
+                    f"gh pr view 5 --repo {own}/extra", f"gh pr view 5 --repo {own}x", "gh pr view 5 --repo",
+                    "gh pr list -R KasluBuilds/Other", "gh issue view 44 --repo other/repo",
+                    "gh pr diff 5 --repo other/repo", "gh pr checks 5 -R other/repo"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.worker(cmd)[0], "deny")
+
+    def test_worker_gh_repo_flag_follows_the_env_override(self):
+        env_over = {"CS_AUTHORITY_GH_REPO": "acme/fork"}
+        self.assertEqual(self.worker("gh pr view 5 --repo acme/fork", **env_over)[0], "allow")
+        self.assertEqual(self.worker("gh pr view 5 --repo KasluBuilds/CreatorStudio", **env_over)[0], "deny")
+        self.assertEqual(self.worker("gh pr view 5 --repo other/repo", **env_over)[0], "deny")
+        self.assertEqual(self.worker("gh pr view 5 --repo acme/fork", CS_AUTHORITY_GH_REPO="")[0], "deny")   # unset -> default
+        self.assertEqual(self.worker("gh pr view 5 --repo KasluBuilds/CreatorStudio", CS_AUTHORITY_GH_REPO="  ")[0],
+                         "allow")
+
+    def test_gh_repo_ok_unit(self):
+        ctx = au.PolicyContext()
+        self.assertTrue(au.gh_repo_ok("KasluBuilds/CreatorStudio", ctx))
+        for bad in ("", "x", "a/b/c", "https://github.com/KasluBuilds/CreatorStudio", "KasluBuilds/CreatorStudio ",
+                    "KasluBuilds\\CreatorStudio"):
+            self.assertFalse(au.gh_repo_ok(bad, ctx), bad)
+
+    # ---- 4. python -m unittest: discover, or a test module under orchestrator/tests
+    def test_worker_unittest_allows_only_test_modules_under_orchestrator_tests(self):
+        for cmd, cwd in (("python -B -I -m unittest orchestrator.tests.test_dev_review", WT),
+                         ("python -B -I -m unittest orchestrator.tests.test_dev_review.Case.test_x", WT),
+                         ("python -B -m unittest -v orchestrator.tests.test_dev_cli orchestrator.tests.test_dev_review", WT),
+                         ("python -B -m unittest orchestrator/tests/test_dev_cli.py", WT),
+                         ("python -B -m unittest test_dev_cli", WT + "/orchestrator/tests"),
+                         ("python -B -m unittest test_dev_cli.TickLatencyTests", WT + "/orchestrator/tests"),
+                         ("python -B -m unittest tests.test_dev_cli", WT + "/orchestrator"),
+                         ("python -B -m unittest -k tick orchestrator.tests.test_dev_cli", WT)):
+            with self.subTest(cmd=cmd):
+                got, why = self.worker(cmd, cwd=cwd)
+                self.assertEqual(got, "allow", why)
+
+    def test_worker_unittest_denies_other_dotted_names(self):
+        for cmd, cwd in (("python -B -m unittest os.system", WT), ("python -B -m unittest builtins.exec", WT),
+                         ("python -B -m unittest subprocess.run", WT), ("python -B -m unittest test_x", WT),
+                         ("python -B -m unittest tests.test_x", WT),                     # WT/tests, not orchestrator/tests
+                         ("python -B -m unittest orchestrator.tests.helper", WT),         # not named test_*
+                         ("python -B -m unittest orchestrator.tests", WT),
+                         ("python -B -m unittest orchestrator.dev_supervisor.authority", WT),
+                         ("python -B -m unittest evil.orchestrator.tests.test_x", WT),
+                         ("python -B -m unittest orchestrator.tests.test_dev_cli os.system", WT),
+                         ("python -B -m unittest orchestrator/tests/helper.py", WT),
+                         ("python -B -m unittest ../x/orchestrator/tests/test_a.py", WT),
+                         ("python -B -m unittest C:/elsewhere/orchestrator/tests/test_a.py", WT),
+                         ("python -B -m unittest x.py", WT), ("python -B -m unittest", WT),
+                         ("python -B -m unittest -k x", WT), ("python -B -m unittest test_x", WT + "/orchestrator/tests"
+                                                              + "/..")):
+            with self.subTest(cmd=cmd, cwd=cwd):
+                self.assertEqual(self.worker(cmd, cwd=cwd)[0], "deny")
+
+    # ---- 5. approvals CLI default directory
+    def run_cli(self, argv, env, stdin=None, answer="APPROVE"):
+        out = io.StringIO()
+        rc = au.main(argv, stdin=stdin or io.StringIO(""), out=out, env=env, ask=lambda prompt: answer)
+        return rc, out.getvalue()
+
+    def queue(self):
+        tin = {"file_path": ROOT + "/pro.ps1"}
+        self.hook("Edit", tin, "advisory")
+        return au.approval_id(au.call_hash("Edit", tin))
+
+    def test_approvals_default_dir_is_the_supervisor_state_dir(self):
+        aid = self.queue()                                  # written to <tmp>/state/approvals
+        env = {"CREATORSTUDIO_DEV_SUPERVISOR_DIR": str(self.tmp / "state")}
+        rc, out = self.run_cli(["approvals", "list"], env)
+        self.assertEqual(rc, 0, out)
+        self.assertIn(aid, out)
+        self.assertIn("PENDING", out)
+        rc, out = self.run_cli(["approvals", "approve", aid], env, stdin=_TTY(""))
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(au.read_approval(self.approvals, aid)["status"], "APPROVED")
+
+    def test_approvals_default_dir_follows_the_config_file(self):
+        aid = self.queue()
+        cfg = self.tmp / "elsewhere" / "config.json"
+        cfg.parent.mkdir()
+        cfg.write_text(json.dumps({"state_dir": str(self.tmp / "state")}), encoding="utf-8")
+        for argv in (["approvals", "--config", str(cfg), "list"],):
+            rc, out = self.run_cli(argv, {"CREATORSTUDIO_DEV_SUPERVISOR_DIR": str(self.tmp / "nowhere")})
+            self.assertEqual(rc, 0, out)
+            self.assertIn(aid, out)
+        rc, out = self.run_cli(["approvals", "list"], {"CREATORSTUDIO_DEV_SUPERVISOR_CONFIG": str(cfg)})
+        self.assertIn(aid, out)
+
+    def test_explicit_dir_and_env_win_over_the_default(self):
+        aid = self.queue()
+        env = {"CREATORSTUDIO_DEV_SUPERVISOR_DIR": str(self.tmp / "nowhere")}
+        rc, out = self.run_cli(["approvals", "list"], env)
+        self.assertIn("no approval records", out)
+        rc, out = self.run_cli(["approvals", "--dir", self.approvals, "list"], env)
+        self.assertIn(aid, out)
+        rc, out = self.run_cli(["approvals", "list"], {**env, "CS_AUTHORITY_APPROVALS_DIR": self.approvals})
+        self.assertIn(aid, out)
+
+    def test_approve_keeps_its_refusals_with_the_default_dir(self):
+        aid = self.queue()
+        env = {"CREATORSTUDIO_DEV_SUPERVISOR_DIR": str(self.tmp / "state")}
+        rc, out = self.run_cli(["approvals", "approve", aid], env)               # no TTY
+        self.assertEqual(rc, 2)
+        self.assertIn("not an interactive terminal", out)
+        for mode in ("advisory", "authoritative", ""):
+            rc, out = self.run_cli(["approvals", "approve", aid], {**env, "CS_AUTHORITY_MODE": mode}, stdin=_TTY(""))
+            self.assertEqual(rc, 2)
+            self.assertIn("hooked session", out)
+        rc, out = self.run_cli(["approvals", "approve", aid], env, stdin=_TTY(""), answer="no")
+        self.assertEqual(rc, 2)
+        self.assertEqual(au.read_approval(self.approvals, aid)["status"], "PENDING")
+
+    def test_bad_config_gives_a_message_not_a_traceback(self):
+        bad = self.tmp / "bad.json"
+        bad.write_text("{not json", encoding="utf-8")
+        rc, out = self.run_cli(["approvals", "--config", str(bad), "list"], {})
+        self.assertEqual(rc, 2)
+        self.assertIn("approvals directory unknown", out)
+
 
 if __name__ == "__main__":
     unittest.main()

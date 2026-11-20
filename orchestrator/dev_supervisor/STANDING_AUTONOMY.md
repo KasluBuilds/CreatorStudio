@@ -1,6 +1,6 @@
 # Standing autonomy (T-DEV-028, issue #44)
 
-Status: **IMPLEMENTED, unit-tested offline (synthetic data); security review round 1 and round 2 fixes applied.** Not live-tested with a supervisor-launched session.
+Status: **IMPLEMENTED, unit-tested offline (synthetic data); security review round 1 and round 2 fixes applied; T-DEV-029 follow-ups applied (see the last section).** Not live-tested with a supervisor-launched session.
 
 Source: Lukas's standing authority of 2026-11-20. Routine development needs no approval; a short list stays protected.
 This extends the existing authority architecture (`authority.py`, `session_policy.py`, `AUTHORITY.md`,
@@ -60,6 +60,10 @@ worker routine allowlist":
 
 For the deny-list used in both modes, `classify_command` unwraps `rtk test|err|summary|run|proxy|bypass <cmd>` to the
 inner command, so Main's advisory hook also sees, for example, `rtk test git push origin main` as a push to main.
+Since T-DEV-029 it also drops any leading `-x`/`--xxx` rtk global flags (before and after the runner word), so
+`rtk -v git push origin main`, `rtk -u git push ...` and `rtk --skip-env git push --force ...` are classified like the
+inner command. A worker still gets no allow for `rtk` with flags (the structural rule accepts `rtk` only directly in
+front of `git`, `gh`, `ls`, `grep`, `find`, `wc`, `diff`).
 
 The detailed lists:
 - **Paths.** Every path argument is resolved against that cwd and must stay inside the roots (the temp dir does NOT
@@ -77,12 +81,17 @@ The detailed lists:
   list`; `stash list|show`; `remote [-v]`, `remote get-url <name>`; `config --get|--get-all` of `user.*`,
   `remote.*.url|fetch`, `branch.*.remote|merge`, `init.defaultBranch`. `worktree add` is no longer allowed.
 - **gh:** `pr view|list|checks|diff|create|comment`, `issue view|list|create|comment` with per-verb option lists;
-  `--body-file`/`-F` must be inside the roots; `--repo` only on reads; `--jq`, `--template`, `--web` refused.
+  `--body-file`/`-F` must be inside the roots; `--repo` only on reads and (T-DEV-029) only the own repository:
+  `-R`/`--repo` must equal `$CS_AUTHORITY_GH_REPO` when set, else `KasluBuilds/CreatorStudio` (any other owner/name,
+  bare name, host-qualified name or URL is denied); `--jq`, `--template`, `--web` refused.
   `gh api <endpoint>` GET only (`-X GET`, `--paginate`, `-i`, `--silent`); no fields, headers, `--hostname`,
   `--jq` or `graphql`. Since round 2 (N2) the endpoint must be a relative path of plain name segments (no URL, host,
   `:` or `..`), and a `repos/...` endpoint must start with `repos/<owner>/<repo>`; a `pr`/`issue` operand is a number
   or a branch name, never a URL or a `.../pull/N` or `.../issues/N` path.
-- **python** `[-B] [-I] -m`: `unittest` (discover `-s/-t` inside the roots), `governance validate [--against REF]`,
+- **python** `[-B] [-I] -m`: `unittest` (`discover` with `-s/-t` inside the roots and `-p` a plain file name; or, since
+  T-DEV-029, only operands that resolve to a `<root>/orchestrator/tests/**/test_*.py` module, as a path or a dotted
+  name such as `orchestrator.tests.test_x.Case.test_m`; any other dotted name and a bare `unittest` are denied),
+  `governance validate [--against REF]`,
   `leases [--now]`, `handoff [--check]` (never `--write`), `wave submit [--attempts N]`, `wave status [id] [--json]`;
   `dev_supervisor status|workers|doctor|report|compact-check|snapshot [--out inside]|route` (never `--yes` or
   `--config`); `creator_state` read commands (`list check resume log checkpoints inventory ingest-status
@@ -95,9 +104,11 @@ The detailed lists:
   or `git commit -F <file inside the roots>`.
 
 ## How Lukas approves
-1. `python -B -m dev_supervisor.authority approvals --dir <state>/approvals list` in his own terminal (not inside a
-   Claude session).
-2. `python -B -m dev_supervisor.authority approvals --dir <state>/approvals approve <id>`, type `APPROVE`.
+1. `python -B -m dev_supervisor.authority approvals list` in his own terminal (not inside a Claude session). Since
+   T-DEV-029 `--dir` defaults to `<supervisor state dir>/approvals` (same configuration loading as
+   `python -m dev_supervisor`; `--config <file>` is accepted; `--dir` and `$CS_AUTHORITY_APPROVALS_DIR` still win).
+2. `python -B -m dev_supervisor.authority approvals approve <id>`, type `APPROVE` (still refused without a TTY and
+   inside any hooked session).
 3. When Main repeats the identical call, the hook answers `ask` and Claude Code's native permission prompt asks him to
    confirm. Workers are never offered approved actions.
 
@@ -146,3 +157,49 @@ The detailed lists:
 - A recursive search inside the roots (`grep -r KEY .`, `rg`, the Grep tool without a glob) can still read a secret
   file that happens to sit inside the worktree; only targeted names and globs are refused. The repository holds no
   credentials by project rule.
+
+## Follow-ups (T-DEV-029)
+Status: **IMPLEMENTED, unit-tested offline.** Not live-tested.
+
+**Fixed**
+1. **Reviewer prompts** (`review.build_prompt`) carry a "How to work under the worker rule" section: tests as
+   `python -B -I -m unittest discover -s orchestrator/tests -p <module>.py` with no `cd`; packet files read with the
+   Read tool; post by writing `review-comment.md` in the worktree root and running exactly
+   `gh pr comment <n> --body-file review-comment.md`; never a multi-line `--body`, never a write outside the
+   worktree. A test checks that these exact commands pass `routine_shell` and the unsafe variants do not.
+2. **rtk global flags** in the advisory deny-list (see above).
+3. **`gh -R/--repo`** for workers is the own repository only (`CS_AUTHORITY_GH_REPO`, default
+   `KasluBuilds/CreatorStudio`); `session_policy.py` was not changed, so the env variable is not set by the
+   supervisor yet and the default constant applies.
+4. **`python -m unittest`** for workers: `discover` or test-module operands under `<root>/orchestrator/tests` only.
+   The previous rule accepted any dotted name (`os.path`, `builtins.exec` ...), which imports arbitrary code.
+5. **`approvals list|approve`** default `--dir` is `<supervisor state dir>/approvals` (see "How Lukas approves").
+6. **Tick latency.** Live ticks took about 68 s against `poll_interval_s=15` (OBSERVED by Main; not reproduced here).
+   - Measurement: `supervisor_heartbeat.json` and `status` now carry `duration_ms` (the tick, without the poll sleep)
+     and `phase_ms` (`requests`, `workers`, `main_and_pressure`); `status` prints `last_tick_duration_ms`. The next
+     live run shows which phase is slow.
+   - `check_pressure` re-read the Main transcript tail on every tick (256 KiB growing to 8 MiB, three to four passes
+     when the last usage record is far back). `telemetry.UsageTailCache` keyed by (path, size, mtime) now answers an
+     unchanged file with one `stat` and reads only appended bytes of a grown file (with an append-only anchor check;
+     truncation, rotation and in-place rewrites fall back to the full read). Same result as before.
+   - While Main sits at `compact`/`replace` pressure with a fresh handoff, every tick also ran `verify_handoff` (git
+     and gh ref checkers). The loop now reuses the result for `HANDOFF_VERIFY_TTL_S` = 120 s; `replace_main` still
+     verifies afresh before any replacement, so a cached answer never authorises anything.
+   - Heartbeat `STALE` is now `age > max(3 x poll_interval_s, 3 x last duration_ms)`, so a slow but alive loop is not
+     reported STALE (`stale_after_s` is shown in the status JSON).
+
+**Honest status of the latency fix.** On a synthetic 24 MB transcript the old tail re-read cost about 26 ms per call
+(five calls 128 ms, cached 0.06 ms), which cannot by itself explain a 50 s gap. The two fixes remove the work that
+grows with transcript size and with pressure, but the 68 s figure is NOT shown to be caused by them: that needs a
+live run reading `phase_ms`. INFERRED, not verified: slow gh/git calls in handoff verification, slow disk (`fsync`
+on every state write, virus scanning) or many session files.
+
+**Remaining limits (unchanged or new)**
+- The supervisor does not yet export `CS_AUTHORITY_GH_REPO`; a fork or renamed repository needs it set (or the
+  constant changed) or worker `gh --repo` reads are denied.
+- `unittest` and `discover` still run worker-written code (accepted limit above); the new rule only stops importing
+  arbitrary non-test modules by name. A test module a worker writes under `orchestrator/tests` is allowed by design.
+- `gh api repos/<owner>/<repo>/...` is not restricted to the own repository (only `-R/--repo` is).
+- The usage cache assumes an append-only transcript; a rewrite that keeps both size and mtime identical would not be
+  noticed (not expected from Claude Code).
+- The 68 s tick cause is unconfirmed (above).

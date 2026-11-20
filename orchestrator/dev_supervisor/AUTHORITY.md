@@ -38,16 +38,20 @@ prompt. New autonomous kinds: `spawn_subagent`, `web_read`. New protected kinds:
   `.*`) that runs `python -B <path>/authority.py hook`. Context via env: `CS_AUTHORITY_ROOTS`, `CS_AUTHORITY_REPO_ROOT`,
   `CS_AUTHORITY_OWNED_PATHS` (JSON list), `CS_AUTHORITY_GRANTS` (comma list; cannot contain unconditional denials),
   `CS_AUTHORITY_MODE` (`advisory` default / `authoritative`), `CS_AUTHORITY_ROLE`, `CS_AUTHORITY_APPROVALS_DIR`,
-  `CS_AUTHORITY_BOUNDARY_PATHS` (hook script, live authority code, user settings; never written or named in shell).
-- `python -B -m dev_supervisor.authority approvals --dir <state>/approvals list|approve <id>`: list is read-only;
-  approve is for a human terminal only (refused when `CS_AUTHORITY_MODE` is set or stdin is not a TTY).
+  `CS_AUTHORITY_BOUNDARY_PATHS` (hook script, live authority code, user settings; never written or named in shell),
+  `CS_AUTHORITY_GH_REPO` (own `owner/name` for a worker's `gh --repo/-R`; default `KasluBuilds/CreatorStudio`).
+- `python -B -m dev_supervisor.authority approvals [--dir D] [--config F] list|approve <id>`: `--dir` defaults to
+  `$CS_AUTHORITY_APPROVALS_DIR`, else `<supervisor state dir>/approvals` (state dir from the same configuration
+  loading as `python -m dev_supervisor`). list is read-only; approve is for a human terminal only (refused when
+  `CS_AUTHORITY_MODE` is set or stdin is not a TTY).
 - `python -B -m dev_supervisor.authority check --kind paid_api` evaluates one action (exit 2 unless ALLOW).
 
 ## Limits (read these)
 - A bare `git push` or `git push origin HEAD` while on `main`, and `git push --repo=origin main`, cannot be recognised from command text; rely on branch protection and the
   merge gates for that case. `authority_grants.json` is only a path the policy refuses to write; nothing reads it yet.
 - Commands wrapped by `&`, `cmd /c`, `bash -c`, `env X=1 ...` are not unwrapped (only `rtk <cmd>` and `rtk
-  bypass|test|err|summary|run|proxy <cmd>` are, since review round 2); quoted text containing
+  bypass|test|err|summary|run|proxy <cmd>` are, since review round 2, and since T-DEV-029 also behind rtk global
+  flags such as `-v`, `-u`, `--skip-env`); quoted text containing
   `;` or `|` is split like a command; `git reset --hard`, `git branch -D` and `gh api --method DELETE` are not classified.
 - Reads of secrets via `printenv KEY`, a bare `$env:KEY`, `grep` on `.env` or the `Grep` tool are not caught in
   advisory mode (in authoritative mode a worker shell segment naming a secret file is refused).

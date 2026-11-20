@@ -344,6 +344,102 @@ class UsageReadTests(Base):
             tl.read_last_usage(self.dir / "missing.jsonl")
 
 
+class UsageTailCacheTests(Base):
+    """T-DEV-029: the supervisor tick must not re-read a multi-MB transcript every poll."""
+
+    def append(self, p, *lines, raw=""):
+        with open(p, "ab") as f:
+            f.write(("".join(x + "\n" for x in lines) + raw).encode("utf-8"))
+
+    def test_unchanged_file_is_not_read_again(self):
+        p = self.transcript([asst(i=5), user()])
+        cache = tl.UsageTailCache()
+        self.assertEqual(cache.last_usage(p)["total"], 5)
+        with mock.patch("builtins.open", side_effect=AssertionError("file opened for an unchanged transcript")):
+            self.assertEqual(cache.last_usage(p)["total"], 5)
+        self.assertEqual((cache.full_reads, cache.incremental_reads), (1, 0))
+
+    def test_growth_reads_only_the_appended_bytes_and_matches_read_last_usage(self):
+        p = self.transcript([asst(i=5)] + [user("x" * 5000)] * 50)
+        cache = tl.UsageTailCache()
+        cache.last_usage(p)
+        self.append(p, user(), asst(i=11, r=2), user())
+        self.assertEqual(cache.last_usage(p), tl.read_last_usage(p))
+        self.assertEqual(cache.last_usage(p)["total"], 13)
+        self.assertEqual((cache.full_reads, cache.incremental_reads), (1, 1))
+        self.append(p, user("y"))                          # growth without a usage record keeps the last one
+        self.assertEqual(cache.last_usage(p)["total"], 13)
+        self.assertEqual(cache.full_reads, 1)
+
+    def test_partial_trailing_line_is_completed_later(self):
+        p = self.transcript([asst(i=3)])
+        cache = tl.UsageTailCache()
+        cache.last_usage(p)
+        whole = asst(i=40)
+        self.append(p, raw=whole[:30])                     # a record still being written
+        self.assertEqual(cache.last_usage(p)["total"], 3)
+        self.append(p, raw=whole[30:] + "\n")
+        self.assertEqual(cache.last_usage(p)["total"], 40)
+
+    def test_no_usage_yet_is_remembered_and_found_when_it_appears(self):
+        p = self.transcript([user(), user()])
+        cache = tl.UsageTailCache()
+        self.assertIsNone(cache.last_usage(p))
+        self.append(p, asst(i=8))
+        self.assertEqual(cache.last_usage(p)["total"], 8)
+
+    def test_truncated_or_replaced_file_falls_back_to_a_full_read(self):
+        p = self.transcript([asst(i=5)] + [user("z" * 2000)] * 20)
+        cache = tl.UsageTailCache()
+        cache.last_usage(p)
+        p.write_text(asst(i=2) + "\n", encoding="utf-8")   # smaller than before: rotated
+        self.assertEqual(cache.last_usage(p)["total"], 2)
+        self.assertEqual(cache.full_reads, 2)
+
+    def test_in_place_rewrite_that_grows_is_not_mistaken_for_an_append(self):
+        p = self.transcript([asst(i=50000)])
+        cache = tl.UsageTailCache()
+        self.assertEqual(cache.last_usage(p)["total"], 50000)
+        p.write_text(asst(i=190000) + "\n", encoding="utf-8")        # one byte longer, same start: not append-only
+        self.assertEqual(cache.last_usage(p)["total"], 190000)
+        self.assertEqual(cache.full_reads, 2)
+
+    def test_unreadable_file_raises_oserror_like_read_last_usage(self):
+        with self.assertRaises(OSError):
+            tl.UsageTailCache().last_usage(self.dir / "missing.jsonl")
+
+    def test_context_pressure_with_cache_equals_without(self):
+        p = self.transcript([asst(i=50000), user()])
+        cfg = tl.PressureConfig(windows={"claude-sonnet-5-5": 200000})
+        plain = tl.context_pressure(p, cfg)
+        cached = tl.context_pressure(p, cfg, cache=tl.UsageTailCache())
+        for k in ("tokens", "model", "window", "ratio", "level"):
+            self.assertEqual(cached[k].value, plain[k].value, k)
+
+    def test_large_transcript_second_observation_is_far_cheaper(self):
+        """Unit-level timing: a 24 MB transcript whose last usage record is old. The uncached path re-reads up to
+        8 MiB in growing windows every call; the cached path does one stat."""
+        import time
+        p = self.dir / "big.jsonl"
+        with open(p, "wb") as f:
+            f.write((asst(i=5) + "\n").encode())
+            line = (user("q" * 100000) + "\n").encode()
+            for _ in range(240):
+                f.write(line)
+        cache = tl.UsageTailCache()
+        t = time.perf_counter()
+        for _ in range(5):
+            tl.read_last_usage(p)
+        uncached = time.perf_counter() - t
+        cache.last_usage(p)
+        t = time.perf_counter()
+        for _ in range(5):
+            cache.last_usage(p)
+        cached = time.perf_counter() - t
+        self.assertEqual(cache.full_reads, 1)
+        self.assertLess(cached, uncached / 5)
+
+
 class PressureTests(Base):
     def cfg(self, **kw):
         return tl.PressureConfig(windows={"m": 1000}, **kw)

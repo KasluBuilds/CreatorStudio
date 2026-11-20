@@ -840,5 +840,121 @@ class EndToEndTests(Offline):
         self.assertEqual(env.gh.comments, [])
 
 
+# ------------------------------------------------------------------ T-DEV-029: supervisor tick latency
+
+class TickLatencyTests(Offline):
+    def make(self, **cfg):
+        env = Env(self, **cfg)
+        store = env.store()
+        return env, store, cli.SupervisorLoop(env.svc, store)
+
+    def running_main(self, env, loop, tokens=1000):
+        loop.ensure_main()
+        main = launch.read_main(loop.store)
+        pid = env.terminal.opened[-1]["pid"]
+        env.alive.add(pid)
+        env.write_session(pid, main["session_id"])
+        env.write_transcript(main["session_id"], tokens)
+        return main["session_id"]
+
+    def heartbeat(self, store):
+        return json.loads((store.directory / cli.HEARTBEAT_FILE).read_text(encoding="utf-8"))
+
+    def test_heartbeat_and_status_carry_duration_and_phases(self):
+        env, store, loop = self.make()
+        self.running_main(env, loop)
+        clock = iter(x * 0.25 for x in range(100))
+        env.svc.timer = lambda: next(clock)          # every call advances 250 ms: deterministic phases
+        loop.tick()
+        hb = self.heartbeat(store)
+        self.assertEqual(hb["duration_ms"], 1000.0)
+        self.assertEqual(hb["phase_ms"], {"requests": 250.0, "workers": 250.0, "main_and_pressure": 250.0})
+        code, out = env.cli("status", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["heartbeat"]["duration_ms"], 1000.0)
+        code, out = env.cli("status")
+        self.assertIn("last_tick_duration_ms=1000.0", out)
+
+    def test_real_timer_gives_a_non_negative_duration(self):
+        env, store, loop = self.make()
+        loop.tick()
+        self.assertGreaterEqual(self.heartbeat(store)["duration_ms"], 0.0)
+
+    def write_hb(self, store, age_s, duration_ms=None, poll=15.0, now=1_000_000.0):
+        from dev_supervisor.state_store import utc_iso
+        body = {"pid": 1, "tick": 3, "utc": utc_iso(now - age_s), "main_alive": True, "worker_count": 0,
+                "poll_interval_s": poll}
+        if duration_ms is not None:
+            body["duration_ms"] = duration_ms
+        (store.directory / cli.HEARTBEAT_FILE).write_text(json.dumps(body), encoding="utf-8")
+        return now
+
+    def test_stale_uses_the_larger_of_three_polls_and_three_tick_durations(self):
+        env, store, loop = self.make()
+        now = self.write_hb(store, age_s=100, duration_ms=None)          # no duration recorded: 3 x poll = 45 s
+        self.assertEqual(cli.heartbeat_view(store, now)["state"], "STALE")
+        now = self.write_hb(store, age_s=100, duration_ms=68000)         # a 68 s tick: limit 204 s
+        view = cli.heartbeat_view(store, now)
+        self.assertEqual((view["state"], view["stale_after_s"]), ("FRESH", 204.0))
+        now = self.write_hb(store, age_s=205, duration_ms=68000)
+        self.assertEqual(cli.heartbeat_view(store, now)["state"], "STALE")
+        now = self.write_hb(store, age_s=40, duration_ms=1000)           # fast ticks keep the 3 x poll rule
+        self.assertEqual(cli.heartbeat_view(store, now)["state"], "FRESH")
+        now = self.write_hb(store, age_s=46, duration_ms=1000)
+        self.assertEqual(cli.heartbeat_view(store, now)["state"], "STALE")
+
+    def test_bad_duration_value_is_ignored(self):
+        env, store, loop = self.make()
+        now = self.write_hb(store, age_s=100, duration_ms="fast")
+        self.assertEqual(cli.heartbeat_view(store, now)["state"], "STALE")
+
+    def test_pressure_is_not_recomputed_from_the_whole_transcript_each_tick(self):
+        env, store, loop = self.make()
+        sid = self.running_main(env, loop, tokens=20000)
+        for _ in range(3):
+            loop.tick()
+        cache = env.svc.usage_cache
+        self.assertEqual((cache.full_reads, cache.incremental_reads), (1, 0))
+        # the transcript grows: only the appended bytes are read and the new pressure is seen
+        d = env.projects / cwd_slug(str(env.repo))
+        rec = {"type": "assistant", "message": {"role": "assistant", "model": TEST_MODEL, "content": [],
+                                                 "usage": {"input_tokens": 100000, "cache_read_input_tokens": 0,
+                                                           "cache_creation_input_tokens": 0}}}
+        with open(d / f"{sid}.jsonl", "ab") as f:
+            f.write((json.dumps(rec) + "\n").encode())
+        _sess, pressure = cli.main_observation(env.svc, sid)
+        self.assertEqual(pressure["tokens"].value, 100000)
+        self.assertEqual(pressure["ratio"].value, 0.5)
+        self.assertEqual((cache.full_reads, cache.incremental_reads), (1, 1))
+
+    def test_handoff_verification_under_pressure_is_not_repeated_every_tick(self):
+        """While Main sits at compact/replace pressure with a fresh handoff, each tick used to run the git/gh ref
+        checkers. Now the result is reused for HANDOFF_VERIFY_TTL_S; the decision is unchanged."""
+        env, store, loop = self.make()
+        self.running_main(env, loop, tokens=190000)
+        code, out = env.cli("handoff", "--input", env.facts(), "--yes", "--json")
+        self.assertEqual(code, 0, out)
+        real = cli.handoff.verify_handoff
+        with mock.patch.object(cli.handoff, "verify_handoff", wraps=real) as spy:
+            first = loop.check_pressure()["decision"]
+            second = loop.check_pressure()["decision"]
+            self.assertEqual(spy.call_count, 1)
+            self.assertEqual((first["action"], first["blocked_by"]), (second["action"], second["blocked_by"]))
+            now = env.svc.clock()
+            env.svc.clock = lambda: now + cli.HANDOFF_VERIFY_TTL_S + 1      # TTL elapsed: verified again
+            loop.check_pressure()
+            self.assertEqual(spy.call_count, 2)
+
+    def test_pressure_decision_is_identical_with_and_without_the_cache(self):
+        env, store, loop = self.make()
+        sid = self.running_main(env, loop, tokens=190000)       # 95% of the window: REPLACE level
+        cached = loop.check_pressure()["decision"]
+        env.svc.usage_cache = cli.telemetry.UsageTailCache()
+        again = loop.check_pressure()["decision"]
+        for k in ("action", "level", "ratio", "allowed"):
+            self.assertEqual(cached.get(k), again.get(k), k)
+        self.assertIn(cached["action"], ("REPLACE", "COMPACT"))
+
+
 if __name__ == "__main__":
     unittest.main()

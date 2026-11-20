@@ -104,6 +104,7 @@ class PolicyContext:
     repo_root: str = ""
     approvals_dir: str = ""                     # <state>/approvals: pending approval records (human-only grants)
     boundary_paths: Tuple[str, ...] = ()        # live authority code, hook script, user settings (never written)
+    gh_repo: str = ""                           # own repository for gh -R/--repo (CS_AUTHORITY_GH_REPO); "" = default
 
 
 class AuthorityDenied(Exception):
@@ -342,6 +343,15 @@ def _abbr(tok: str, full: str, minlen: int) -> bool:
     return name.startswith("--") and len(name) >= minlen and full.startswith(name)
 
 
+def _skip_rtk_flags(tok: Sequence[str]) -> List[str]:
+    """Drop the leading ``-x`` / ``--xxx`` flags of an rtk invocation (they take no value), so the inner command is
+    classified like the command it wraps (``rtk -v git push origin main``)."""
+    i = 0
+    while i < len(tok) and tok[i].startswith("-") and len(tok[i]) > 1:
+        i += 1
+    return list(tok[i:])
+
+
 def _tokens(segment: str) -> List[str]:
     return [t.strip("\"'") for t in _TOKEN.findall(segment)]
 
@@ -359,7 +369,10 @@ def classify_command(command: str) -> List[Action]:
             continue
         head = tok[0].lower().replace(".exe", "")
         while head == "rtk" and len(tok) > 1:        # `rtk <cmd>`, and `rtk bypass|test|err|summary|run|proxy <cmd>`
-            tok = tok[2:] if tok[1].lower() in _RTK_RUNNERS else tok[1:]      # which execute <cmd>, wrap a command
+            rest = _skip_rtk_flags(tok[1:])          # rtk global flags (-v, -u, --skip-env ...) precede the subcommand
+            if rest and rest[0].lower() in _RTK_RUNNERS:     # which execute <cmd>, wrap a command
+                rest = _skip_rtk_flags(rest[1:])
+            tok = rest
             head = tok[0].lower().replace(".exe", "") if tok else ""
         if not tok:
             continue
@@ -868,6 +881,17 @@ def _spec(flags: Iterable[str] = (), values: Optional[Dict[str, Any]] = None, pa
 
 
 _INT = re.compile(r"^[+-]?\d+$")
+_PLAIN_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\-]*$")      # a unittest file pattern: no path, no glob
+OWN_GH_REPO = "KasluBuilds/CreatorStudio"
+GH_REPO_ENV = "CS_AUTHORITY_GH_REPO"
+
+
+def gh_repo_ok(value: str, ctx: PolicyContext) -> bool:
+    """``-R/--repo`` of a worker gh read: exactly the own repository (``ctx.gh_repo``, else the constant). Another
+    owner/name, a bare name, a host-qualified name and a full URL are refused."""
+    want = (ctx.gh_repo or OWN_GH_REPO).strip()
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*", value or "")) \
+        and value.lower() == want.lower()
 
 
 def _value_ok(val: _Tok, kind: Any, cwd: str, ctx: PolicyContext) -> bool:
@@ -881,6 +905,10 @@ def _value_ok(val: _Tok, kind: Any, cwd: str, ctx: PolicyContext) -> bool:
         return _path_ok(val, cwd, ctx, write=True)
     if kind == "rev":
         return _git_pos_ok(val, cwd, ctx)
+    if kind == "repo":
+        return gh_repo_ok(val.text, ctx)
+    if kind == "pattern":
+        return bool(_PLAIN_PATTERN.match(val.text))
     return kind == "any" and not val.text.startswith("-") or kind == "any-dash"
 
 
@@ -1048,14 +1076,14 @@ def _add_pathspec_ok(tok: _Tok, cwd: str, ctx: PolicyContext) -> bool:
 
 
 # ---- gh: per-verb option allowlists; --jq/--template (environment access), --web and --repo on writes are refused
-_GH_READ_COMMON = {"-R": "any", "--repo": "any", "--json": "any"}
+_GH_READ_COMMON = {"-R": "repo", "--repo": "repo", "--json": "any"}
 GH_SPECS: Dict[Tuple[str, str], _Spec] = {
     ("pr", "view"): _spec(("--comments", "-c"), _GH_READ_COMMON),
     ("pr", "list"): _spec((), {**_GH_READ_COMMON, "--state": "any", "-s": "any", "--limit": "int", "-L": "int",
                                "--author": "any", "-A": "any", "--label": "any", "-l": "any", "--base": "any",
                                "-B": "any", "--head": "any", "-H": "any", "--search": "any", "-S": "any"}),
     ("pr", "checks"): _spec(("--required",), _GH_READ_COMMON),
-    ("pr", "diff"): _spec(("--name-only", "--patch"), {"-R": "any", "--repo": "any", "--color": "any"}),
+    ("pr", "diff"): _spec(("--name-only", "--patch"), {"-R": "repo", "--repo": "repo", "--color": "any"}),
     ("pr", "create"): _spec(("--draft", "-d"), {"--title": "any-dash", "-t": "any-dash", "--body": "any-dash",
                                                 "-b": "any-dash", "--body-file": "path", "-F": "path", "--base": "any",
                                                 "-B": "any", "--head": "any", "-H": "any", "--label": "any",
@@ -1110,8 +1138,8 @@ def _gh_routine(args: Sequence[_Tok], cwd: str, ctx: PolicyContext) -> bool:
 # ---- python -m: closed module and subcommand allowlists (B4)
 _UNITTEST = _spec(("-v", "--verbose", "-q", "--quiet", "-f", "--failfast", "-b", "--buffer", "-c", "--catch",
                    "--locals"), {"-k": "any"})
-_UNITTEST_DISCOVER = _spec(_UNITTEST.flags, {"-k": "any", "-s": "path", "--start-directory": "path", "-p": "any",
-                                             "--pattern": "any", "-t": "path", "--top-level-directory": "path"})
+_UNITTEST_DISCOVER = _spec(_UNITTEST.flags, {"-k": "any", "-s": "path", "--start-directory": "path", "-p": "pattern",
+                                             "--pattern": "pattern", "-t": "path", "--top-level-directory": "path"})
 GOVERNANCE_SPECS: Dict[Tuple[str, ...], _Spec] = {
     ("validate",): _spec((), {"--against": "rev"}),
     ("leases",): _spec((), {"--now": "any"}),
@@ -1140,6 +1168,32 @@ CREATOR_STATE_READ = tuple(CREATOR_STATE_SPECS) + ("--help", "-h")
 _SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
+def _is_test_module_path(path: str, ctx: PolicyContext) -> bool:
+    """``path`` (absolute) is ``<root>/orchestrator/tests/**/test_*.py`` for one of the environment roots."""
+    p = _norm(path)
+    if not re.fullmatch(r"test_[A-Za-z0-9_]*\.py", p.rsplit("/", 1)[-1]):
+        return False
+    return any(p.lower().startswith(_norm(r).rstrip("/").lower() + "/orchestrator/tests/") for r in _env_roots(ctx))
+
+
+def _unittest_target_ok(tok: _Tok, cwd: str, ctx: PolicyContext) -> bool:
+    """A ``python -m unittest`` operand (not ``discover``): a test module file under ``orchestrator/tests`` named
+    ``test_*.py``, given as a path or as a dotted name (``test_x``, ``tests.test_x.Case.test_m``) that resolves to
+    one relative to the cwd. Any other dotted name (a standard-library or third-party module) imports arbitrary code."""
+    t = tok.text
+    if t.endswith(".py") and ("/" in t or "\\" in t):
+        r = resolve_shell_path(t, cwd)
+        return r is not None and _is_test_module_path(r, ctx)
+    if not re.fullmatch(r"[A-Za-z_]\w*(\.[A-Za-z_]\w*)*", t):
+        return False
+    segs = t.split(".")
+    for k in range(1, len(segs) + 1):                     # the longest prefix is the module, the rest class/method
+        r = resolve_shell_path("/".join(segs[:k]) + ".py", cwd)
+        if r is not None and _is_test_module_path(r, ctx):
+            return True
+    return False
+
+
 def _python_routine(args: Sequence[_Tok], cwd: str, ctx: PolicyContext) -> bool:
     texts = [a.text for a in args]
     i = 0
@@ -1154,8 +1208,7 @@ def _python_routine(args: Sequence[_Tok], cwd: str, ctx: PolicyContext) -> bool:
             pos = _parse(rest[1:], _UNITTEST_DISCOVER, cwd, ctx)
             return pos == []
         pos = _parse(rest, _UNITTEST, cwd, ctx)
-        return pos is not None and all(re.match(r"^[A-Za-z_][\w.]*$", p.text) or
-                                       (p.text.endswith(".py") and _path_ok(p, cwd, ctx)) for p in pos)
+        return bool(pos) and all(_unittest_target_ok(p, cwd, ctx) for p in pos)    # bare `unittest` discovers: no
     if mod == "governance":
         for key, spec in GOVERNANCE_SPECS.items():
             if tuple(rt[:len(key)]) == key:
@@ -1488,7 +1541,7 @@ def context_from_env(env: Dict[str, str], cwd: str) -> PolicyContext:
                          grants=frozenset(x for x in env.get("CS_AUTHORITY_GRANTS", "").split(",") if x in PROTECTED_KINDS
                                           and x not in UNCONDITIONAL_KINDS),
                          repo_root=env.get("CS_AUTHORITY_REPO_ROOT", cwd),
-                         approvals_dir=env.get(APPROVALS_ENV, ""),
+                         approvals_dir=env.get(APPROVALS_ENV, ""), gh_repo=env.get(GH_REPO_ENV, "").strip(),
                          boundary_paths=tuple(p for p in env.get(BOUNDARY_ENV, "").split(os.pathsep) if p))
 
 
@@ -1570,12 +1623,26 @@ def hook_settings() -> Dict[str, Any]:
                                       "hooks": [{"type": "command", "command": build_hook_command()}]}]}}
 
 
+def default_approvals_dir(env: Dict[str, str], config_file: Optional[str] = None) -> str:
+    """``<supervisor state dir>/approvals``, the state directory coming from the same configuration loading as the
+    dev_supervisor CLI (``--config``, ``CREATORSTUDIO_DEV_SUPERVISOR_CONFIG`` or ``<state dir>/config.json``)."""
+    try:
+        from . import config as config_mod
+    except ImportError:                                   # run as a plain script: the package is not importable
+        from dev_supervisor import config as config_mod
+    cfg = config_mod.load(config_file, env)
+    return str(cfg.state_directory(env) / "approvals")
+
+
 def _cmd_approvals(a: Any, out: TextIO, env: Dict[str, str], isatty: bool,
                    ask: Callable[[str], str]) -> int:
     d = a.dir or env.get(APPROVALS_ENV, "")
     if not d:
-        out.write(f"approvals directory unknown: pass --dir <state>/approvals or set {APPROVALS_ENV}\n")
-        return 2
+        try:
+            d = default_approvals_dir(env, getattr(a, "config", None))
+        except Exception as exc:  # noqa: BLE001 - a bad config must give a message, never a traceback
+            out.write(f"approvals directory unknown ({exc}): pass --dir <state>/approvals or set {APPROVALS_ENV}\n")
+            return 2
     if a.acmd == "list":
         recs = list_approvals(d)
         for r in recs:
@@ -1609,7 +1676,9 @@ def main(argv: Optional[Sequence[str]] = None, stdin: Optional[TextIO] = None, o
     c.add_argument("--attr", action="append", default=[], help="key=value (value parsed as JSON when possible)")
     sub.add_parser("settings", help="print the hooks settings fragment")
     ap_ = sub.add_parser("approvals", help="pending approvals: list (read-only) or approve (human terminal only)")
-    ap_.add_argument("--dir", default="", help="<state>/approvals (default: $" + APPROVALS_ENV + ")")
+    ap_.add_argument("--dir", default="", help="<state>/approvals (default: $" + APPROVALS_ENV +
+                                               ", else <supervisor state dir>/approvals)")
+    ap_.add_argument("--config", default=None, help="machine-local supervisor config used to find the state directory")
     asub = ap_.add_subparsers(dest="acmd", required=True)
     asub.add_parser("list")
     ag = asub.add_parser("approve")

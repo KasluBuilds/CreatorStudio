@@ -473,6 +473,42 @@ class Packet(NoNetwork):
                 self.assertNotRegex(text, r"(?i)[a-z]:\\\\Users")
 
 
+class PromptWorkerRule(NoNetwork):
+    """T-DEV-029: every reviewer prompt explains how to work under the structural worker shell rule."""
+    INFO = {"title": "t", "headRefName": "task/x", "baseRefName": "main", "author": {"login": "author-x"}}
+
+    def prompt(self, pr=77, task=None):
+        return rv.build_prompt(pr, self.INFO, "0123456789abcdef", task)
+
+    def test_section_and_exact_commands_are_present(self):
+        for task in (None, {"id": "T-9"}):
+            p = self.prompt(task=task)
+            self.assertIn("## How to work under the worker rule", p)
+            self.assertIn("python -B -I -m unittest discover -s orchestrator/tests -p <module>.py", p)
+            self.assertIn("NO `cd`", p)
+            self.assertIn("Read, Grep and Glob tools", p)
+            self.assertIn("`review-comment.md` in the\n  worktree root", p)
+            self.assertIn("gh pr comment 77 --body-file review-comment.md", p)
+            self.assertIn("Never pass `--body` with multi-line text", p)
+            self.assertIn("never write a file outside the worktree", p)
+            self.assertNotIn("from `orchestrator/`", p)                 # the old advice used a cd-style cwd
+
+    def test_pr_number_is_substituted(self):
+        self.assertIn("gh pr comment 5 --body-file review-comment.md", self.prompt(pr=5))
+        self.assertNotIn("gh pr comment 77", self.prompt(pr=5))
+
+    def test_the_prompted_commands_pass_the_worker_allowlist(self):
+        from dev_supervisor import authority as au
+        wt = "C:/cs/CreatorStudio-worktrees/t-x"
+        ctx = au.PolicyContext(roots=(wt,), repo_root=wt)
+        for cmd in ("python -B -I -m unittest discover -s orchestrator/tests -p test_dev_review.py",
+                    "gh pr comment 77 --body-file review-comment.md"):
+            self.assertEqual(au.routine_shell(cmd, ctx, wt), (True, ""), cmd)
+        for cmd in ('gh pr comment 77 --body "a\nb"', "gh pr comment 77 --body-file ../review-comment.md",
+                    "cd orchestrator && python -B -I -m unittest discover -s tests"):
+            self.assertFalse(au.routine_shell(cmd, ctx, wt)[0], cmd)
+
+
 class Cli(NoNetwork):
     def run_main(self, argv, f, root=None):
         out, err = io.StringIO(), io.StringIO()

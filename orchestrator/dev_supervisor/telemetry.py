@@ -37,6 +37,7 @@ DEFAULT_THRESHOLDS = {"warn": 0.60, "compact": 0.80, "replace": 0.92}
 
 TAIL_BYTES = 256 * 1024           # initial tail window
 MAX_TAIL_BYTES = 8 * 1024 * 1024  # never read more than this from the end
+ANCHOR_BYTES = 256                # UsageTailCache: bytes before the scanned offset that must be unchanged (append-only)
 
 
 @dataclass
@@ -212,20 +213,94 @@ def read_last_usage(transcript_path) -> Optional[dict]:
         nbytes = min(nbytes * 4, MAX_TAIL_BYTES)
 
 
+class UsageTailCache:
+    """Per-transcript memo of the last assistant usage record (T-DEV-029, supervisor tick latency).
+
+    ``read_last_usage`` re-reads the tail of the transcript on every call, growing it 256 KiB -> 8 MiB when the last
+    usage record is far back, and JSON-parses every candidate line. A supervisor tick did that for the multi-MB Main
+    transcript each poll. This cache is keyed by (path, size, mtime_ns): an unchanged file costs one ``stat``; a file
+    that only grew is read from the end of the last complete line already scanned (appended bytes only); anything
+    else (first sight, truncation, rotation, a huge append) falls back to ``read_last_usage``. The answer is the same
+    as ``read_last_usage`` would give, except that it can also remember a usage record older than the 8 MiB window.
+    Not thread-safe (the supervisor loop is single-threaded)."""
+
+    def __init__(self) -> None:
+        self._entries: dict = {}
+        self.full_reads = 0          # observable by tests: how many times the whole-tail path ran
+        self.incremental_reads = 0
+
+    @staticmethod
+    def _complete_end(path: str, size: int) -> int:
+        """Offset just after the last newline (0 when none in the last MAX_TAIL_BYTES): never scan a partial line."""
+        start = max(0, size - MAX_TAIL_BYTES)
+        with open(path, "rb") as f:
+            f.seek(start)
+            data = f.read(size - start)
+        i = data.rfind(b"\n")
+        return start + i + 1 if i >= 0 else (0 if start == 0 else size)
+
+    def last_usage(self, transcript_path) -> Optional[dict]:
+        path = str(transcript_path)
+        st = os.stat(path)                      # OSError propagates like read_last_usage
+        ent = self._entries.get(path)
+        if ent is not None and (ent["size"], ent["mtime_ns"]) == (st.st_size, st.st_mtime_ns):
+            return ent["usage"]
+        data = None
+        if ent is not None and st.st_size >= ent["scanned"] and st.st_size - ent["scanned"] <= MAX_TAIL_BYTES \
+                and st.st_size >= ent["size"]:
+            k = len(ent["anchor"])               # append-only check: the bytes before the scanned offset must be intact
+            with open(path, "rb") as f:
+                f.seek(ent["scanned"] - k)
+                head = f.read(k)
+                if head == ent["anchor"]:
+                    data = f.read(st.st_size - ent["scanned"])
+        if data is not None:
+            cut = data.rfind(b"\n")
+            usage, scanned, anchor = ent["usage"], ent["scanned"], ent["anchor"]
+            if cut >= 0:
+                for line in reversed(data[:cut].split(b"\n")):
+                    u = _usage_from_line(line)
+                    if u:
+                        usage = u
+                        break
+                scanned += cut + 1
+                anchor = (anchor + data[:cut + 1])[-ANCHOR_BYTES:]
+            self.incremental_reads += 1
+        else:
+            usage = read_last_usage(path)
+            scanned = self._complete_end(path, st.st_size)
+            anchor = self._anchor(path, scanned)
+            self.full_reads += 1
+        self._entries[path] = {"size": st.st_size, "mtime_ns": st.st_mtime_ns, "scanned": scanned, "usage": usage,
+                               "anchor": anchor}
+        return usage
+
+    @staticmethod
+    def _anchor(path: str, scanned: int) -> bytes:
+        k = min(ANCHOR_BYTES, scanned)
+        if k <= 0:
+            return b""
+        with open(path, "rb") as f:
+            f.seek(scanned - k)
+            return f.read(k)
+
+
 def _all_unavailable(reason, src, ts):
     r = unavailable(reason, src, ts)
     return {"tokens": r, "model": r, "window": r, "ratio": r, "level": r}
 
 
-def context_pressure(transcript_path, config: Optional[PressureConfig] = None) -> dict:
-    """Labelled per-session context pressure. Fields tokens, model, window, ratio, level (each Evidence)."""
+def context_pressure(transcript_path, config: Optional[PressureConfig] = None,
+                     cache: Optional[UsageTailCache] = None) -> dict:
+    """Labelled per-session context pressure. Fields tokens, model, window, ratio, level (each Evidence).
+    ``cache`` (a long-lived ``UsageTailCache``) avoids re-reading the transcript on every call."""
     cfg = config or PressureConfig()
     ts = now_iso()
     src = "transcript_tail"
     if transcript_path is None or not Path(transcript_path).is_file():
         return _all_unavailable("transcript not found (an interactive claude started with inherited parent-session markers such as CLAUDE_CODE_CHILD_SESSION writes none; see issue #58)", src, ts)
     try:
-        u = read_last_usage(transcript_path)
+        u = cache.last_usage(transcript_path) if cache is not None else read_last_usage(transcript_path)
     except OSError as e:
         return _all_unavailable("transcript unreadable: %s" % type(e).__name__, src, ts)
     if u is None:
