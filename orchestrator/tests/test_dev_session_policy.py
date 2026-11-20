@@ -22,10 +22,18 @@ SID = str(uuid.uuid4())
 DENY = '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny"}}\n'
 
 
+ALLOW_OUT = '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}\n'
+
+
 def good_run(cmd, **kw):
-    """Fast stand-in for a correct hook: deny, silence, deny (the order verify_hook probes in)."""
-    good_run.n = getattr(good_run, "n", 0) + 1
-    return SimpleNamespace(returncode=0, stdout=(DENY, "", DENY)[(good_run.n - 1) % 3])
+    """Fast stand-in for a correct hook: deny the force push and garbage; pass git status (silence in advisory mode,
+    an explicit allow in authoritative mode, T-DEV-028)."""
+    stdin, env = kw.get("input", ""), kw.get("env") or {}
+    if "git status" in stdin:
+        out = ALLOW_OUT if env.get("CS_AUTHORITY_MODE", "advisory") != "advisory" else ""
+    else:
+        out = DENY
+    return SimpleNamespace(returncode=0, stdout=out)
 
 
 class Install(unittest.TestCase):
@@ -42,7 +50,7 @@ class Install(unittest.TestCase):
         self.assertEqual(p, sp.settings_path(self.state, "main", SID))
         d = json.loads(p.read_text(encoding="utf-8"))
         self.assertEqual(d["hooks"]["PreToolUse"][0]["hooks"][0]["command"], inst.hook_command)
-        self.assertIn("Bash", d["hooks"]["PreToolUse"][0]["matcher"])
+        self.assertEqual(d["hooks"]["PreToolUse"][0]["matcher"], ".*")
         self.assertEqual(inst.env["CS_AUTHORITY_REPO_ROOT"], self.repo.replace("\\", "/"))
 
     def test_path_is_deterministic_so_resume_reuses_it(self):

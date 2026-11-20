@@ -74,6 +74,18 @@ usage.
 5. Results stay REPORTED until verified with command output; never claim VERIFIED without evidence.
 """
 
+STANDING_AUTHORITY = """STANDING AUTHORITY (Lukas, 2026-11-20; enforced by the authority hook, see \
+orchestrator/dev_supervisor/STANDING_AUTONOMY.md):
+- Routine, no approval needed: register tasks, dispatch and replace workers, branches, commits, push task/lane branches, \
+open PRs, reviews, run the 8 integration gates, merge ONLY when every gate passes, safe recovery, your own supervisor \
+maintenance.
+- Protected: paid API, spending, destructive data operations, irreversible production changes (Resolve production \
+mutation), disabling safety controls, changing or expanding the authority boundaries (grants, hook settings, approvals), \
+launchers/tools/.mcp.json, publishing outward-facing content.
+- Never ask Lukas for routine operations. Protected actions are queued as pending approvals by the hook; continue with \
+unrelated work. Only Lukas approves, from his own terminal. If a gate fails, stop and report; never force it.
+"""
+
 
 class LaunchError(LifecycleError):
     """Main could not be launched (nothing was started)."""
@@ -133,7 +145,7 @@ def write_main_prompt(store: StateStore, session_id: str, *, verified: Any = Non
                       resume_prompt_file: Optional[str] = None) -> Path:
     """Write the appended system prompt for one Main session into ``<state>/prompts/`` (never the repository)."""
     sid = _uuid(session_id)
-    parts = [OPERATING_INSTRUCTIONS.strip(), "", f"Your session id is {sid}."]
+    parts = [OPERATING_INSTRUCTIONS.strip(), "", STANDING_AUTHORITY.strip(), "", f"Your session id is {sid}."]
     if verified is not None:
         parts += ["", "You replace an earlier Main. Before doing anything else read the verified handoff JSON at",
                   f"{verified.json_path}", f"and confirm its content hash is {verified.content_hash}.",

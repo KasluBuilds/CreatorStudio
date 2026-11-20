@@ -322,9 +322,14 @@ class Hook(unittest.TestCase):
         self.assertEqual((rc, d["hookEventName"], d["permissionDecision"]), (0, "PreToolUse", "deny"))
         self.assertIn("force-push", d["permissionDecisionReason"])
 
-    def test_ask_for_launcher_edit(self):
+    def test_launcher_edit_needs_authorisation_and_is_denied_until_approved(self):
+        # T-DEV-028: REQUIRE_AUTHORIZATION is queued as a pending approval and denied; with no approvals directory
+        # configured the record cannot be written, and the hook still denies (never "ask" without a human approval)
         _, out = self.run_hook({"tool_name": "Edit", "tool_input": {"file_path": ROOT + "/pro.ps1"}, "cwd": ROOT})
-        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "ask")
+        d = json.loads(out)["hookSpecificOutput"]
+        self.assertEqual(d["permissionDecision"], "deny")
+        self.assertIn("launcher-files", d["permissionDecisionReason"])
+        self.assertIn("could not be queued", d["permissionDecisionReason"])
 
     def test_malformed_input_fails_closed(self):
         for bad in ("not json", "[]", json.dumps({"tool_name": "Bash", "tool_input": "x"})):
@@ -372,7 +377,7 @@ class CliAndSettings(unittest.TestCase):
     def test_settings_fragment_shape_and_hook_is_not_installed(self):
         frag = au.hook_settings()
         entry = frag["hooks"]["PreToolUse"][0]
-        self.assertIn("Bash", entry["matcher"])
+        self.assertEqual(entry["matcher"], ".*")
         self.assertTrue(entry["hooks"][0]["command"].endswith(" hook"))
         out = io.StringIO()
         self.assertEqual(au.main(["settings"], out=out), 0)
