@@ -54,6 +54,19 @@ gold ▶ = ready to start, dashed = waiting on dependencies. The lit green stret
   the taskbar, puts "ACTION REQUIRED" in the window title and shows one Windows notification; the banner stays until the record is acknowledged.
   This is the point where development-only work should pause so real videos can be filmed and validated.
 
+## Orbit: operation and supervisor view
+
+**Orbit** is the product name of the development supervisor and of its observability view; the window title, the **Orbit** tab and the About text use it. The app itself, its release file names (`CreatorStudio-Dashboard-<version>-portable.exe`), package name and ids are NOT renamed.
+
+The **Orbit** tab shows one snapshot JSON written by `python -m dev_supervisor.snapshot --out <file>` (run from `orchestrator/`). Choose the file with **Choose snapshot file...** (remembered in the app's own folder) or start the app with `--orbit=<file>`. It is read-only: the file is only read; nothing is sent to GitHub and nothing in the repository or the supervisor's state is written.
+
+- Every value shows its label (OBSERVED / REPORTED / INFERRED / UNAVAILABLE), a **Live / Cached / Stale / Unavailable** chip and its age. Ages are recomputed when you look, so an old file turns Cached, then Stale.
+- No file chosen, a missing file, an unreadable file or something that is not an Orbit snapshot each show an explicit state. There is never an empty "all good" screen.
+- **Account usage** is shown only when the snapshot labels it OBSERVED. Anything else (including a statusline value labelled REPORTED) is shown as UNAVAILABLE with the reason.
+- **Readable usage windows**: known `rate_limit_event` keys show as `5-hour window: used` -> `21%`, `5-hour window: resets` -> `12:50 UTC (in 1 h 3 min)` (or `window already reset`), the same for the `7-day window`, and `rate-limit status`. Unknown keys keep the generic rendering. A provenance line under the section names the source in plain words and its age (no worker or file names).
+- **Data-quality badge** on every value: Live, Cached, Stale (its own timestamp is older than the stale threshold), Estimated (label INFERRED) or Unavailable (with the reason). Account usage that is REPORTED or INFERRED stays Unavailable and its number is never shown.
+- Status: implemented and unit-tested with synthetic fixtures (`tests/orbit.test.js`); NOT TESTED in a running Electron window.
+
 ## Appearance: Light, Dark or System
 
 The **Light / Dark / System** switch in the header changes only the colours. It does not touch any data, progress figure, synchronization, agent tab, filming-gate behaviour or notification.

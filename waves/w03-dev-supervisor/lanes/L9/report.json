@@ -1,0 +1,38 @@
+{
+  "lane": "L9",
+  "status": "DONE",
+  "summary": "IMPLEMENTED: DEVELOPMENT_OPERATING_SYSTEM.md (15 sections: principles, roles, Main control, proposing ideas/agreeing a large build, communication, supervisor commands, context rotation/handoff/recovery, GitHub log, Claude Pro vs OmniRoute, Orbit, Windows/VS Code and machine-local config, 12-step onboarding checklist with real dev_supervisor commands, development vs product agents, 25-row capability status table, safety). Labels taken from lane reports L1-L8; nothing marked VERIFIED. AGENTS.md and WORKFLOW.md got a scope note separating development-time agents from video-production agents; ENVIRONMENT.md got a supervisor/machine-local-config paragraph and the OmniRoute start command with the benchmark pointer (no secrets; the two-launchers rule is kept, the supervisor is a Python package not a third launcher). TESTED offline: test_dev_docs.py 12 tests (sections, labels per capability row, no VERIFIED, no secrets, no absolute user paths, no launcher contents, referenced commands exist as subcommands, reconciled docs). NOT TESTED: onboarding checklist on another repository; all live-only items inherited from lanes (interactive Main launch, start --yes, replacement, heartbeat, Electron). No live observation was taken by this lane beyond running 'doctor' and 'config --example' (doctor: required checks passed, resolve UNCONFIGURED warning).",
+  "commands": [
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_docs.py",
+      "result": "Ran 12 tests: OK"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py",
+      "result": "Ran 540 tests: OK"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_claude_md.py",
+      "result": "Ran 11 tests: OK"
+    },
+    {
+      "command": "cd orchestrator && python -B -I -m unittest discover -s tests -p test_governance*.py",
+      "result": "Ran 98 tests: 1 failure, test_every_package_directory_has_an_owner_entry (dev_supervisor has no owner entry; pre-existing, reported by L8, registry is Coordinator-owned)"
+    },
+    {
+      "command": "cd orchestrator && python -B -m dev_supervisor doctor",
+      "result": "OBSERVED: all required checks passed; resolve UNCONFIGURED (warning)"
+    }
+  ],
+  "unresolved": [
+    "Coordinator: add an owner entry for orchestrator/dev_supervisor/ (and test_dev_*.py) in the registry read by test_governance (L8 finding, still failing).",
+    "Proposed MASTER.md edit: add under the architecture/agents overview one paragraph: 'Development-time agents (Main, workers, supervisor, Orbit) are reusable infrastructure documented in DEVELOPMENT_OPERATING_SYSTEM.md; they are separate from the video-production agents in AGENTS.md. Implementation status is in that document section 14.'",
+    "Proposed ROADMAP.md edit: add item 'Development supervisor (issue #44, w03): code IMPLEMENTED and TESTED offline; live items NOT TESTED: interactive Main launch, start --yes, Main replacement and heartbeat, Orbit Electron window, Claude Code through OmniRoute, rate_limit_event as account-usage source (PROPOSED).' and an open item to fix Groq auth in OmniRoute.",
+    "Proposed DECISIONS_AND_OPEN_QUESTIONS.md edits: DECIDED: Main is an interactive claude session in its own console window, workers headless stream-json (L8); DECIDED: Orbit is the product identity but released artifact names are not renamed (L7). OPEN: how to read account usage (rate_limit_event or statusline); real MCP client/transport for Resolve discovery; Resolve intended-project identity config (user must pick); Groq routes auth_error; whether Claude Code works through OmniRoute; pid-reuse check for recovery; file lock for concurrent processes on one state dir.",
+    "Proposed README.md edit: add a short pointer 'Development operating system: DEVELOPMENT_OPERATING_SYSTEM.md (reusable guide for Main, workers, supervisor, Orbit)' to the document list.",
+    "Proposed TOOLS.md edit: list OmniRoute start command 'omniroute serve --daemon --no-open' (OBSERVED) and Claude Code headless flags 'claude -p --output-format stream-json --verbose' (OBSERVED once; --verbose required; --append-system-prompt-file accepted though not in --help).",
+    "Proposed RESOLVE_INTEGRATION.md edit: add to section 2 a link to orchestrator/dev_supervisor/RESOLVE_BOOTSTRAP.md: launching the app is not enough, user runs Workspace > Scripts > resolve_bridge, identity is the open project, verdicts MATCH/MISMATCH/UNCONFIGURED/UNAVAILABLE; machine-local identity file via CREATORSTUDIO_RESOLVE_IDENTITY.",
+    "Proposed TECHNICAL_ARCHITECTURE.md edit: add a 'Development supervisor' box separate from the production orchestrator: supervisor process, machine-local state store, GitHub log, Orbit snapshot; state it is a cache, not a task registry."
+  ],
+  "changelog": "w03 L9: added DEVELOPMENT_OPERATING_SYSTEM.md (reusable development operating system guide with capability status table), scoped AGENTS.md/WORKFLOW.md and updated ENVIRONMENT.md, added test_dev_docs.py."
+}

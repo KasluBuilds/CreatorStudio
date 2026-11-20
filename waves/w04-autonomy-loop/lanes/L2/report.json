@@ -1,0 +1,12 @@
+{
+  "lane": "L2",
+  "status": "DONE",
+  "summary": "Orbit account-usage section now renders known rate_limit_event keys in plain language (5-hour/7-day window used and resets with a UTC time plus a relative phrase, rate-limit status), adds a provenance note (source in plain words plus age, no worker or file names), and gives every row one data-quality badge (live, cached, stale, estimated for INFERRED, unavailable with reason). OBSERVED-only rule unchanged. IMPLEMENTED and TESTED with synthetic fixtures (node tests, Python wrapper). NOT TESTED in a running Electron window; no live observation was made.",
+  "commands": [
+    {"command": "cd dashboard/desktop && node --test \"tests/*.test.js\"", "result": "tests 99, pass 99, fail 0"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests -p \"test_dev_*.py\"", "result": "Ran 544 tests: OK"},
+    {"command": "cd orchestrator && python -B -I -m unittest discover -s tests", "result": "OK (skipped=2)"}
+  ],
+  "unresolved": ["Electron window rendering not launched (NOT TESTED). One existing assertion changed intentionally: orbit.test.js OBSERVED usage text '42' -> '42%' because five_hour_used_percentage now renders as a percentage."],
+  "changelog": "Orbit shows 5-hour and 7-day usage windows in plain language with reset times, a provenance line and a live/cached/stale/estimated/unavailable badge on every value."
+}

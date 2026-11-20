@@ -1,0 +1,844 @@
+"""Development supervisor CLI, interactive Main launcher and machine-local config (T-DEV-008, wave w03 lane L8).
+
+Offline only: synthetic data in temp directories, a fake terminal, a fake worker launcher, fake checkers, fake
+command runner and fake transports. Sockets and real process creation are patched to fail, so nothing touches the
+real machine, the network, GitHub, Claude or Resolve.
+Run from orchestrator/:  python -B -I -m unittest discover -s tests -p test_dev_cli.py -v
+"""
+import io
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+import uuid
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from dev_supervisor import cli, compaction, handoff, launch, replacement, session_policy  # noqa: E402
+from dev_supervisor import config as cfgmod  # noqa: E402
+from dev_supervisor.lifecycle import LaunchHandle, LaunchSpec, build_claude_argv  # noqa: E402
+from dev_supervisor.omniroute import TransportError  # noqa: E402
+from dev_supervisor.state_store import StateStore, this_repository_root  # noqa: E402
+from dev_supervisor.telemetry import cwd_slug  # noqa: E402
+
+# Credential-shaped strings are assembled at runtime so no literal credential appears in the repository.
+FAKE_KEY = "sk-" + "ant-" + "x" * 24
+FAKE_GH_TOKEN = "gh" + "o_" + "B" * 30
+TEST_MODEL = "claude-test-model"
+
+
+def _boom(*a, **k):
+    raise AssertionError("real network or process access attempted in an offline test")
+
+
+# ------------------------------------------------------------------ fakes
+
+class FakeHandle:
+    def __init__(self, pid):
+        self.pid = pid
+        self.code = None
+        self.terminated = False
+        self.killed = False
+
+    def poll(self):
+        return self.code
+
+    def terminate(self):
+        self.terminated = True
+        self.code = 1
+
+    def kill(self):
+        self.killed = True
+        self.code = -9
+
+
+class FakeTerminal:
+    """Records argv; simulates claude starting by writing its Claude Code session file (idle)."""
+
+    def __init__(self, env):
+        self.env = env
+        self.opened = []
+        self.handles = {}
+        self.write_session_file = True
+
+    def open(self, argv, cwd, env=None):
+        pid = self.env.next_pid()
+        self.opened.append({"argv": list(argv), "cwd": cwd, "pid": pid, "env": dict(env or {})})
+        h = FakeHandle(pid)
+        self.handles[pid] = h
+        if self.write_session_file:
+            sid = argv[argv.index("--session-id") + 1]
+            self.env.write_session(pid, sid, status="idle")
+        return h
+
+
+class FakeWorkerLauncher:
+    def __init__(self, env):
+        self.env = env
+        self.specs = []
+        self.procs = {}
+
+    def launch(self, spec):
+        pid = self.env.next_pid()
+        self.specs.append(spec)
+        self.procs[pid] = None
+        return LaunchHandle(pid=pid)
+
+    def owns(self, pid):
+        return pid in self.procs
+
+    def poll(self, pid):
+        return self.procs[pid]
+
+    def terminate(self, pid):
+        self.procs[pid] = 0
+
+    def kill(self, pid):
+        self.procs[pid] = -9
+
+
+class FakeCheckers:
+    def __init__(self, ok=True):
+        self.ok = ok
+
+    def branch(self, name):
+        return self.ok, "fake"
+
+    def worktree(self, path, branch):
+        return self.ok, "fake"
+
+    def commit(self, sha):
+        return self.ok, "fake"
+
+    def pull_request(self, number):
+        return self.ok, "fake"
+
+
+class FakeGhRunner:
+    def __init__(self):
+        self.comments = []
+
+    def comment(self, issue, body):
+        self.comments.append((issue, body))
+
+    def create_issue(self, title, body, labels=()):
+        raise AssertionError("not used")
+
+    def close_issue(self, issue, comment=""):
+        raise AssertionError("not used")
+
+    def event_ids(self, issue):
+        return set()
+
+
+_DENY = '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny"}}'
+_ALLOW = '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}'
+
+
+def fake_policy_install(*args, **kw):
+    """The real installer with the hook subprocess faked (writes the settings file, no process started). The user
+    settings path points nowhere so the test never reads the real ~/.claude/settings.json."""
+    def run(cmd, **k):
+        stdin, env = k.get("input", ""), k.get("env") or {}
+        if "git status" in stdin:
+            out = _ALLOW if env.get("CS_AUTHORITY_MODE", "advisory") != "advisory" else ""
+        else:
+            out = _DENY
+        return mock.Mock(returncode=0, stdout=out)
+    kw.setdefault("user_settings", os.path.join(os.path.dirname(os.path.abspath(__file__)), "no-such-settings.json"))
+    return session_policy.install(*args, run=run, **kw)
+
+
+class Env:
+    """Temp directories plus a Services object built only from fakes."""
+
+    def __init__(self, tc, **cfg_over):
+        self.tc = tc
+        self.tmp = Path(tempfile.mkdtemp(prefix="l8-cli-"))
+        tc.addCleanup(shutil.rmtree, self.tmp, True)
+        self.repo = self.tmp / "repo"
+        self.state = self.tmp / "state"
+        self.sessions = self.tmp / "claude" / "sessions"
+        self.projects = self.tmp / "claude" / "projects"
+        self.wt = self.tmp / "worktrees"
+        for d in (self.repo, self.sessions, self.projects, self.wt):
+            d.mkdir(parents=True)
+        self.pid = 4000
+        self.alive = set()
+        self.commands = []
+        self.run_results = {}
+        data = {"state_dir": str(self.state), "repo_root": str(self.repo), "sessions_dir": str(self.sessions),
+                "projects_dir": str(self.projects), "models": {"main": "opus", "worker": "sonnet"},
+                "context_windows": {TEST_MODEL: 200000}, "poll_interval_s": 1}
+        data.update(cfg_over)
+        self.cfg = cfgmod.from_dict(data, source="test")
+        self.terminal = FakeTerminal(self)
+        self.worker_launcher = FakeWorkerLauncher(self)
+        self.checkers = FakeCheckers()
+        self.gh = FakeGhRunner()
+        self.out = io.StringIO()
+        self.transport_calls = []
+        self.svc = cli.Services(
+            config=self.cfg, terminal=self.terminal, worker_launcher_factory=lambda: self.worker_launcher,
+            worktree_checker=lambda wt, br: (True, "ok"), ref_checkers_factory=lambda c, r: self.checkers,
+            run=self.run, which=lambda name: "/fake/bin/" + name, omniroute_transport=self.transport,
+            resolve_discover=lambda identity: {"verdict": "UNCONFIGURED"}, gh_runner_factory=lambda c: self.gh,
+            pid_alive=lambda pid: pid in self.alive, sleep=lambda s: None, out=self.out, env={},
+            policy_install=fake_policy_install)
+
+    # -- helpers
+    def next_pid(self):
+        self.pid += 1
+        self.alive.add(self.pid)
+        return self.pid
+
+    def run(self, argv, timeout=30.0, cwd=None):
+        self.commands.append(list(argv))
+        key = " ".join(argv[1:]) if argv[0].startswith("/fake/bin/") else " ".join(argv)
+        for k, v in self.run_results.items():
+            if k in key:
+                return v
+        if "--version" in argv:
+            return 0, "9.9.9 (fake)\n", ""
+        if argv[-2:] == ["auth", "status"]:
+            return 0, "", "github.com\n  Logged in to github.com account fake-user (keyring)\n  - Token: " + \
+                FAKE_GH_TOKEN[:4] + "****\n"
+        if "status" in argv and "--porcelain" in argv:
+            return 0, "", ""
+        if "worktree" in argv:
+            return 0, "worktree /r\nHEAD abc\nbranch refs/heads/main\n", ""
+        return 0, "", ""
+
+    def transport(self, method, url, headers, body, timeout):
+        self.transport_calls.append((method, url, dict(headers)))
+        return 200, json.dumps({"data": [{"id": "gemini/a"}, {"id": "groq/b"}]}).encode()
+
+    def write_session(self, pid, sid, status="idle"):
+        now_ms = int(time.time() * 1000)
+        (self.sessions / f"{pid}.json").write_text(json.dumps(
+            {"pid": pid, "sessionId": sid, "cwd": str(self.repo), "status": status, "statusUpdatedAt": now_ms,
+             "startedAt": now_ms}), encoding="utf-8")
+
+    def write_transcript(self, sid, tokens):
+        d = self.projects / cwd_slug(str(self.repo))
+        d.mkdir(parents=True, exist_ok=True)
+        rec = {"type": "assistant", "message": {"role": "assistant", "model": TEST_MODEL, "content": [],
+                                                 "usage": {"input_tokens": tokens, "cache_read_input_tokens": 0,
+                                                           "cache_creation_input_tokens": 0}}}
+        (d / f"{sid}.jsonl").write_text(json.dumps(rec) + "\n", encoding="utf-8")
+
+    def cli(self, *argv):
+        self.out.seek(0)
+        self.out.truncate()
+        code = cli.main(list(argv), services=self.svc)
+        return code, self.out.getvalue()
+
+    def store(self):
+        return StateStore(self.state)
+
+    def facts(self, **over):
+        f = {"objective": "Integrate the supervisor lanes", "decisions": ["Main is interactive"],
+             "plan": ["finish L8"], "branches": ["lane/w03-dev-supervisor/L8"],
+             "commits": [{"sha": "0123456789abcdef", "branch": "lane/w03-dev-supervisor/L8", "subject": "wip"}],
+             "tests": [{"command": "unittest", "result": "OK", "label": "OBSERVED"}],
+             "next_actions": ["submit the lane"]}
+        f.update(over)
+        p = self.tmp / f"facts-{uuid.uuid4().hex[:6]}.json"
+        p.write_text(json.dumps(f), encoding="utf-8")
+        return str(p)
+
+    def prompt_file(self):
+        p = self.tmp / f"task-{uuid.uuid4().hex[:6]}.txt"
+        p.write_text("synthetic task prompt\n", encoding="utf-8")
+        return str(p)
+
+
+class Offline(unittest.TestCase):
+    def setUp(self):
+        for target, name in ((socket, "socket"), (socket, "create_connection"), (subprocess, "Popen"),
+                             (subprocess, "run")):
+            p = mock.patch.object(target, name, _boom)
+            p.start()
+            self.addCleanup(p.stop)
+
+
+# ------------------------------------------------------------------ config
+
+class ConfigTests(Offline):
+    def test_defaults_when_file_missing(self):
+        tmp = tempfile.mkdtemp(prefix="l8-cfg-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        cfg = cfgmod.load(env={cfgmod.ENV_CONFIG: os.path.join(tmp, "absent.json")})
+        self.assertFalse(cfg.allow_paid_api)
+        self.assertFalse(cfg.dangerously_skip_permissions)
+        self.assertEqual(cfg.source, "defaults")
+        self.assertEqual(cfg.model("main"), "opus")
+
+    def test_load_from_machine_local_file(self):
+        tmp = tempfile.mkdtemp(prefix="l8-cfg-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        p = os.path.join(tmp, "config.json")
+        Path(p).write_text(json.dumps({"github_repo": "owner/repo", "github_issue": 52,
+                                       "models": {"main": "fable"}, "thresholds": {"warn": 0.5}}), encoding="utf-8")
+        cfg = cfgmod.load(p)
+        self.assertEqual(cfg.github_issue, 52)
+        self.assertEqual(cfg.model("main"), "fable")
+        self.assertEqual(cfg.model("worker"), "sonnet")          # defaults merged
+        self.assertEqual(cfg.thresholds["compact"], 0.80)
+        self.assertEqual(cfg.source, p)
+
+    def test_explicit_missing_file_is_an_error(self):
+        with self.assertRaises(cfgmod.ConfigError):
+            cfgmod.load(os.path.join(tempfile.gettempdir(), f"absent-{uuid.uuid4().hex}.json"))
+
+    def test_credential_key_refused(self):
+        with self.assertRaises(cfgmod.ConfigError) as cm:
+            cfgmod.from_dict({"api_key": "anything"})
+        self.assertNotIn("anything", str(cm.exception))
+
+    def test_credential_value_refused(self):
+        with self.assertRaises(cfgmod.ConfigError) as cm:
+            cfgmod.from_dict({"github_repo": FAKE_KEY})
+        self.assertNotIn(FAKE_KEY, str(cm.exception))
+
+    def test_unknown_key_refused(self):
+        with self.assertRaises(cfgmod.ConfigError):
+            cfgmod.from_dict({"launcher": "something"})
+
+    def test_bypass_permissions_needs_explicit_dangerous_flag(self):
+        with self.assertRaises(cfgmod.ConfigError):
+            cfgmod.from_dict({"main_permission_mode": "bypassPermissions"})
+        cfg = cfgmod.from_dict({"main_permission_mode": "bypassPermissions", "dangerously_skip_permissions": True})
+        self.assertTrue(cfg.dangerously_skip_permissions)
+        with self.assertRaises(cfgmod.ConfigError):
+            cfgmod.from_dict({"worker_permission_mode": "yolo"})
+
+    def test_thresholds_must_be_ordered(self):
+        with self.assertRaises(cfgmod.ConfigError):
+            cfgmod.from_dict({"thresholds": {"warn": 0.9, "compact": 0.8, "replace": 0.95}})
+
+    def test_config_file_inside_repository_refused(self):
+        root = this_repository_root()
+        self.assertIsNotNone(root)
+        with self.assertRaises(cfgmod.ConfigError):
+            cfgmod.load(str(root / "not-a-real-dir" / "config.json"))
+
+    def test_example_has_placeholders_only(self):
+        ex = cfgmod.example()
+        blob = json.dumps(ex)
+        self.assertNotRegex(blob, r"[A-Za-z]:\\\\")             # no Windows absolute path
+        self.assertNotIn("/Users/", blob)
+        self.assertFalse(ex["allow_paid_api"])
+        self.assertFalse(ex["dangerously_skip_permissions"])
+        self.assertIn("<owner>/<repository>", blob)
+        self.assertEqual(set(ex), set(cfgmod.Config().to_dict()))
+
+    def test_cli_config_example_prints_template(self):
+        env = Env(self)
+        code, out = env.cli("config", "--example")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out), json.loads(json.dumps(cfgmod.example())))
+
+
+# ------------------------------------------------------------------ launch
+
+class LaunchTests(Offline):
+    SID = "12345678-1234-4234-8234-123456789abc"
+
+    def test_main_argv_is_interactive_with_prompt_file(self):
+        argv = launch.build_main_argv(launch.MainProfile(model="opus"), self.SID, "PROMPT")
+        self.assertNotIn("-p", argv)
+        self.assertNotIn("--print", argv)
+        self.assertEqual(argv[argv.index("--session-id") + 1], self.SID)
+        self.assertEqual(argv[argv.index("--append-system-prompt-file") + 1], "PROMPT")
+        self.assertEqual(argv[argv.index("--model") + 1], "opus")
+        self.assertNotIn("--dangerously-skip-permissions", argv)
+        self.assertNotIn("--permission-mode", argv)
+        self.assertFalse(argv[-1].startswith("-"))               # the initial instruction
+
+    def test_dangerous_flag_only_when_configured(self):
+        cfg = cfgmod.from_dict({"main_permission_mode": "acceptEdits"})
+        argv = launch.build_main_argv(launch.MainProfile.from_config(cfg), self.SID, "P")
+        self.assertNotIn("--dangerously-skip-permissions", argv)
+        self.assertEqual(argv[argv.index("--permission-mode") + 1], "acceptEdits")
+        cfg = cfgmod.from_dict({"dangerously_skip_permissions": True})
+        self.assertIn("--dangerously-skip-permissions",
+                      launch.build_main_argv(launch.MainProfile.from_config(cfg), self.SID, "P"))
+        with self.assertRaises(launch.LaunchError):
+            launch.build_main_argv(launch.MainProfile(model="opus", permission_mode="bypassPermissions"),
+                                   self.SID, "P")
+
+    def test_unsafe_inputs_refused(self):
+        with self.assertRaises(launch.LaunchError):
+            launch.build_main_argv(launch.MainProfile(model="opus; rm"), self.SID, "P")
+        with self.assertRaises(launch.LaunchError):
+            launch.build_main_argv(launch.MainProfile(model="opus"), "not-a-uuid", "P")
+        with self.assertRaises(launch.LaunchError):
+            launch.build_main_argv(launch.MainProfile(model="opus", initial_prompt="--resume x"), self.SID, "P")
+
+    def test_main_prompt_file_carries_verified_handoff(self):
+        env = Env(self)
+        store = env.store()
+        h = handoff.build_handoff(session_id=self.SID, role="main", objective="synthetic objective")
+        rec = handoff.write_handoff(store, h)
+        rep = handoff.verify_handoff(store, rec.handoff_id, FakeCheckers())
+        self.assertTrue(rep.safe)
+        p = launch.write_main_prompt(store, self.SID, verified=rep.verified)
+        self.assertTrue(str(p).startswith(str(env.state)))
+        text = p.read_text(encoding="utf-8")
+        self.assertIn(rec.content_hash, text)
+        self.assertIn(rec.handoff_id, text)
+        self.assertIn("does NOT replenish", text)
+
+    def test_new_console_terminal_uses_argument_list_and_new_console(self):
+        calls = []
+
+        def popen(argv, **kw):
+            calls.append((argv, kw))
+            return FakeHandle(77)
+
+        t = launch.NewConsoleTerminal(which=lambda n: "C:/bin/claude.exe", popen=popen, os_name="nt")
+        h = t.open(["claude", "--model", "opus", "two words"], cwd="REPO")
+        self.assertEqual(h.pid, 77)
+        argv, kw = calls[0]
+        self.assertEqual(argv[1:], ["--model", "opus", "two words"])
+        self.assertFalse(kw["shell"])
+        self.assertEqual(kw["cwd"], "REPO")
+        self.assertEqual(kw["creationflags"], getattr(subprocess, "CREATE_NEW_CONSOLE", 0x10))
+
+    def test_new_console_terminal_refuses_cmd_shim_and_non_windows(self):
+        t = launch.NewConsoleTerminal(which=lambda n: "C:/bin/claude.cmd", popen=_boom, os_name="nt")
+        with self.assertRaises(launch.LaunchError):
+            t.open(["claude"], cwd=".")
+        t = launch.NewConsoleTerminal(which=lambda n: "/usr/bin/claude", popen=_boom, os_name="posix")
+        with self.assertRaises(launch.LaunchError):
+            t.open(["claude"], cwd=".")
+
+    def test_interactive_launcher_turns_headless_spec_into_interactive_main(self):
+        env = Env(self)
+        store = env.store()
+        resume = env.tmp / "resume.txt"
+        resume.write_text("read handoff h-000000000000 hash sha256:abc\n", encoding="utf-8")
+        ml = launch.InteractiveMainLauncher(store, env.terminal, launch.MainProfile(model="opus"), str(env.repo),
+                                            policy_install=fake_policy_install)
+        spec = LaunchSpec(argv=build_claude_argv("sonnet", self.SID), cwd=str(env.repo), stdin_path=str(resume),
+                          stdout_path="o", stderr_path="e", max_runtime_s=10)
+        pid = ml.launch(spec).pid
+        opened = env.terminal.opened[-1]
+        self.assertNotIn("-p", opened["argv"])
+        self.assertEqual(opened["argv"][opened["argv"].index("--model") + 1], "sonnet")
+        self.assertEqual(opened["cwd"], str(env.repo))
+        pf = opened["argv"][opened["argv"].index("--append-system-prompt-file") + 1]
+        self.assertIn("h-000000000000", Path(pf).read_text(encoding="utf-8"))
+        self.assertTrue(ml.owns(pid))
+        self.assertIsNone(ml.poll(pid))
+        ml.terminate(pid)
+        self.assertEqual(ml.poll(pid), 1)
+
+    def test_heartbeat_idle_and_retirer(self):
+        env = Env(self)
+        store = env.store()
+        ml = launch.InteractiveMainLauncher(store, env.terminal, launch.MainProfile(model="opus"), str(env.repo),
+                                            policy_install=fake_policy_install)
+        pid, _argv, _p = ml.open_main(self.SID)
+        from dev_supervisor import telemetry
+        hb = launch.SessionFileHeartbeat(env.sessions, telemetry.read_sessions, lambda p: p in env.alive)
+        self.assertIsNotNone(hb.first_heartbeat(self.SID, pid))
+        self.assertIsNone(hb.first_heartbeat(str(uuid.uuid4()), pid))
+        sess = launch.find_session(telemetry.read_sessions(env.sessions, pid_alive=lambda p: True), self.SID)
+        self.assertIs(launch.idle_evidence(sess).value, True)
+        self.assertFalse(launch.idle_evidence(None).available)
+        retire = launch.OwnedMainRetirer(ml, lambda sid: pid if sid == self.SID else None)
+        self.assertEqual(retire.retire("other")[0], False)
+        self.assertEqual(retire.retire(self.SID)[0], True)
+        self.assertTrue(env.terminal.handles[pid].terminated)
+
+
+# ------------------------------------------------------------------ CLI commands
+
+class CliTests(Offline):
+    def test_start_without_yes_is_a_dry_run(self):
+        env = Env(self)
+        code, out = env.cli("start", "--json")
+        self.assertEqual(code, 0)
+        plan = json.loads(out)
+        self.assertNotIn("-p", plan["argv"])
+        self.assertEqual(plan["cwd"], str(env.repo))
+        self.assertEqual(env.terminal.opened, [])
+        self.assertFalse(env.state.exists())
+
+    def test_start_launches_main_once_and_releases_lock(self):
+        env = Env(self)
+        code, out = env.cli("start", "--yes", "--max-ticks", "1")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(env.terminal.opened), 1)
+        self.assertEqual(env.terminal.opened[0]["cwd"], str(env.repo))
+        main = launch.read_main(env.store())
+        self.assertEqual(main["status"], "RUNNING")
+        self.assertEqual(cli._authoritative_main(env.store()), main["session_id"])
+        self.assertFalse((env.state / "supervisor.lock").exists())
+
+    def test_start_observes_running_main_instead_of_relaunching(self):
+        env = Env(self)
+        env.cli("start", "--yes", "--max-ticks", "1")
+        code, out = env.cli("start", "--yes", "--max-ticks", "1")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(env.terminal.opened), 1)
+
+    def test_start_refused_while_another_loop_holds_the_lock(self):
+        env = Env(self)
+        env.state.mkdir(parents=True)
+        (env.state / "supervisor.lock").write_text(json.dumps({"pid": 999999, "owner": "x"}), encoding="utf-8")
+        env.alive.add(999999)
+        code, out = env.cli("start", "--yes", "--max-ticks", "1")
+        self.assertEqual(code, 1)
+        self.assertIn("already running", out)
+        self.assertEqual(env.terminal.opened, [])
+
+    def test_loop_ends_when_main_exits(self):
+        env = Env(self)
+        hook = {"n": 0}
+
+        def sleep(_s):
+            hook["n"] += 1
+            for h in env.terminal.handles.values():
+                h.code = 0
+        env.svc.sleep = sleep
+        code, out = env.cli("start", "--yes", "--max-ticks", "5")
+        self.assertEqual(code, 0)
+        self.assertIn("no longer running", out)
+        self.assertEqual(launch.read_main(env.store())["status"], "EXITED")
+
+    def test_assign_dry_run_then_queue(self):
+        env = Env(self)
+        pf = env.prompt_file()
+        args = ["assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree", str(env.wt),
+                "--owner-stream", "claude:x", "--prompt-file", pf]
+        code, out = env.cli(*args)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(cli.pending_requests(env.store()), [])
+        code, out = env.cli(*args, "--yes")
+        self.assertEqual(code, 0, out)
+        reqs = cli.pending_requests(env.store())
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0][1]["payload"]["model"], "sonnet")
+
+    def test_assign_refuses_bad_worktree_or_missing_prompt(self):
+        env = Env(self)
+        env.svc.worktree_checker = lambda wt, br: (False, "worktree is on branch 'main'")
+        code, out = env.cli("assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree",
+                            str(env.wt), "--owner-stream", "s", "--prompt-file", str(env.tmp / "missing.txt"), "--yes")
+        self.assertEqual(code, 1)
+        self.assertIn("prompt file does not exist", out)
+        self.assertIn("worktree check", out)
+        self.assertFalse(env.state.exists())
+
+    def test_loop_spawns_queued_workers_with_configured_permission_mode(self):
+        env = Env(self, worker_permission_mode="acceptEdits")
+        env.cli("assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree", str(env.wt),
+                "--owner-stream", "s", "--prompt-file", env.prompt_file(), "--yes")
+        code, out = env.cli("start", "--yes", "--max-ticks", "2", "--no-main")
+        self.assertEqual(code, 0, out)
+        self.assertIn("tick 2", out)                                  # no Main is not a reason to stop here
+        self.assertEqual(env.terminal.opened, [])
+        spec = env.worker_launcher.specs[0]
+        self.assertEqual([spec.argv[0]] + spec.argv[3:6], ["claude", "--setting-sources", "project,local", "-p"])
+        self.assertEqual(spec.argv[spec.argv.index("--permission-mode") + 1], "acceptEdits")
+        self.assertEqual(cli.pending_requests(env.store()), [])
+        code, out = env.cli("workers", "--json")
+        self.assertEqual(json.loads(out)["workers"][0]["status"], "RUNNING")
+
+    def test_handoff_dry_run_write_and_verify(self):
+        env = Env(self)
+        env.cli("start", "--yes", "--max-ticks", "1")
+        facts = env.facts()
+        code, out = env.cli("handoff", "--input", facts, "--json")
+        self.assertEqual(code, 0, out)
+        self.assertTrue(json.loads(out)["dry_run"])
+        self.assertFalse((env.state / "handoffs").exists())
+        code, out = env.cli("handoff", "--input", facts, "--yes", "--json")
+        self.assertEqual(code, 0, out)
+        res = json.loads(out)
+        self.assertEqual(res["status"], handoff.SAFE)
+        code, _ = env.cli("handoff", "--verify", res["handoff_id"])
+        self.assertEqual(code, 0)
+
+    def test_handoff_refuses_secrets_unknown_keys_and_tampering(self):
+        env = Env(self)
+        env.cli("start", "--yes", "--max-ticks", "1")
+        code, out = env.cli("handoff", "--input", env.facts(next_actions=["use " + FAKE_KEY]), "--yes")
+        self.assertEqual(code, 1)
+        self.assertNotIn(FAKE_KEY, out)
+        code, _ = env.cli("handoff", "--input", env.facts(transcript="x"), "--yes")
+        self.assertEqual(code, 2)
+        code, out = env.cli("handoff", "--input", env.facts(), "--yes", "--json")
+        hid = json.loads(out)["handoff_id"]
+        jp = env.state / "handoffs" / f"{hid}.json"
+        doc = json.loads(jp.read_text(encoding="utf-8"))
+        doc["handoff"]["objective"] = "tampered"
+        jp.write_text(json.dumps(doc), encoding="utf-8")
+        code, out = env.cli("handoff", "--verify", hid)
+        self.assertEqual(code, 1)
+        self.assertIn("NOT_SAFE", out)
+
+    def test_compact_check_exit_codes(self):
+        env = Env(self)
+        code, out = env.cli("compact-check")
+        self.assertEqual(code, cli.EXIT_PRESSURE_UNAVAILABLE)
+        self.assertIn("UNAVAILABLE", out)
+        env.cli("start", "--yes", "--max-ticks", "1")
+        sid = launch.read_main(env.store())["session_id"]
+        env.write_transcript(sid, 50000)
+        code, out = env.cli("compact-check")
+        self.assertEqual(code, 0, out)
+        env.write_transcript(sid, 190000)
+        code, out = env.cli("compact-check", "--json")
+        self.assertEqual(code, cli.EXIT_ACTION_DUE)
+        dec = json.loads(out)
+        self.assertEqual(dec["action"], compaction.REPLACE)
+        self.assertFalse(dec["allowed"])
+        self.assertIn("no_fresh_verified_handoff", dec["blocked_by"])
+
+    def test_replace_dry_run_refusal_and_direct_replacement(self):
+        env = Env(self)
+        env.cli("start", "--yes", "--max-ticks", "1")
+        old = launch.read_main(env.store())["session_id"]
+        code, out = env.cli("handoff", "--input", env.facts(), "--yes", "--json")
+        hid = json.loads(out)["handoff_id"]
+        code, out = env.cli("replace", "--handoff-id", hid)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(env.terminal.opened), 1)                 # dry run launched nothing
+        env.checkers.ok = False
+        code, out = env.cli("replace", "--handoff-id", hid, "--yes")
+        self.assertEqual(code, 1)
+        self.assertEqual(len(env.terminal.opened), 1)
+        env.checkers.ok = True
+        code, out = env.cli("replace", "--handoff-id", hid, "--yes", "--json")
+        self.assertEqual(code, 0, out)
+        res = json.loads(out)
+        # the old Main was started by a previous process: it is not signalled, the user closes it
+        self.assertEqual(res["status"], replacement.ReplacementStatus.REPLACED_OLD_NOT_CLEARED)
+        self.assertEqual(len(env.terminal.opened), 2)
+        new = launch.read_main(env.store())["session_id"]
+        self.assertNotEqual(new, old)
+        self.assertEqual(cli._authoritative_main(env.store()), new)
+
+    def test_replace_is_queued_when_a_loop_is_running(self):
+        env = Env(self)
+        env.cli("start", "--yes", "--max-ticks", "1")
+        code, out = env.cli("handoff", "--input", env.facts(), "--yes", "--json")
+        hid = json.loads(out)["handoff_id"]
+        (env.state / "supervisor.lock").write_text(json.dumps({"pid": 4321, "owner": "x"}), encoding="utf-8")
+        env.alive.add(4321)
+        code, out = env.cli("replace", "--handoff-id", hid, "--yes", "--json")
+        self.assertEqual(code, 0, out)
+        self.assertIn("queued", json.loads(out))
+        self.assertEqual(len(env.terminal.opened), 1)
+
+    def test_report_dry_run_and_flush(self):
+        env = Env(self)
+        code, out = env.cli("report")
+        self.assertEqual(code, 1)                                     # no issue configured
+        env = Env(self, github_issue=52, github_repo="owner/repo")
+        env.cli("start", "--yes", "--max-ticks", "1")                 # spools a task_started event
+        code, out = env.cli("report", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["pending"], 1)
+        self.assertEqual(env.gh.comments, [])
+        code, out = env.cli("report", "--yes", "--json")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(json.loads(out)["posted"], 1)
+        issue, body = env.gh.comments[0]
+        self.assertEqual(issue, 52)
+        self.assertNotIn(str(env.tmp), body)
+
+    def test_snapshot_and_status(self):
+        env = Env(self)
+        env.cli("start", "--yes", "--max-ticks", "1")
+        code, out = env.cli("snapshot")
+        self.assertEqual(code, 0)
+        snap = json.loads(out)
+        self.assertEqual(snap["product"], "Orbit")
+        self.assertTrue(snap["read_only"])
+        code, out = env.cli("status", "--json")
+        self.assertEqual(code, 0)
+        st = json.loads(out)
+        self.assertEqual(st["main"]["status"], "RUNNING")
+        self.assertTrue(st["main"]["session_file_found"])
+
+    def test_route_explains_and_keeps_paid_route_off(self):
+        env = Env(self)
+        code, out = env.cli("route", "--criticality", "critical", "--complexity", "architecture", "--json")
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        self.assertEqual(data["best"], "claude:strongest")
+        self.assertEqual(data["model"], "opus")
+        self.assertIn("paid_api", [e[0] for e in data["excluded"]])
+
+    def test_status_and_workers_do_not_create_the_state_dir(self):
+        env = Env(self)
+        self.assertEqual(env.cli("status")[0], 0)
+        self.assertEqual(env.cli("workers")[0], 0)
+        self.assertFalse(env.state.exists())
+
+
+class DoctorTests(Offline):
+    def test_all_checks_pass_with_fakes_and_no_token_printed(self):
+        env = Env(self)
+        with mock.patch.dict(os.environ, {"OMNIROUTE_API_KEY": FAKE_KEY}):
+            code, out = env.cli("doctor")
+        self.assertEqual(code, 0, out)
+        self.assertIn("fake-user", out)
+        self.assertNotIn(FAKE_GH_TOKEN[:4] + "****", out)
+        self.assertNotIn(FAKE_KEY, out)
+        self.assertIn("UNCONFIGURED", out)
+        self.assertIn("[WARN] resolve", out)
+        self.assertTrue(env.transport_calls[0][1].startswith("http://localhost:20128/"))
+
+    def test_failures_exit_non_zero(self):
+        env = Env(self)
+        env.run_results["status --porcelain"] = (0, " M file.py\n", "")
+        code, out = env.cli("doctor", "--json")
+        self.assertEqual(code, 1)
+        checks = {c["name"]: c for c in json.loads(out)["checks"]}
+        self.assertEqual(checks["repo_clean"]["status"], "FAIL")
+        self.assertNotIn("file.py", out)
+
+    def test_omniroute_down_and_resolve_mismatch_fail(self):
+        env = Env(self)
+
+        def down(*a):
+            raise TransportError("connection")
+        env.svc.omniroute_transport = down
+        env.svc.resolve_discover = lambda identity: {"verdict": "MISMATCH"}
+        code, out = env.cli("doctor", "--json")
+        self.assertEqual(code, 1)
+        checks = {c["name"]: c for c in json.loads(out)["checks"]}
+        self.assertEqual(checks["omniroute"]["status"], "FAIL")
+        self.assertIn("connection_error", checks["omniroute"]["detail"])
+        self.assertEqual(checks["resolve"]["status"], "FAIL")
+
+    def test_missing_claude_and_gh_logged_out(self):
+        env = Env(self)
+        env.svc.which = lambda name: None if name == "claude" else "/fake/bin/" + name
+        env.run_results["auth status"] = (1, "", "You are not logged into any GitHub hosts.")
+        code, out = env.cli("doctor", "--json")
+        self.assertEqual(code, 1)
+        checks = {c["name"]: c for c in json.loads(out)["checks"]}
+        self.assertEqual(checks["claude"]["status"], "FAIL")
+        self.assertEqual(checks["gh_auth"]["status"], "FAIL")
+
+    def test_state_dir_inside_repository_fails(self):
+        env = Env(self)
+        env.svc.config.state_dir = str(env.repo / "state")
+        code, out = env.cli("doctor", "--json")
+        checks = {c["name"]: c for c in json.loads(out)["checks"]}
+        self.assertEqual(checks["state_dir"]["status"], "FAIL")
+        self.assertEqual(code, 1)
+
+    def test_wave_worktrees_checked(self):
+        env = Env(self, wave_id="w-test")
+        (env.repo / "waves" / "w-test").mkdir(parents=True)
+        (env.repo / "waves" / "w-test" / "wave.json").write_text(json.dumps(
+            {"lanes": [{"id": "L1", "branch": "main"}, {"id": "L2", "branch": "lane/w-test/L2"}]}), encoding="utf-8")
+        code, out = env.cli("doctor", "--json")
+        checks = {c["name"]: c for c in json.loads(out)["checks"]}
+        self.assertEqual(checks["worktrees"]["status"], "FAIL")
+        self.assertIn("L2", checks["worktrees"]["detail"])
+
+    def test_parent_session_markers_warn_without_values(self):
+        env = Env(self)
+        env.svc.env = dict(env.svc.env or {}, CLAUDECODE="1", CLAUDE_CODE_MESSAGING_TOKEN="secret-value-xyz")
+        code, out = env.cli("doctor", "--json")
+        checks = {c["name"]: c for c in json.loads(out)["checks"]}
+        self.assertEqual(checks["parent_session"]["status"], "WARN")
+        self.assertIn("CLAUDECODE", checks["parent_session"]["detail"])
+        self.assertNotIn("secret-value-xyz", out)
+
+    def test_no_parent_session_ok(self):
+        env = Env(self)
+        env.svc.env = {k: v for k, v in (env.svc.env or {}).items() if k.upper() not in
+                       ("CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION")}
+        code, out = env.cli("doctor", "--json")
+        checks = {c["name"]: c for c in json.loads(out)["checks"]}
+        self.assertEqual(checks["parent_session"]["status"], "OK")
+
+
+# ------------------------------------------------------------------ end-to-end with fakes (mandatory)
+
+class EndToEndTests(Offline):
+    def test_start_assign_pressure_handoff_replace_status(self):
+        env = Env(self, auto_replace_main=True, github_issue=52, github_repo="owner/repo")
+        for task in ("T-E2E-1", "T-E2E-2"):
+            wt = env.wt / task
+            wt.mkdir()
+            code, out = env.cli("assign", "--task", task, "--role", "worker", "--branch", f"lane/{task}",
+                                "--worktree", str(wt), "--owner-stream", "claude:e2e",
+                                "--prompt-file", env.prompt_file(), "--yes")
+            self.assertEqual(code, 0, out)
+        steps = []
+
+        def sleep(_s):
+            steps.append(len(steps) + 1)
+            if len(steps) == 1:
+                main = launch.read_main(StateStore(env.state))
+                env.write_transcript(main["session_id"], 190000)        # simulated pressure: 95% of the window
+                inner_out = io.StringIO()
+                saved, env.svc.out = env.svc.out, inner_out
+                try:
+                    code = cli.main(["handoff", "--input", env.facts(), "--yes"], services=env.svc)
+                finally:
+                    env.svc.out = saved
+                self.assertEqual(code, 0, inner_out.getvalue())
+        env.svc.sleep = sleep
+        code, out = env.cli("start", "--yes", "--max-ticks", "3")
+        self.assertEqual(code, 0, out)
+
+        # two workers spawned headless through the L2 path (fake launcher)
+        self.assertEqual(len(env.worker_launcher.specs), 2)
+        self.assertTrue(all(s.argv[1] == "--settings" and s.argv[3:6] == ["--setting-sources", "project,local", "-p"] for s in env.worker_launcher.specs))
+        # Main launched twice: the original and its replacement, both interactive
+        self.assertEqual(len(env.terminal.opened), 2)
+        first, second = env.terminal.opened
+        self.assertTrue(all("-p" not in o["argv"] for o in (first, second)))
+        old_sid = first["argv"][first["argv"].index("--session-id") + 1]
+        new_sid = second["argv"][second["argv"].index("--session-id") + 1]
+        # the replacement prompt carries the verified handoff hash
+        pf = Path(second["argv"][second["argv"].index("--append-system-prompt-file") + 1])
+        self.assertIn("sha256:", pf.read_text(encoding="utf-8"))
+        # the old Main was started by this loop, so it was retired (terminated) after the new one was confirmed
+        self.assertTrue(env.terminal.handles[first["pid"]].terminated)
+        sessions = replacement.load_sessions(env.store())["sessions"]
+        self.assertEqual(sessions[old_sid]["status"], replacement.SessionStatus.RETIRED)
+        self.assertTrue(sessions[new_sid]["authoritative"])
+
+        code, out = env.cli("status", "--json")
+        self.assertEqual(code, 0)
+        st = json.loads(out)
+        self.assertEqual(st["main"]["session_id"], new_sid)
+        self.assertEqual(st["main"]["replaced_session_id"], old_sid)
+        self.assertEqual(st["authoritative_main"], new_sid)
+        self.assertEqual(st["workers"], {"RUNNING": 2})
+        self.assertEqual(st["queued_requests"], 0)
+        self.assertIsNone(st["lock"])
+        events, bad = env.store().read_events()
+        kinds = [e["kind"] for e in events]
+        for k in ("main_launch_begin", "worker_assigned", "handoff_verified", "compaction_decision",
+                  "replacement_confirmed", "session_retired"):
+            self.assertIn(k, kinds)
+        self.assertEqual(bad, 0)
+        # GitHub progress events were spooled (not posted) and contain no absolute paths
+        code, out = env.cli("report", "--json")
+        self.assertGreaterEqual(json.loads(out)["pending"], 3)
+        self.assertEqual(env.gh.comments, [])
+
+
+if __name__ == "__main__":
+    unittest.main()
