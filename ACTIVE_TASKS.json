@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-17",
+  "updated": "2026-11-20",
   "lease_policy": {
     "default_hours": 24,
     "max_hours": 72
@@ -1621,6 +1621,47 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
       "integration_notes": "Authorised by Lukas's execution directive of 2026-11-19. New files only inside the Coordinator-owned dev_supervisor package under AGR-DEV-LIVE-AUTONOMY-01. Completed 2026-11-19: PR #95 merged as 3e80d0781450 through dev_supervisor.integrate (8 gates PASS; independent review APPROVE for diff 4d8bfc078bfcac21 after two CHANGES_REQUESTED rounds that found real defects: a test gate that ran the working tree instead of the committed tree (two bypass forms), an overclaiming doc, lock and identity-proof weaknesses; all fixed with regression tests). Evidence: INTEGRATION-TESTED (35 offline tests with real git) plus five OBSERVED live runs of a real haiku Main in a throwaway local sandbox (final code: run5, 484 s, 4 consecutive integrations, worker kill + re-dispatch, stray-file repair, Main kill + same-session resume, supervisor kill + restart, one task BLOCKED). NOT DEMONSTRATED: context-pressure handoff, replacement without duplicate Main, the production gh/dev_supervisor start path, live review rejection, integrate-gate refusal in a live run, Stop-hook continuation. Known doc nit: LIVE_AUTONOMY.md says 33 offline tests, actual 35."
+    },
+    {
+      "id": "T-DEV-027",
+      "title": "dev_supervisor: production loop repair (authority hook in launched sessions, supervisor heartbeat, exited Main loses authority)",
+      "description": "Incident repair of 2026-11-19: the supervisor launched Main and workers without the verified authority hook, wrote no persistent heartbeat, and left an exited Main authoritative in sessions.json next to its successor. Wires session_policy into every worker and Main launch (refuse to launch on install failure, policy env cannot be supplied by the parent environment), writes supervisor_heartbeat.json each tick and shows it in status, marks an exited Main non-authoritative and writes a fresh main.json for a new Main.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/t-dev-027-production-loop-repair",
+      "worktree": "../CreatorStudio-worktrees/t-dev-027-production-loop-repair",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-20T00:00:00+00:00",
+        "expires": "2026-11-21T00:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/launch.py",
+        "orchestrator/dev_supervisor/lifecycle.py",
+        "orchestrator/dev_supervisor/replacement.py",
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/dev_supervisor/session_policy.py",
+        "orchestrator/dev_supervisor/SESSION_POLICY.md",
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/tests/test_dev_loop_repair.py"
+      ],
+      "acceptance_criteria": [
+        "Every worker spawn/restart and every Main open/replacement carries --settings with a verified authority hook and the policy env; install failure refuses the launch",
+        "CS_AUTHORITY_* from the parent environment never reaches a child or the hook probe",
+        "supervisor_heartbeat.json is written each tick (write failure never stops the loop); status shows FRESH/STALE/MISSING",
+        "An exited Main is marked EXITED and non-authoritative (also when it died while no loop ran); a new Main gets a fresh main.json",
+        "Independent review APPROVE bound to the diff hash; full suite passes"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_loop_repair.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests"
+      ],
+      "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator, protocol section 19). Deployment explicitly authorised by Lukas in session on 2026-11-20 (claim, push, PR, 8 gates, merge, supervisor restart, live check)."
     }
   ]
 }
