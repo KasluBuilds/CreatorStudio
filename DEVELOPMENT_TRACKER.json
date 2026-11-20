@@ -1141,7 +1141,25 @@
             "Live evidence recorded wherever the environment permits; missing evidence stated exactly",
             "Full suite and all governance validators pass"
           ],
-          "evidence": []
+          "evidence": [
+            {
+              "type": "test_run",
+              "summary": "Baseline before the takeover review changes, run by the implementation worker in the takeover worktree (offline, fake adapter only)",
+              "command": "python -B -I -m unittest discover -s orchestrator/tests -p test_resolve_executor.py",
+              "result": "Ran 85 tests: OK (skipped=1)"
+            },
+            {
+              "type": "test_run",
+              "summary": "After the review fixes and 27 new tests, run by the implementation worker (offline, fake adapter and injected ffprobe runner; no Resolve call, no live suite, no footage). Two symlink tests and the live smoke test skip on this machine",
+              "command": "python -B -I -m unittest discover -s orchestrator/tests -p test_resolve_executor.py",
+              "result": "Ran 112 tests: OK (skipped=3)",
+              "commit": "47843db9a584a084578c4c863ea3a615fbbaa893"
+            },
+            {
+              "type": "observation",
+              "summary": "Acceptance-criteria audit table, capability inventory, the 95/100 finding with evidence levels, and the review fixes are recorded in orchestrator/resolve_executor/README.md. INFERRED, not observed: the endFrame of the historical 95-frame call. NOT TESTED live: Resolve-reported render failures, bridge restart during a mutation, 30/50/59.94/60 fps timelines. The full suite and the governance validators were not run by this worker and are still required before the step can complete."
+            }
+          ]
         }
       ]
     },

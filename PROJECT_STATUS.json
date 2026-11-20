@@ -278,6 +278,16 @@
       "result": "Ran 85 tests: OK (skipped=1; the live smoke test needs CREATOR_STUDIO_RESOLVE_LIVE=1)",
       "commit": "7bddffe1f66c0376dac4b95a6532851600a7175e"
     },
+    "E-RSV-UNIT-0002": {
+      "id": "E-RSV-UNIT-0002",
+      "type": "test_run",
+      "date": "2026-11-20",
+      "summary": "T-RSV-002 step S-RSV-002-01 offline takeover review (Main's takeover under AGR-RSV-TAKEOVER-01). Offline suite after fixes: frame regression at every supported timeline rate (first/last/one/100 frames, start timecodes 00:00:00:00 to 10:00:00:00, ranges past the file end, the inclusive-end trap), the two arithmetic candidates for the 95/100 case, unsupported and foreign requests, output allowlist and file-name rules, unfinished mutations without an idempotency key, unexpected exceptions, render monitoring, ffprobe through an injected runner, README capability table equal to the code. Unit level, fake adapter only: no Resolve call, no live suite, no footage. Two symlink tests skip on the review machine and the live smoke test skips without CREATOR_STUDIO_RESOLVE_LIVE=1.",
+      "ref": "orchestrator/tests/test_resolve_executor.py",
+      "command": "python -B -I -m unittest discover -s orchestrator/tests -p test_resolve_executor.py",
+      "result": "Ran 112 tests: OK (skipped=3)",
+      "commit": "47843db9a584a084578c4c863ea3a615fbbaa893"
+    },
     "E-RSV-LIVE-0001": {
       "id": "E-RSV-LIVE-0001",
       "type": "observation",
@@ -391,9 +401,10 @@
       "verification": {
         "state": "IN_PROGRESS",
         "level": "INTEGRATION",
-        "summary": "Exercised live on Resolve Free 21.0.4.5 with synthetic media on disposable projects (26/26 checks) plus 85 offline tests. Not used on real footage or reviewed by a human, so not VERIFIED.",
+        "summary": "Exercised live on Resolve Free 21.0.4.5 with synthetic media on disposable projects (26/26 checks, previous session, evidence file machine-local) plus 112 offline tests (unit level; the 2026-11-20 takeover review made no Resolve call and did not re-observe the live run). Not used on real footage or reviewed by a human, so not VERIFIED. Not tested live: Resolve-reported render failures, a bridge restart mid-mutation, 30/50/59.94/60 fps timelines.",
         "evidence": [
           "E-RSV-UNIT-0001",
+          "E-RSV-UNIT-0002",
           "E-RSV-LIVE-0001"
         ]
       },
