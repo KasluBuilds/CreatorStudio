@@ -1629,12 +1629,9 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/t-dev-027-production-loop-repair",
       "worktree": "../CreatorStudio-worktrees/t-dev-027-production-loop-repair",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
-      "lease": {
-        "acquired": "2026-11-20T00:00:00+00:00",
-        "expires": "2026-11-21T00:00:00+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
@@ -1661,7 +1658,7 @@
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_loop_repair.py",
         "cd orchestrator && python -B -I -m unittest discover -s tests"
       ],
-      "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator, protocol section 19). Deployment explicitly authorised by Lukas in session on 2026-11-20 (claim, push, PR, 8 gates, merge, supervisor restart, live check)."
+      "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator, protocol section 19). Deployment explicitly authorised by Lukas in session on 2026-11-20 (claim, push, PR, 8 gates, merge, supervisor restart, live check). Completed 2026-11-20: PR #98 merged as e342f5211603 through dev_supervisor.integrate (8 gates PASS; independent review APPROVE for diff cc9ea8f133a59a88 after one CHANGES_REQUESTED round). OBSERVED live after the supervisor restart: worker argv carries --settings, force push blocked by the hook, supervisor heartbeat FRESH. The live check also showed a worker could write outside its worktree (into the main checkout); fixed under T-DEV-028."
     }
   ]
 }
