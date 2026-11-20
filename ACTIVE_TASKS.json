@@ -1714,14 +1714,11 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/t-dev-029-autonomy-followups",
       "worktree": "../CreatorStudio-worktrees/t-dev-029-autonomy-followups",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-028"
       ],
-      "lease": {
-        "acquired": "2026-11-20T15:10:00+00:00",
-        "expires": "2026-11-22T15:10:00+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
@@ -1750,7 +1747,7 @@
       "test_requirements": [
         "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_*.py"
       ],
-      "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator). Routine follow-up under Lukas's standing authority of 2026-11-20; no authority boundary is widened."
+      "integration_notes": "Owner is the dev_supervisor package owner (Main as Repository Coordinator). Routine follow-up under Lukas's standing authority of 2026-11-20; no authority boundary is widened. Completed 2026-11-20: PR #104 merged as 29b0d569d87c through dev_supervisor.integrate (8 gates PASS; independent opus review APPROVE for diff b7252179719d9192). OBSERVED after supervisor restart: tick duration_ms 3.7 with per-phase timing in the heartbeat (previously about 68 s per tick; the earlier cause is not isolated, the transcript cache and handoff-verify reuse are the candidates). A dontAsk reviewer posted PR comments via --body-file before this change only when told how (PR #43); the instructions are now in every review packet."
     }
   ]
 }
