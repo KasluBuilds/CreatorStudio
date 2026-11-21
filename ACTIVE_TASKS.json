@@ -1792,6 +1792,58 @@
         "python -B -I -m unittest discover -s orchestrator/tests -p test_edit_plan.py"
       ],
       "integration_notes": "Registered by Main under Lukas's standing authority (2026-11-20 instruction to start M-EDT-01). PROJECT_STATUS.json is owned by the active T-RSV-002; M-EDT-01 status there is updated when T-RSV-002 closes or by a later task. New package without a package_owners entry until Lukas assigns one."
+    },
+    {
+      "id": "T-DEV-030",
+      "title": "dev_supervisor: unattended context management (observed telemetry, 70% durable handoff, 80% native compaction with verification, 90% verified replacement)",
+      "description": "Production context management for Main: OBSERVED context usage from Claude Code's statusLine input (context_window.used_percentage) with the transcript estimate as labelled fallback; at 70% the supervisor writes a durable mechanical handoff from recorded state and surfaces a notice to Main through a hook; at 80% Claude Code's native auto-compaction (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE) compacts Main and the supervisor verifies it (compact_boundary + usage drop) or records COMPACT_FAILED; at 90% when compaction failed or was insufficient, the existing verified-handoff replacement runs, with the replacement proven healthy and authoritative before the old session is retired. Never /clear. Plus an account-usage analysis from worker logs.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/t-dev-030-context-management",
+      "worktree": "../CreatorStudio-worktrees/t-dev-030-context-management",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-029"
+      ],
+      "lease": {
+        "acquired": "2026-11-20T19:20:00+00:00",
+        "expires": "2026-11-23T19:20:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-GOV-REGISTRY-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/telemetry.py",
+        "orchestrator/dev_supervisor/compaction.py",
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/launch.py",
+        "orchestrator/dev_supervisor/session_policy.py",
+        "orchestrator/dev_supervisor/handoff.py",
+        "orchestrator/dev_supervisor/replacement.py",
+        "orchestrator/dev_supervisor/context_monitor.py",
+        "orchestrator/dev_supervisor/CONTEXT_MANAGEMENT.md",
+        "orchestrator/dev_supervisor/USAGE_ANALYSIS.md",
+        "orchestrator/tests/test_dev_context_management.py",
+        "orchestrator/tests/test_dev_telemetry.py",
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/tests/test_dev_session_policy.py",
+        "orchestrator/tests/test_dev_loop_repair.py",
+        "orchestrator/dev_supervisor/config.py",
+        "orchestrator/tests/test_dev_handoff.py"
+      ],
+      "acceptance_criteria": [
+        "Context usage OBSERVED from statusLine context_window data when available, transcript estimate labelled INFERRED otherwise, UNAVAILABLE reported honestly",
+        "70%: durable mechanical handoff written and verified by read-back; Main notified via hook additionalContext",
+        "80%: Main launched with native auto-compaction at 80%; supervisor verifies compact_boundary and a usage drop, records COMPACTED or COMPACT_FAILED",
+        "90%: replacement only after a fresh verified handoff; replacement healthy and authoritative before the old session is retired; never /clear",
+        "No duplicate authoritative Main, no lost tasks, no orphaned workers, no competing supervisors; supervisor restart recovers state",
+        "Tests for thresholds, compaction success/failure, handoff, replacement, supervisor restart and recovery; live proof of native compaction in a throwaway headless session",
+        "Account-usage analysis from worker logs with concrete recommendations"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_context_management.py"
+      ],
+      "integration_notes": "Requested by Lukas on 2026-11-20 (context-pressure and token-usage management). Owner is the dev_supervisor package owner (Main as Repository Coordinator). The running Main is not killed or replaced to test this. Scope widened 2026-11-20 (registry-only, before the code PR): config.py for configurable thresholds/compact_tokens and test_dev_handoff.py for the new threshold defaults."
     }
   ]
 }
