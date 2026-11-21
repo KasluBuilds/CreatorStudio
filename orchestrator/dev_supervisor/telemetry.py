@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from .evidence import Evidence, inferred, now_iso, observed, reported, unavailable
+from .evidence import Evidence, inferred, now_iso, observed, parse_ts, reported, unavailable
 
 SCHEMA_VERSION = 1
 
@@ -32,18 +32,32 @@ DEFAULT_CONTEXT_WINDOWS = {
     "claude-sonnet-4-5": 200_000,
     "claude-haiku-4-5": 200_000,
 }
-# Ratios of the window: warn at 60%, compact at 80%, replace the session at 92%.
-DEFAULT_THRESHOLDS = {"warn": 0.60, "compact": 0.80, "replace": 0.92}
+# Ratios of the window (T-DEV-030): warn 60%, prepare a durable handoff at 70%, native compaction at 80%, replace the
+# session at 90%. ``compact_tokens`` is an absolute cost guard: context size drives account usage, so native compaction
+# fires at min(compact ratio, compact_tokens / window).
+DEFAULT_THRESHOLDS = {"warn": 0.60, "prepare_handoff": 0.70, "compact": 0.80, "replace": 0.90}
+DEFAULT_COMPACT_TOKENS = 400_000
+OBSERVED_MAX_AGE_S = 600.0        # a statusLine file older than this is not used
+CONTEXT_SUBDIR = "context"        # <state>/context/<session_id>.json written by context_monitor.py statusline
+AUTOCOMPACT_ENV = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"
 
 TAIL_BYTES = 256 * 1024           # initial tail window
 MAX_TAIL_BYTES = 8 * 1024 * 1024  # never read more than this from the end
 ANCHOR_BYTES = 256                # UsageTailCache: bytes before the scanned offset that must be unchanged (append-only)
+_SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
 
 @dataclass
 class PressureConfig:
     windows: dict = field(default_factory=lambda: dict(DEFAULT_CONTEXT_WINDOWS))
     thresholds: dict = field(default_factory=lambda: dict(DEFAULT_THRESHOLDS))
+    compact_tokens: Optional[int] = DEFAULT_COMPACT_TOKENS
+
+    @classmethod
+    def from_config(cls, cfg) -> "PressureConfig":
+        """From a ``config.Config`` (duck typed: no import of config here)."""
+        return cls(windows={**DEFAULT_CONTEXT_WINDOWS, **dict(getattr(cfg, "context_windows", {}) or {})},
+                   thresholds=dict(cfg.thresholds), compact_tokens=getattr(cfg, "compact_tokens", DEFAULT_COMPACT_TOKENS))
 
     def window_for(self, model: Optional[str]) -> Optional[int]:
         """Exact model-id lookup only; no guessing for unknown ids."""
@@ -51,15 +65,35 @@ class PressureConfig:
             return None
         return self.windows.get(model)
 
-    def level(self, ratio: float) -> str:
-        t = self.thresholds
+    def effective(self, window: Optional[int] = None) -> dict:
+        """Thresholds with the absolute cost guard applied. When ``compact_tokens / window`` is below the compact ratio
+        the compact ratio drops to it and warn/prepare_handoff scale down with it (so the order is kept). Without a
+        known window the configured ratios are returned unchanged."""
+        t = dict(self.thresholds)
+        c = t.get("compact")
+        if window and self.compact_tokens and c and self.compact_tokens / window < c:
+            scale = (self.compact_tokens / window) / c
+            for k in ("warn", "prepare_handoff", "compact"):
+                if k in t:
+                    t[k] = round(t[k] * scale, 6)
+        return t
+
+    def level(self, ratio: float, window: Optional[int] = None) -> str:
+        t = self.effective(window)
         if ratio >= t["replace"]:
             return "replace"
         if ratio >= t["compact"]:
             return "compact"
+        if "prepare_handoff" in t and ratio >= t["prepare_handoff"]:
+            return "prepare_handoff"
         if ratio >= t["warn"]:
             return "warn"
         return "ok"
+
+    def compact_percent(self, window: Optional[int] = None) -> int:
+        """Integer percent (1..100) for CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: the effective compact ratio, rounded down."""
+        pct = int(round(self.effective(window)["compact"] * 100, 6))
+        return max(1, min(100, pct))
 
 
 def default_pid_alive(pid: int) -> bool:
@@ -290,11 +324,86 @@ def _all_unavailable(reason, src, ts):
     return {"tokens": r, "model": r, "window": r, "ratio": r, "level": r}
 
 
+def observed_path(context_dir, session_id) -> Optional[Path]:
+    if not context_dir or not isinstance(session_id, str) or not _SESSION_ID.match(session_id):
+        return None
+    return Path(context_dir) / (session_id + ".json")
+
+
+def read_observed(context_dir, session_id, now: Optional[datetime] = None,
+                  max_age_s: float = OBSERVED_MAX_AGE_S) -> tuple:
+    """(data, reason). ``data`` is the statusLine record for exactly this session when it is fresh and well formed,
+    else None with the reason (missing, unreadable, session mismatch, stale, malformed). Never raises."""
+    p = observed_path(context_dir, session_id)
+    if p is None:
+        return None, "no context dir or session id"
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, "no readable statusLine record for this session"
+    if not isinstance(raw, dict):
+        return None, "statusLine record is not an object"
+    if raw.get("session_id") != session_id:
+        return None, "statusLine record belongs to another session"
+    pct, size, utc = raw.get("used_percentage"), raw.get("context_window_size"), raw.get("utc")
+    if (isinstance(pct, bool) or not isinstance(pct, (int, float)) or not 0 <= pct <= 100
+            or isinstance(size, bool) or not isinstance(size, int) or size <= 0):
+        return None, "statusLine record has no usable used_percentage / context_window_size"
+    t = parse_ts(utc) if isinstance(utc, str) else None
+    if t is None:
+        return None, "statusLine record has no timestamp"
+    age = ((now or datetime.now(timezone.utc)) - t).total_seconds()
+    if age > max_age_s or age < -60:
+        return None, "statusLine record is stale (%ds old, limit %ds)" % (int(age), int(max_age_s))
+    model = raw.get("model")
+    return {"used_percentage": float(pct), "context_window_size": size, "utc": t.isoformat(),
+            "model": model if isinstance(model, str) and model else None}, ""
+
+
+def latest_observed_window(context_dir) -> Optional[int]:
+    """context_window_size of the newest well-formed statusLine record of any session (used to size the native
+    compaction percentage before a new Main has produced its own). None when there is none."""
+    best = None
+    try:
+        files = list(Path(context_dir).glob("*.json"))
+    except (OSError, ValueError, TypeError):
+        return None
+    for f in files:
+        try:
+            raw = json.loads(f.read_text(encoding="utf-8"))
+            size, t = raw["context_window_size"], parse_ts(raw["utc"])
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if isinstance(size, int) and not isinstance(size, bool) and size > 0 and t is not None \
+                and (best is None or t > best[0]):
+            best = (t, size)
+    return best[1] if best else None
+
+
+def _pressure_from_observed(obs: dict, cfg: PressureConfig, sid: str) -> dict:
+    ts, src = obs["utc"], "statusline:" + sid[:8]
+    size = obs["context_window_size"]
+    ratio = round(obs["used_percentage"] / 100.0, 4)
+    return {"tokens": inferred(int(round(ratio * size)), src, ts),
+            "model": observed(obs["model"], src, ts) if obs["model"] else unavailable("model id missing", src, ts),
+            "window": observed(size, src, ts), "ratio": observed(ratio, src, ts),
+            "level": inferred(cfg.level(ratio, size), "config", ts)}
+
+
 def context_pressure(transcript_path, config: Optional[PressureConfig] = None,
-                     cache: Optional[UsageTailCache] = None) -> dict:
+                     cache: Optional[UsageTailCache] = None, *, context_dir=None,
+                     session_id: Optional[str] = None, now: Optional[datetime] = None) -> dict:
     """Labelled per-session context pressure. Fields tokens, model, window, ratio, level (each Evidence).
-    ``cache`` (a long-lived ``UsageTailCache``) avoids re-reading the transcript on every call."""
+    ``cache`` (a long-lived ``UsageTailCache``) avoids re-reading the transcript on every call.
+
+    With ``context_dir`` and ``session_id`` the statusLine record Claude Code itself reported for this session is
+    preferred when it is fresh (younger than OBSERVED_MAX_AGE_S): ratio and window are then OBSERVED. Otherwise the
+    transcript estimate is used (ratio INFERRED), and when that is missing too everything is UNAVAILABLE."""
     cfg = config or PressureConfig()
+    if context_dir is not None and session_id:
+        obs, _why = read_observed(context_dir, session_id, now)
+        if obs is not None:
+            return _pressure_from_observed(obs, cfg, session_id)
     ts = now_iso()
     src = "transcript_tail"
     if transcript_path is None or not Path(transcript_path).is_file():
@@ -318,7 +427,42 @@ def context_pressure(transcript_path, config: Optional[PressureConfig] = None,
         return {"tokens": tokens, "model": model, "window": r, "ratio": r, "level": r}
     ratio = u["total"] / win
     return {"tokens": tokens, "model": model, "window": inferred(win, "config", ts),
-            "ratio": inferred(round(ratio, 4), src, ts), "level": inferred(cfg.level(ratio), "config", ts)}
+            "ratio": inferred(round(ratio, 4), src, ts), "level": inferred(cfg.level(ratio, win), "config", ts)}
+
+
+def _boundary_ts(line: bytes) -> Optional[float]:
+    if b"compact_boundary" not in line:
+        return None
+    try:
+        rec = json.loads(line)
+    except ValueError:
+        return None
+    if not isinstance(rec, dict) or "compact_boundary" not in (rec.get("subtype"), rec.get("type")):
+        return None
+    t = parse_ts(rec.get("timestamp")) if isinstance(rec.get("timestamp"), str) else None
+    return t.timestamp() if t else None
+
+
+def last_compact_boundary(transcript_path) -> Optional[float]:
+    """Epoch seconds of the newest ``compact_boundary`` system record that carries a timestamp, reading only the file
+    tail (growing up to MAX_TAIL_BYTES). None when there is none or the file cannot be read. Never returns text."""
+    try:
+        path = Path(transcript_path)
+        nbytes = TAIL_BYTES
+        while True:
+            data, truncated = _tail(path, nbytes)
+            lines = data.split(b"\n")
+            if truncated:
+                lines = lines[1:]
+            for line in reversed(lines):
+                t = _boundary_ts(line)
+                if t is not None:
+                    return t
+            if not truncated or nbytes >= MAX_TAIL_BYTES:
+                return None
+            nbytes = min(nbytes * 4, MAX_TAIL_BYTES)
+    except (OSError, ValueError, TypeError):
+        return None
 
 
 def cwd_slug(cwd: str) -> str:

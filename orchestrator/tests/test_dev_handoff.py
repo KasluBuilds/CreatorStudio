@@ -427,10 +427,12 @@ class TestCompaction(Base):
     def test_threshold_edges_default(self):
         self.assertEqual(self.d(0.5999).action, cp.NONE)
         self.assertEqual(self.d(0.60).action, cp.WARN)
-        self.assertEqual(self.d(0.7999).action, cp.WARN)
+        self.assertEqual(self.d(0.6999).action, cp.WARN)
+        self.assertEqual(self.d(0.70).action, cp.PREPARE_HANDOFF)
+        self.assertEqual(self.d(0.7999).action, cp.PREPARE_HANDOFF)
         self.assertEqual(self.d(0.80).action, cp.COMPACT)
-        self.assertEqual(self.d(0.9199).action, cp.COMPACT)
-        self.assertEqual(self.d(0.92).action, cp.REPLACE)
+        self.assertEqual(self.d(0.8999).action, cp.COMPACT)
+        self.assertEqual(self.d(0.90).action, cp.REPLACE)
 
     def test_configured_thresholds_used(self):
         cfg = PressureConfig(thresholds={"warn": 0.3, "compact": 0.5, "replace": 0.7})

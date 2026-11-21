@@ -40,11 +40,12 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
-from . import compaction, config as config_mod, handoff, replacement, routing, telemetry
-from . import github_log, omniroute, provider_env, resolve_discovery, session_policy
+from . import compaction, config as config_mod, context_monitor, handoff, replacement, routing, telemetry
+from . import authority, github_log, omniroute, provider_env, resolve_discovery, session_policy
 from .config import Config, ConfigError
 from .evidence import Evidence, unavailable
 from .launch import (MAIN_ROLE, InteractiveMainLauncher, LaunchError, MainProfile, NewConsoleTerminal,
@@ -61,7 +62,8 @@ EXIT_PRESSURE_UNAVAILABLE, EXIT_ACTION_DUE = 3, 4
 REQUESTS_SUBDIR = "requests"
 GITHUB_SUBDIR = "github_log"
 HANDOFF_FRESH_FOR_REPLACE_S = 1800.0   # a handoff older than this is not used for an automatic replacement
-HANDOFF_VERIFY_TTL_S = 120.0           # the loop re-verifies a handoff for the compaction decision at most this often
+REFRESH_BEFORE_REPLACE_S = 300.0       # a prepared handoff older than this is rewritten right before a replacement
+HANDOFF_VERIFY_TTL_S = 120.0          # the loop re-verifies a handoff for the compaction decision at most this often
 FACT_KEYS = ("objective", "decisions", "plan", "task_graph", "branches", "worktrees", "commits", "pull_requests",
              "tests", "evidence", "blockers", "next_actions")
 RunFn = Callable[..., Tuple[int, str, str]]
@@ -214,20 +216,30 @@ def lock_holder(store: StateStore, alive: Callable[[Optional[int]], bool]) -> Op
 # ------------------------------------------------------------------ helpers
 
 def _pressure_config(cfg: Config) -> telemetry.PressureConfig:
-    return telemetry.PressureConfig(windows={**telemetry.DEFAULT_CONTEXT_WINDOWS, **cfg.context_windows},
-                                    thresholds=dict(cfg.thresholds))
+    return telemetry.PressureConfig.from_config(cfg)
+
+
+def _observe(svc: Services, session_id: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any], Optional[Path]]:
+    """(session file entry or None, context pressure dict, transcript path or None). Read only. The statusLine record
+    Claude Code wrote for this session (OBSERVED) is preferred when fresh, else the transcript estimate (INFERRED)."""
+    cfg = svc.config
+    if not session_id:
+        na = unavailable("no Main session recorded", "supervisor")
+        return None, {k: na for k in ("tokens", "model", "window", "ratio", "level")}, None
+    sess = find_session(svc.read_sessions(cfg.sessions_directory(), pid_alive=svc.pid_alive), session_id)
+    cwd = sess["cwd"].value if sess is not None and sess["cwd"].available else None
+    path = telemetry.find_transcript(cfg.projects_directory(), session_id, cwd)
+    now = datetime.fromtimestamp(svc.clock(), tz=timezone.utc)
+    pressure = telemetry.context_pressure(path, _pressure_config(cfg), cache=svc.usage_cache,
+                                          context_dir=cfg.state_directory(svc.env) / telemetry.CONTEXT_SUBDIR,
+                                          session_id=session_id, now=now)
+    return sess, pressure, path
 
 
 def main_observation(svc: Services, session_id: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
     """(session file entry or None, context pressure dict) for the Main session. Read only."""
-    cfg = svc.config
-    if not session_id:
-        na = unavailable("no Main session recorded", "supervisor")
-        return None, {k: na for k in ("tokens", "model", "window", "ratio", "level")}
-    sess = find_session(svc.read_sessions(cfg.sessions_directory(), pid_alive=svc.pid_alive), session_id)
-    cwd = sess["cwd"].value if sess is not None and sess["cwd"].available else None
-    path = telemetry.find_transcript(cfg.projects_directory(), session_id, cwd)
-    return sess, telemetry.context_pressure(path, _pressure_config(cfg), cache=svc.usage_cache)
+    sess, pressure, _path = _observe(svc, session_id)
+    return sess, pressure
 
 
 def _ser(x: Any) -> Any:
@@ -348,6 +360,29 @@ def latest_handoff_for(store: StateStore, session_id: str) -> Optional[Tuple[str
 
 # ------------------------------------------------------------------ the supervisor loop
 
+class _PromotingRetirer:
+    """Wraps the Main retirer (T-DEV-030). Right before the old Main is retired, and never earlier, main.json is
+    pointed at the NEW session as RUNNING, after re-reading the sessions record: the new session must be the
+    authoritative ACTIVE one. Otherwise nothing is retired and the old Main stays."""
+
+    def __init__(self, loop: "SupervisorLoop", inner: Any, old: str, handoff_id: str) -> None:
+        self.loop, self.inner, self.old, self.handoff_id = loop, inner, old, handoff_id
+
+    def retire(self, session_id: str) -> Tuple[bool, str]:
+        store = self.loop.store
+        recs = replacement.load_sessions(store)["sessions"]
+        new = (recs.get(self.old) or {}).get("replaced_by")
+        rec = recs.get(new) or {}
+        if not new or rec.get("authoritative") is not True or rec.get("status") != replacement.SessionStatus.ACTIVE:
+            return False, "new Main is not recorded authoritative and ACTIVE; old Main not retired"
+        pid = next((a.get("pid") for a in self.loop.main_launcher.launched if a.get("session_id") == new), None)
+        write_main(store, session_id=new, status="RUNNING", pid=pid, replaced_session_id=self.old,
+                   handoff_id=self.handoff_id, launched_at=utc_iso(self.loop.svc.clock()),
+                   autocompact_pct=self.loop._launched_pct(new))
+        store.append_event("main_promoted", session_id=new, replaced_session_id=self.old)
+        return self.inner.retire(session_id)
+
+
 class SupervisorLoop:
     """Owns the lock, the worker supervisor and the interactive Main for one ``start`` run."""
 
@@ -363,7 +398,9 @@ class SupervisorLoop:
         self.main_launcher = InteractiveMainLauncher(store, svc.terminal, MainProfile.from_config(self.cfg),
                                                      str(self.root), policy_install=svc.policy_install)
         self.last_action: Optional[str] = None
-        self._verify_cache: Dict[str, Tuple[float, Optional[bool]]] = {}
+        self.tracker = compaction.ContextTracker(store)
+        self._boundary_cache: Dict[str, Tuple[Tuple[int, int], Optional[float]]] = {}
+        self._verify_cache: Dict[str, Tuple[float, Optional[Any]]] = {}
         self.ticks = 0
         self.watch_main = True       # False with start --no-main: the loop supervises workers only
 
@@ -371,6 +408,13 @@ class SupervisorLoop:
         self.sup.close()
 
     # -------------------------------------------------- Main
+
+    def _launched_pct(self, sid: Optional[str]) -> Optional[int]:
+        """The CLAUDE_AUTOCOMPACT_PCT_OVERRIDE value Main ``sid`` was actually launched with (None: none/unknown)."""
+        for a in reversed(self.main_launcher.launched):
+            if a.get("session_id") == sid:
+                return a.get("autocompact_pct")
+        return None
 
     def main_alive(self, main: Dict[str, Any]) -> bool:
         pid = main.get("pid")
@@ -399,7 +443,7 @@ class SupervisorLoop:
             self.store.append_event("main_launch_failed", session_id=sid, error=e.__class__.__name__)
             raise
         main = write_main(self.store, status="RUNNING", pid=pid, launched_at=utc_iso(self.svc.clock()),
-                          prompt_file=prompt.name)
+                          prompt_file=prompt.name, autocompact_pct=self._launched_pct(sid))
         replacement.register_session(self.store, sid, MAIN_ROLE)
         _gh_event(self.svc, self.store, github_log.EventKind.TASK_STARTED, "dev-supervisor", "Main session started",
                   evidence=(f"session {_short(sid)}", f"model {self.cfg.model(MAIN_ROLE)}"))
@@ -447,8 +491,9 @@ class SupervisorLoop:
         rep = handoff.verify_handoff(self.store, handoff_id, checkers)
         if not rep.safe:
             return {"status": replacement.ReplacementStatus.REFUSED_HANDOFF_NOT_SAFE, "reasons": rep.reasons}
-        retirer = OwnedMainRetirer(self.main_launcher,
-                                   lambda sid: main.get("pid") if sid == old else None)
+        retirer = _PromotingRetirer(self, OwnedMainRetirer(self.main_launcher,
+                                                           lambda sid: main.get("pid") if sid == old else None),
+                                    old, handoff_id)
         heartbeat = SessionFileHeartbeat(self.cfg.sessions_directory(), self.svc.read_sessions, self.svc.pid_alive,
                                          self.svc.clock)
         res = replacement.replace_session(self.store, self.main_launcher, old_session_id=old, role=MAIN_ROLE,
@@ -460,7 +505,8 @@ class SupervisorLoop:
         if res.new_session_id:
             pid = next((a.get("pid") for a in res.attempts if a.get("session_id") == res.new_session_id), None)
             write_main(self.store, session_id=res.new_session_id, status="RUNNING", pid=pid,
-                       replaced_session_id=old, handoff_id=handoff_id, launched_at=utc_iso(self.svc.clock()))
+                       replaced_session_id=old, handoff_id=handoff_id, launched_at=utc_iso(self.svc.clock()),
+                       autocompact_pct=self._launched_pct(res.new_session_id))
         _gh_event(self.svc, self.store, github_log.EventKind.HANDOFF, "dev-supervisor",
                   f"Main replacement: {res.status}",
                   detail=replacement.USAGE_NOTE,
@@ -481,19 +527,173 @@ class SupervisorLoop:
         self._verify_cache = {hid: (now, result)}          # only the newest handoff matters
         return result
 
+    # -------------------------------------------------- context management (T-DEV-030)
+
+    def _open_prs(self) -> List[Dict[str, Any]]:
+        argv = [self.svc.which("gh") or "gh", "pr", "list", "--state", "open", "--json", "number,state,headRefName",
+                "--limit", "50"] + (["--repo", self.cfg.github_repo] if self.cfg.github_repo else [])
+        code, out, _err = self.svc.run(argv, timeout=30.0, cwd=str(self.root))
+        data = json.loads(out) if code == 0 else None
+        if not isinstance(data, list):
+            raise RuntimeError("gh pr list returned no list")
+        return [p for p in data if isinstance(p, dict)]
+
+    def _head_of(self, branch: str) -> Optional[str]:
+        if not handoff._BRANCH.match(branch) or ".." in branch:
+            return None
+        code, out, _err = self.svc.run(["git", "-C", str(self.root), "rev-parse", "--verify", "--quiet",
+                                        f"refs/heads/{branch}"], timeout=20.0, cwd=str(self.root))
+        sha = (out or "").strip()
+        return sha if code == 0 and handoff._SHA.match(sha) else None
+
+    def make_handoff(self, sid: str, pressure: Dict[str, Any], max_age_s: float) -> Tuple[Optional[str], bool]:
+        """(handoff_id, adopted). A handoff for this session younger than ``max_age_s`` that verifies is adopted
+        (this also makes a restart after a crash reuse the earlier one); otherwise a MECHANICAL handoff is built from
+        recorded state only, written and verified by read-back. (None, False) when that fails (event recorded)."""
+        now = self.svc.clock()
+        latest = latest_handoff_for(self.store, sid)
+        if latest is not None and 0 <= now - latest[1] <= max_age_s and self._verified(latest[0]) is not None:
+            return latest[0], True
+        events, _bad = self.store.read_events()
+        approvals = authority.list_approvals(str(session_policy.approvals_dir(self.store.directory)))
+        h, last = None, ""
+        for with_titles in (True, False):
+            try:
+                h = handoff.build_mechanical_handoff(
+                    session_id=sid, pressure=pressure, tasks=handoff.read_active_tasks(self.root / "ACTIVE_TASKS.json"),
+                    workers=self.sup.registry.list(), events=events[-80:], approvals=approvals,
+                    pr_lister=self._open_prs if self.svc.which("gh") else None, head_of=self._head_of,
+                    usage=_usage_evidence(_account_usage(self.store)), with_titles=with_titles,
+                    created_at=utc_iso(now))
+                break
+            except handoff.HandoffError as e:
+                last = str(e)[:160]
+        if h is None:
+            self.store.append_event("handoff_prepare_failed", session_id=sid, stage="build", error=last)
+            return None, False
+        rec = handoff.write_handoff(self.store, h)
+        rep = handoff.verify_handoff(self.store, rec.handoff_id, self.svc.ref_checkers_factory(self.cfg, self.root),
+                                     expected_hash=rec.content_hash)
+        if not rep.safe:
+            self.store.append_event("handoff_prepare_failed", session_id=sid, stage="verify",
+                                    handoff_id=rec.handoff_id, reasons=rep.reasons[:5])
+            return None, False
+        self._verify_cache = {rec.handoff_id: (now, rep.verified)}
+        return rec.handoff_id, False
+
+    def _boundary(self, path: Optional[Path]) -> Optional[float]:
+        """Newest compact_boundary time of the Main transcript; re-read only when the file changed."""
+        if path is None:
+            return None
+        try:
+            st = os.stat(str(path))
+        except OSError:
+            return None
+        hit = self._boundary_cache.get(str(path))
+        if hit is not None and hit[0] == (st.st_size, st.st_mtime_ns):
+            return hit[1]
+        res = telemetry.last_compact_boundary(path)
+        self._boundary_cache[str(path)] = ((st.st_size, st.st_mtime_ns), res)
+        return res
+
+    def context_step(self, sid: str, pressure: Dict[str, Any], path: Optional[Path]) -> Dict[str, Any]:
+        """Prepare the durable handoff at >= prepare_handoff (once per crossing, refreshed after 30 min) and follow a
+        native compaction at >= compact (COMPACTED / COMPACT_FAILED). State is persisted; a restart repeats nothing."""
+        now = self.svc.clock()
+        st = self.tracker.load(sid)
+        before = json.dumps(st, sort_keys=True)
+        lv, ra = pressure.get("level"), pressure.get("ratio")
+        level = lv.value if isinstance(lv, Evidence) and lv.available else "ok"
+        ratio = ra.value if isinstance(ra, Evidence) and ra.available else None
+        label = ra.label.value if isinstance(ra, Evidence) else "UNAVAILABLE"
+        out = {"level": level, "handoff_id": st["prepare"]["handoff_id"], "compact_failed": False, "events": []}
+        if ratio is None:                       # UNAVAILABLE pressure: no figure, no action
+            return out
+        pct = round(float(ratio) * 100, 1)
+        act = self.tracker.prepare_action(st, level, now)
+        p = st["prepare"]
+        if act in ("prepare", "refresh") and now - float(p.get("failed_at") or -1e9) >= 120.0:
+            hid, adopted = self.make_handoff(sid, pressure, -1.0 if act == "refresh" else compaction.PREPARE_REFRESH_S)
+            if hid:
+                self._note_prepared(st, sid, hid, adopted, pct, now, "refresh" if act == "refresh" else "crossing")
+            else:
+                p["failed_at"] = now
+        elif act == "clear":
+            p["active"] = False
+        rank = compaction.LEVEL_RANK.get(level, 0)
+        c = st["compact"]
+        if c["state"] != "none" or rank >= compaction.LEVEL_RANK["compact"]:
+            tracked = c["state"] != "none"
+            tok = pressure.get("tokens")
+            key = ra.timestamp if label == "OBSERVED" else f"tokens:{tok.value if isinstance(tok, Evidence) else None}"
+            events = self.tracker.step_compaction(
+                st, level=level, ratio=float(ratio), label=label, obs_key=key,
+                boundary_ts=self._boundary(path) if tracked else None,
+                started_ts=context_monitor.read_started(self.store.directory, sid) if tracked else None,
+                now=now, k=int(self.cfg.compact_failed_observations), launched_ratio=self._main_launched_ratio(sid))
+            for kind, data in events:
+                self.store.append_event(kind, **data)
+                out["events"].append(kind)
+                if kind in ("COMPACTED", "COMPACT_FAILED"):
+                    _gh_event(self.svc, self.store, github_log.EventKind.COMPACTION, "dev-supervisor",
+                              f"Main {kind}", evidence=(f"ratio {ratio}", f"label {label}"))
+        out["compact_failed"] = st["compact"]["state"] == "failed"
+        replace_due = rank >= compaction.LEVEL_RANK["replace"] or (rank >= compaction.LEVEL_RANK["compact"]
+                                                                   and out["compact_failed"])
+        if replace_due and (not p["handoff_id"] or now - float(p["prepared_at"] or 0) > REFRESH_BEFORE_REPLACE_S):
+            hid, adopted = self.make_handoff(sid, pressure, REFRESH_BEFORE_REPLACE_S)   # refresh before replacing
+            if hid:
+                self._note_prepared(st, sid, hid, adopted, pct, now, "pre_replace")
+        out["handoff_id"] = p["handoff_id"] if p["handoff_id"] else None
+        if json.dumps(st, sort_keys=True) != before:
+            self.tracker.save(st)
+        return out
+
+    def _handoff_fresh(self, sid: str) -> bool:
+        """A replacement may only use a handoff prepared within the refresh-before-replace window (never older than
+        HANDOFF_FRESH_FOR_REPLACE_S); a stale one is not handed to ``decide``, which then blocks."""
+        p = self.tracker.load(sid)["prepare"]
+        if not p.get("handoff_id") or p.get("prepared_at") is None:
+            return False
+        age = self.svc.clock() - float(p["prepared_at"])
+        return 0 <= age <= min(REFRESH_BEFORE_REPLACE_S, HANDOFF_FRESH_FOR_REPLACE_S)
+
+    def _main_launched_ratio(self, sid: str) -> Optional[float]:
+        main = read_main(self.store)
+        pct = main.get("autocompact_pct") if main.get("session_id") == sid else None
+        if pct is None:
+            pct = self._launched_pct(sid)
+        return float(pct) / 100.0 if isinstance(pct, (int, float)) and not isinstance(pct, bool) else None
+
+    def _note_prepared(self, st: Dict[str, Any], sid: str, hid: str, adopted: bool, pct: float, now: float,
+                       reason: str) -> None:
+        p = st["prepare"]
+        p.update(active=True, handoff_id=hid, prepared_at=now, count=int(p.get("count") or 0) + 1, failed_at=None)
+        self.store.append_event("handoff_prepared", session_id=sid, handoff_id=hid, percent=pct, adopted=adopted,
+                                reason=reason, verified=True)
+        try:
+            context_monitor.write_notice(self.store.directory, sid, hid, pct, refreshed=reason != "crossing")
+        except OSError as e:
+            self.store.append_event("context_notice_failed", error=e.__class__.__name__)
+        self.tracker.save(st)               # persist before anything that can fail afterwards (crash recovery)
+
     def check_pressure(self) -> Dict[str, Any]:
         main = read_main(self.store)
         sid = main.get("session_id")
-        sess, pressure = main_observation(self.svc, sid)
+        sess, pressure, tpath = _observe(self.svc, sid)
         idle = idle_evidence(sess)
         verified, hid = None, None
         level = pressure.get("level")
+        ctx = {"compact_failed": False, "handoff_id": None}
+        if sid:
+            try:
+                ctx = self.context_step(sid, pressure, tpath)
+            except Exception as e:  # noqa: BLE001 - context management must never stop the supervisor loop
+                self.store.append_event("context_management_error", error=e.__class__.__name__, detail=str(e)[:160])
         due = isinstance(level, Evidence) and level.available and level.value in ("compact", "replace")
-        if due and sid:
-            latest = latest_handoff_for(self.store, sid)
-            if latest is not None and self.svc.clock() - latest[1] <= HANDOFF_FRESH_FOR_REPLACE_S:
-                hid = latest[0]
-                verified = self._verified(hid)
+        if due and sid and ctx.get("handoff_id") and self._handoff_fresh(sid):
+            hid = ctx["handoff_id"]
+            verified = self._verified(hid)
         dec = compaction.decide(pressure, idle=idle, verified=verified, config=_pressure_config(self.cfg),
                                 now=self.svc.clock(), session_id=sid or "")
         if dec.action != self.last_action:
@@ -504,9 +704,12 @@ class SupervisorLoop:
                           evidence=(f"ratio {dec.ratio}", f"allowed {dec.allowed}",
                                     f"blocked_by {','.join(dec.blocked_by) or 'none'}"))
             self.last_action = dec.action
-        out = {"decision": dec.to_dict(), "replacement": None}
-        # An interactive Main cannot receive /compact: COMPACT and REPLACE both mean "replace after a verified handoff".
-        if dec.allowed and dec.action in (compaction.COMPACT, compaction.REPLACE) and self.cfg.auto_replace_main and hid:
+        out = {"decision": dec.to_dict(), "replacement": None, "context": ctx}
+        # COMPACT is handled natively by Claude Code (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE at launch); Main is replaced only at
+        # REPLACE, or at COMPACT after COMPACT_FAILED. Both need an idle Main and a fresh verified handoff (``allowed``).
+        replace_due = dec.action == compaction.REPLACE or (dec.action == compaction.COMPACT
+                                                           and ctx.get("compact_failed") is True)
+        if dec.allowed and replace_due and self.cfg.auto_replace_main and hid:
             out["replacement"] = self.replace_main(hid)
             self.last_action = None
         return out
@@ -523,7 +726,12 @@ class SupervisorLoop:
         t2 = timer()
         main = read_main(self.store)
         alive = self.main_alive(main)
-        pressure = self.check_pressure() if alive else None
+        pressure = None
+        if alive:
+            try:
+                pressure = self.check_pressure()
+            except Exception as e:  # noqa: BLE001 - one bad observation must not stop supervision (T-DEV-030)
+                self.store.append_event("context_management_error", error=e.__class__.__name__, detail=str(e)[:160])
         t3 = timer()
         if not alive and main.get("status") == "RUNNING":
             write_main(self.store, status="EXITED", ended_at=utc_iso(self.svc.clock()))
@@ -653,6 +861,18 @@ def _usage_text(au: Dict[str, Any]) -> str:
     return (", ".join(parts) or "no windows") + f" [{first.label.value}, observed {first.timestamp}]"
 
 
+def _context_view(store: StateStore, sid: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Persisted context-management state of the current Main (read only), None without a Main or on any read error."""
+    if not sid:
+        return None
+    try:
+        st = compaction.ContextTracker(store).load(sid)
+    except StoreError:
+        return None
+    return {"handoff_prepared": st["prepare"]["active"], "handoff_id": st["prepare"]["handoff_id"],
+            "compaction": st["compact"]["state"], "last_result": st["compact"]["result"]}
+
+
 def cmd_status(svc: Services, a: argparse.Namespace) -> int:
     store = svc.store(create=False)
     main = read_main(store)
@@ -665,6 +885,7 @@ def cmd_status(svc: Services, a: argparse.Namespace) -> int:
                      "session_file_found": sess is not None, "idle": idle_evidence(sess),
                      "context_ratio": pressure.get("ratio"), "context_level": pressure.get("level")},
             "authoritative_main": _authoritative_main(store),
+            "context_management": _context_view(store, sid),
             "heartbeat": heartbeat_view(store, svc.clock()),
             "lock": lock_holder(store, svc.pid_alive),
             "workers": {s: sum(1 for w in reg["workers"] if w["status"] == s) for s in WorkerStatus.ALL
