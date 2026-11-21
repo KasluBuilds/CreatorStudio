@@ -591,6 +591,24 @@ class CompactionVerificationTests(Base):
         self.assertEqual(loop.tracker.load(sid)["compact"]["state"], "failed")
         self.assertEqual(events_of(store, "COMPACTED"), [])
 
+    def test_no_false_compact_failed_below_the_launched_percentage(self):
+        # default config: alias "opus" (window unknown at launch, so Main is launched with 80%); the statusLine later
+        # reports a 1M window, so the supervisor's token guard puts compact at 40%. Claude Code is not asked to
+        # compact before 80%, so 40..79% must not count towards COMPACT_FAILED.
+        env, store, loop = self.make(auto_replace_main=True)
+        sid = self.running_main(env, loop, tokens=1000)
+        self.assertEqual(launch.read_main(store)["autocompact_pct"], 80)
+        for i in range(10):
+            write_observed(env, sid, 45 + i, size=1000000, utc=now_iso(i))
+            res = loop.check_pressure()
+            self.assertIsNone(res["replacement"])
+        self.assertEqual(events_of(store, "COMPACT_FAILED"), [])
+        self.assertEqual(len(env.terminal.opened), 1)
+        for i in range(6):                                           # at/above the launched 80%: counting starts
+            write_observed(env, sid, 80, size=1000000, utc=now_iso(20 + i))
+            loop.check_pressure()
+        self.assertEqual(len(events_of(store, "COMPACT_FAILED")), 1)
+
     def test_default_k_is_six(self):
         self.assertEqual(cfgmod.Config().compact_failed_observations, 6)
         env, store, loop = self.make()
@@ -642,6 +660,23 @@ class ReplacementTests(Base):
         self.assertEqual(len(events_of(store, "COMPACT_FAILED")), 1)
         self.assertEqual(res["replacement"]["status"], replacement.ReplacementStatus.REPLACED)
         self.assertEqual(len(env.terminal.opened), 2)
+
+    def test_stale_handoff_is_never_used_when_the_pre_replace_refresh_fails(self):
+        env, store, loop = self.make(auto_replace_main=True)
+        sid = self.running_main(env, loop, tokens=140000)                          # 70%: handoff h1 is prepared
+        loop.check_pressure()
+        self.assertEqual(len(events_of(store, "handoff_prepared")), 1)
+        st = loop.tracker.load(sid)
+        st["prepare"]["prepared_at"] = float(st["prepare"]["prepared_at"]) - 7200   # h1 is now hours old, Main idle
+        loop.tracker.save(st)
+        env.write_transcript(sid, 190000)                                          # 95%
+        with mock.patch.object(loop, "make_handoff", return_value=(None, False)):
+            res = loop.check_pressure()
+        self.assertIsNone(res["replacement"])
+        self.assertFalse(res["decision"]["allowed"])
+        self.assertIn("no_fresh_verified_handoff", res["decision"]["blocked_by"])
+        self.assertEqual(len(env.terminal.opened), 1)
+        self.assertEqual(launch.read_main(store)["session_id"], sid)
 
     def test_replacement_needs_idle_main(self):
         env, store, loop = self.make(auto_replace_main=True)

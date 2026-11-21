@@ -265,10 +265,11 @@ def replace_session(store: StateStore, launcher: ProcessLauncher, *, old_session
     back = load_sessions(store)["sessions"]        # read back: the new session must be recorded authoritative first
     new_rec, old_rec = back.get(confirmed) or {}, back.get(old_session_id) or {}
     if final.status != SAFE:
-        cleared, detail = False, "handoff no longer verifies: " + "; ".join(final.reasons[:5])
+        cleared, detail = False, ("handoff no longer verifies; old session not retired, new session is authoritative: "
+                                  + "; ".join(final.reasons[:5]))
     elif not (new_rec.get("authoritative") is True and new_rec.get("status") == SessionStatus.ACTIVE
               and old_rec.get("authoritative") is not True):
-        cleared, detail = False, "new session is not recorded as the authoritative ACTIVE session; old one kept"
+        cleared, detail = False, "new session is not recorded as the authoritative ACTIVE session; old session not retired"
     else:
         try:
             cleared, detail = retirer.retire(old_session_id)

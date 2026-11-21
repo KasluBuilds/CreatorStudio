@@ -377,7 +377,8 @@ class _PromotingRetirer:
             return False, "new Main is not recorded authoritative and ACTIVE; old Main not retired"
         pid = next((a.get("pid") for a in self.loop.main_launcher.launched if a.get("session_id") == new), None)
         write_main(store, session_id=new, status="RUNNING", pid=pid, replaced_session_id=self.old,
-                   handoff_id=self.handoff_id, launched_at=utc_iso(self.loop.svc.clock()))
+                   handoff_id=self.handoff_id, launched_at=utc_iso(self.loop.svc.clock()),
+                   autocompact_pct=self.loop._launched_pct(new))
         store.append_event("main_promoted", session_id=new, replaced_session_id=self.old)
         return self.inner.retire(session_id)
 
@@ -408,6 +409,13 @@ class SupervisorLoop:
 
     # -------------------------------------------------- Main
 
+    def _launched_pct(self, sid: Optional[str]) -> Optional[int]:
+        """The CLAUDE_AUTOCOMPACT_PCT_OVERRIDE value Main ``sid`` was actually launched with (None: none/unknown)."""
+        for a in reversed(self.main_launcher.launched):
+            if a.get("session_id") == sid:
+                return a.get("autocompact_pct")
+        return None
+
     def main_alive(self, main: Dict[str, Any]) -> bool:
         pid = main.get("pid")
         if not isinstance(pid, int):
@@ -435,7 +443,7 @@ class SupervisorLoop:
             self.store.append_event("main_launch_failed", session_id=sid, error=e.__class__.__name__)
             raise
         main = write_main(self.store, status="RUNNING", pid=pid, launched_at=utc_iso(self.svc.clock()),
-                          prompt_file=prompt.name)
+                          prompt_file=prompt.name, autocompact_pct=self._launched_pct(sid))
         replacement.register_session(self.store, sid, MAIN_ROLE)
         _gh_event(self.svc, self.store, github_log.EventKind.TASK_STARTED, "dev-supervisor", "Main session started",
                   evidence=(f"session {_short(sid)}", f"model {self.cfg.model(MAIN_ROLE)}"))
@@ -497,7 +505,8 @@ class SupervisorLoop:
         if res.new_session_id:
             pid = next((a.get("pid") for a in res.attempts if a.get("session_id") == res.new_session_id), None)
             write_main(self.store, session_id=res.new_session_id, status="RUNNING", pid=pid,
-                       replaced_session_id=old, handoff_id=handoff_id, launched_at=utc_iso(self.svc.clock()))
+                       replaced_session_id=old, handoff_id=handoff_id, launched_at=utc_iso(self.svc.clock()),
+                       autocompact_pct=self._launched_pct(res.new_session_id))
         _gh_event(self.svc, self.store, github_log.EventKind.HANDOFF, "dev-supervisor",
                   f"Main replacement: {res.status}",
                   detail=replacement.USAGE_NOTE,
@@ -621,7 +630,7 @@ class SupervisorLoop:
                 st, level=level, ratio=float(ratio), label=label, obs_key=key,
                 boundary_ts=self._boundary(path) if tracked else None,
                 started_ts=context_monitor.read_started(self.store.directory, sid) if tracked else None,
-                now=now, k=int(self.cfg.compact_failed_observations))
+                now=now, k=int(self.cfg.compact_failed_observations), launched_ratio=self._main_launched_ratio(sid))
             for kind, data in events:
                 self.store.append_event(kind, **data)
                 out["events"].append(kind)
@@ -639,6 +648,22 @@ class SupervisorLoop:
         if json.dumps(st, sort_keys=True) != before:
             self.tracker.save(st)
         return out
+
+    def _handoff_fresh(self, sid: str) -> bool:
+        """A replacement may only use a handoff prepared within the refresh-before-replace window (never older than
+        HANDOFF_FRESH_FOR_REPLACE_S); a stale one is not handed to ``decide``, which then blocks."""
+        p = self.tracker.load(sid)["prepare"]
+        if not p.get("handoff_id") or p.get("prepared_at") is None:
+            return False
+        age = self.svc.clock() - float(p["prepared_at"])
+        return 0 <= age <= min(REFRESH_BEFORE_REPLACE_S, HANDOFF_FRESH_FOR_REPLACE_S)
+
+    def _main_launched_ratio(self, sid: str) -> Optional[float]:
+        main = read_main(self.store)
+        pct = main.get("autocompact_pct") if main.get("session_id") == sid else None
+        if pct is None:
+            pct = self._launched_pct(sid)
+        return float(pct) / 100.0 if isinstance(pct, (int, float)) and not isinstance(pct, bool) else None
 
     def _note_prepared(self, st: Dict[str, Any], sid: str, hid: str, adopted: bool, pct: float, now: float,
                        reason: str) -> None:
@@ -666,7 +691,7 @@ class SupervisorLoop:
             except Exception as e:  # noqa: BLE001 - context management must never stop the supervisor loop
                 self.store.append_event("context_management_error", error=e.__class__.__name__, detail=str(e)[:160])
         due = isinstance(level, Evidence) and level.available and level.value in ("compact", "replace")
-        if due and sid and ctx.get("handoff_id"):
+        if due and sid and ctx.get("handoff_id") and self._handoff_fresh(sid):
             hid = ctx["handoff_id"]
             verified = self._verified(hid)
         dec = compaction.decide(pressure, idle=idle, verified=verified, config=_pressure_config(self.cfg),

@@ -116,7 +116,11 @@ close that window by hand). `/clear` is never sent.
   because the format differs from what was OBSERVED -> `COMPACT_FAILED` (visible, not silent).
 - Known limits: the boundary record format and `used_percentage` semantics come from one observation of 2.1.316 and must be
   confirmed by the live probe; the statusLine file is written only while Claude Code redraws the status line; a window
-  unknown at launch means the token guard is applied by the supervisor's decisions but not by the launch variable.
+  unknown at launch means the token guard is applied by the supervisor's decisions but not by the launch variable. The
+  percentage actually launched is recorded in `main.json` (`autocompact_pct`); COMPACT_FAILED only counts observations at or
+  above max(compact level, launched percentage), so it is never reported for a compaction Claude Code was not asked for.
+  A statusLine file older than 600 s is not used (an idle Main falls back to INFERRED until the next assistant record).
+  An automatic replacement only uses a handoff prepared within the last 5 minutes (refresh failed -> `no_fresh_verified_handoff`).
 
 ## 7. Operator commands
 

@@ -217,14 +217,18 @@ class ContextTracker:
     @staticmethod
     def step_compaction(st: Dict[str, Any], *, level: str, ratio: Optional[float], label: str,
                         obs_key: Optional[str], boundary_ts: Optional[float], started_ts: Optional[float],
-                        now: float, k: int = DEFAULT_FAILED_OBSERVATIONS) -> List[Tuple[str, Dict[str, Any]]]:
+                        now: float, k: int = DEFAULT_FAILED_OBSERVATIONS,
+                        launched_ratio: Optional[float] = None) -> List[Tuple[str, Dict[str, Any]]]:
+        """``launched_ratio``: the autocompact percentage (/100) Claude Code was actually launched with. Native
+        compaction is only expected from max(compact level, launched_ratio); observations below that are not counted."""
         c, rank, events = st["compact"], LEVEL_RANK.get(level, 0), []
         high = rank >= LEVEL_RANK["compact"]
+        armed = high and (launched_ratio is None or ratio is None or float(ratio) >= float(launched_ratio))
         below_prepare = rank < LEVEL_RANK["prepare_handoff"]
         info = {"session_id": st["session_id"], "ratio": ratio, "pressure_label": label}
         if c["state"] == "none":
             if high:
-                c.update(state="pending", crossed_at=now, consecutive=1, last_obs=obs_key, started=False,
+                c.update(state="pending", crossed_at=now, consecutive=1 if armed else 0, last_obs=obs_key, started=False,
                          started_at=None, boundary_at=None, result=None)
                 events.append(("compaction_expected", {**info, "k": k}))
             return events
@@ -245,7 +249,7 @@ class ContextTracker:
             return events
         if c["state"] == "pending":
             if high:
-                if obs_key is not None and obs_key != c["last_obs"]:
+                if armed and obs_key is not None and obs_key != c["last_obs"]:
                     c["last_obs"] = obs_key
                     in_grace = c["started"] and c["started_at"] is not None and now - float(c["started_at"]) < STARTED_GRACE_S
                     if not in_grace:
