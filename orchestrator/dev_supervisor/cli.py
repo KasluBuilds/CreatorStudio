@@ -663,7 +663,12 @@ class SupervisorLoop:
         pct = main.get("autocompact_pct") if main.get("session_id") == sid else None
         if pct is None:
             pct = self._launched_pct(sid)
-        return float(pct) / 100.0 if isinstance(pct, (int, float)) and not isinstance(pct, bool) else None
+        if isinstance(pct, (int, float)) and not isinstance(pct, bool):
+            return float(pct) / 100.0
+        # No recorded CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (e.g. a Main launched before T-DEV-030): Claude Code was never asked
+        # to compact early, so native compaction is only expected near the full window. Never count COMPACT_FAILED for
+        # it below that; replacement still happens at the replace threshold.
+        return 1.0
 
     def _note_prepared(self, st: Dict[str, Any], sid: str, hid: str, adopted: bool, pct: float, now: float,
                        reason: str) -> None:
