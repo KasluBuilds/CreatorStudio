@@ -609,6 +609,21 @@ class CompactionVerificationTests(Base):
             loop.check_pressure()
         self.assertEqual(len(events_of(store, "COMPACT_FAILED")), 1)
 
+    def test_main_without_recorded_autocompact_never_counts_compact_failed(self):
+        # A Main launched before T-DEV-030 has no autocompact_pct: it was never asked to compact early, so even far
+        # above the compact level (token guard) no COMPACT_FAILED and no replacement may follow from the failure path.
+        env, store, loop = self.make(auto_replace_main=True)
+        sid = self.running_main(env, loop, tokens=1000)
+        launch.write_main(store, autocompact_pct=None)
+        self.assertIsNone(launch.read_main(store).get("autocompact_pct"))
+        loop._launched_pct = lambda _sid: None
+        for i in range(12):
+            write_observed(env, sid, 60 + i, size=1000000, utc=now_iso(i))
+            res = loop.check_pressure()
+            self.assertIsNone(res["replacement"])
+        self.assertEqual(events_of(store, "COMPACT_FAILED"), [])
+        self.assertEqual(len(env.terminal.opened), 1)
+
     def test_default_k_is_six(self):
         self.assertEqual(cfgmod.Config().compact_failed_observations, 6)
         env, store, loop = self.make()
