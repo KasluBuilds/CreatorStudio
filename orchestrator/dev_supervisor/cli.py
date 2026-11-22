@@ -10,6 +10,8 @@ Commands (every one is non-destructive unless ``--yes`` is given; exit 0 = ok, 1
 refused, 2 = usage or configuration error):
 
 - ``start``         show the Main launch plan; ``--yes`` launches the interactive Main and runs the supervisor loop
+                    (console mode), or waits for the Main terminal host (attached mode)
+- ``main-host``     attached mode: run the interactive Main inside THIS terminal tab and own it (``--yes``)
 - ``status``        Main session, authority, workers, queued requests, lock holder (read only)
 - ``workers``       the worker registry (read only)
 - ``assign``        validate a worker assignment; ``--yes`` queues it for the supervisor loop (which spawns it)
@@ -44,7 +46,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
-from . import compaction, config as config_mod, context_monitor, handoff, replacement, routing, telemetry
+from . import compaction, config as config_mod, context_monitor, handoff, main_host, replacement, routing, telemetry
 from . import authority, github_log, omniroute, provider_env, resolve_discovery, session_policy
 from .config import Config, ConfigError
 from .evidence import Evidence, unavailable
@@ -109,6 +111,7 @@ class Services:
     policy_install: Callable[..., Any] = session_policy.install
     timer: Callable[[], float] = time.monotonic          # tick duration measurement (injectable for tests)
     usage_cache: telemetry.UsageTailCache = field(default_factory=telemetry.UsageTailCache)
+    main_spawner: Any = None          # attached mode: starts the interactive Main inside the host's terminal
 
     def store(self, create: bool = True) -> StateStore:
         root = self.config.repository_root()
@@ -130,7 +133,8 @@ def build_services(cfg: Config) -> Services:
                     worktree_checker=GitWorktreeChecker(), ref_checkers_factory=_real_ref_checkers,
                     run=run_command, which=shutil.which, omniroute_transport=omniroute.urllib_transport,
                     resolve_discover=_real_discover,
-                    gh_runner_factory=lambda c: github_log.GhRunner(repo=c.github_repo))
+                    gh_runner_factory=lambda c: github_log.GhRunner(repo=c.github_repo),
+                    main_spawner=main_host.ForegroundSpawner())
 
 
 # ------------------------------------------------------------------ worker supervisor with configured permissions
@@ -334,6 +338,10 @@ def _heartbeat_text(hb: Dict[str, Any]) -> str:
 
 
 def _authoritative_main(store: StateStore) -> Optional[str]:
+    if read_main(store).get("status") in ("EXITED", "AWAITING_HOST"):
+        # A Main whose process ended is never authoritative, and neither is the state a restarted supervisor writes for
+        # a dead Main in attached mode (AWAITING_HOST): the session record stays ACTIVE until a host adopts the next Main.
+        return None
     doc = replacement.load_sessions(store)
     for sid, rec in doc["sessions"].items():
         if rec.get("role") == MAIN_ROLE and rec.get("authoritative") and rec.get("status") in (
@@ -397,6 +405,10 @@ class SupervisorLoop:
                                         policy_install=svc.policy_install)
         self.main_launcher = InteractiveMainLauncher(store, svc.terminal, MainProfile.from_config(self.cfg),
                                                      str(self.root), policy_install=svc.policy_install)
+        self.attached: Optional[main_host.AttachedMain] = None
+        if self.cfg.main_launch_mode == "attached":
+            self.attached = main_host.AttachedMain(store, self.cfg, read_sessions=svc.read_sessions,
+                                                   pid_alive=svc.pid_alive, clock=svc.clock, sleep=svc.sleep)
         self.last_action: Optional[str] = None
         self.tracker = compaction.ContextTracker(store)
         self._boundary_cache: Dict[str, Tuple[Tuple[int, int], Optional[float]]] = {}
@@ -429,9 +441,28 @@ class SupervisorLoop:
         if main.get("session_id") and main.get("status") == "RUNNING" and self.main_alive(main):
             self.store.append_event("main_observed_existing", session_id=main["session_id"], pid=main.get("pid"))
             return main
+        if self.attached is not None:
+            # Attached mode: the supervisor NEVER launches Main. It adopts what the host runs, or waits for the host.
+            self.attached.safe_reconcile()
+            main = read_main(self.store)
+            if main.get("status") == "RUNNING" and self.main_alive(main):
+                return main
+            if main.get("status") == "IDENTITY_MISMATCH":
+                return main
+            if self.main_alive(main) and main.get("status") != "AWAITING_HOST":
+                # A recorded Main process is alive although its record is not RUNNING: never erase that pid.
+                self.store.append_event("main_awaiting_host_kept_live_pid", status=main.get("status"), pid=main.get("pid"))
+                return main
+            main = write_main(self.store, status="AWAITING_HOST", pid=None)
+            self.store.append_event("main_awaiting_host")
+            return main
+        host_child = (main_host.read_host(self.store).get("child") or {}).get("pid")
+        if host_child and self.svc.pid_alive(host_child):
+            raise LaunchError(f"a Main is running under a terminal host (pid {host_child}); refusing to launch a "
+                              "second one from console mode")
         old_sid = main.get("session_id")
         if old_sid:                      # a recorded Main that is no longer running must lose authority (R3)
-            replacement.mark_exited(self.store, old_sid)
+            _mark_exited_unless_retired(self.store, old_sid)
             self.store.append_event("main_exited", session_id=old_sid)
         sid = str(uuid.UUID(str(self.svc.session_factory())))
         write_main_fresh(self.store, session_id=sid, status="STARTING", pid=None, model=self.cfg.model(MAIN_ROLE))
@@ -474,7 +505,7 @@ class SupervisorLoop:
                     outcome = {"ok": False, "error": f"unknown op {op!r}"}
             except (KeyError, TypeError) as e:
                 outcome = {"ok": False, "error": f"malformed request ({e.__class__.__name__})"}
-            except (StoreError, LaunchError, ConfigError) as e:
+            except (StoreError, LaunchError, ConfigError, OSError) as e:
                 outcome = {"ok": False, "error": f"{e.__class__.__name__}: {str(e)[:160]}"}
             _finish_request(self.store, path, {"op": op, **outcome})
             results.append({"request_id": path.stem, "op": op, **outcome})
@@ -487,6 +518,8 @@ class SupervisorLoop:
         old = main.get("session_id")
         if not old:
             return {"status": "REFUSED", "reasons": ["no Main session recorded"]}
+        if self.attached is not None:
+            return self._replace_attached(main, old, handoff_id)
         checkers = self.svc.ref_checkers_factory(self.cfg, self.root)
         rep = handoff.verify_handoff(self.store, handoff_id, checkers)
         if not rep.safe:
@@ -682,6 +715,49 @@ class SupervisorLoop:
             self.store.append_event("context_notice_failed", error=e.__class__.__name__)
         self.tracker.save(st)               # persist before anything that can fail afterwards (crash recovery)
 
+    def _replace_attached(self, main: Dict[str, Any], old: str, handoff_id: str) -> Dict[str, Any]:
+        """Replacement through the Main terminal host. The old Main is only ended by the host AFTER its preflight; if the
+        new Main is not confirmed the host resumes the old session (``recover_after_failed_replace``)."""
+        att = self.attached
+        checkers = self.svc.ref_checkers_factory(self.cfg, self.root)
+        rep = handoff.verify_handoff(self.store, handoff_id, checkers)
+        if not rep.safe:
+            return {"status": replacement.ReplacementStatus.REFUSED_HANDOFF_NOT_SAFE, "reasons": rep.reasons}
+        att.launcher.begin(old, handoff_id)
+        res = replacement.replace_session(self.store, att.launcher, old_session_id=old, role=MAIN_ROLE,
+                                          model=self.cfg.model(MAIN_ROLE), cwd=str(self.root), verified=rep.verified,
+                                          checkers=checkers, heartbeat=att.heartbeat_probe(), retirer=att.retirer,
+                                          clock=self.svc.clock, sleep=self.svc.sleep,
+                                          session_factory=self.svc.session_factory,
+                                          executable=self.cfg.claude_executable)
+        out = res.to_dict()
+        if res.new_session_id:
+            pid = next((a.get("pid") for a in res.attempts if a.get("session_id") == res.new_session_id), None)
+            write_main(self.store, session_id=res.new_session_id, status="RUNNING", pid=pid,
+                       replaced_session_id=old, handoff_id=handoff_id, launched_at=utc_iso(self.svc.clock()),
+                       adopted_from_host=False, host_note=None)
+            out["settle"] = "DONE" if att.settle(res.new_session_id) else "UNCONFIRMED"
+            out["authoritative_session_id"] = res.new_session_id
+        elif res.status == replacement.ReplacementStatus.ROLLED_BACK:
+            rec = att.recover_after_failed_replace(old)
+            out["recovery"] = rec
+            auth = read_main(self.store).get("session_id")
+            out["authoritative_session_id"] = auth
+            if rec.get("outcome") == "HOST_HAS_OTHER_MAIN" and auth and auth != old:
+                # The host finished a handover the supervisor had given up on. The reported result must agree with the
+                # authoritative Main, so it is not "rolled back".
+                out["status"] = "REPLACED_LATE_HANDOVER"
+                out["new_session_id"] = auth
+                out["reasons"] = list(out.get("reasons") or []) + [
+                    "the host completed the handover after the supervisor stopped waiting; the host's Main was adopted "
+                    "from its session file (not confirmed by the replacement heartbeat)"]
+        _gh_event(self.svc, self.store, github_log.EventKind.HANDOFF, "dev-supervisor",
+                  f"Main replacement (terminal host): {out.get('status')}", detail=replacement.USAGE_NOTE,
+                  evidence=(f"handoff {handoff_id}", f"old session {_short(old)}",
+                            f"new session {_short(res.new_session_id)}",
+                            f"recovery {(out.get('recovery') or {}).get('outcome', 'none')}"))
+        return out
+
     def check_pressure(self) -> Dict[str, Any]:
         main = read_main(self.store)
         sid = main.get("session_id")
@@ -725,6 +801,8 @@ class SupervisorLoop:
         self.ticks += 1
         timer = self.svc.timer
         t0 = timer()
+        if self.attached is not None:
+            self.attached.safe_reconcile()
         requests = self.process_requests()
         t1 = timer()
         workers = self.sup.tick()
@@ -741,8 +819,10 @@ class SupervisorLoop:
         if not alive and main.get("status") == "RUNNING":
             write_main(self.store, status="EXITED", ended_at=utc_iso(self.svc.clock()))
             self.store.append_event("main_exited", session_id=main.get("session_id"))
-            if main.get("session_id"):
-                replacement.mark_exited(self.store, main["session_id"])
+            if main.get("session_id") and self.attached is None:
+                # Attached mode: the old session's retirement belongs to the host's adoption of the next Main, which
+                # needs the session still RETIRING/ACTIVE to record it as RETIRED (see main_host.MainHost._adopt).
+                _mark_exited_unless_retired(self.store, main["session_id"])
         phases = {"requests": _ms(t1 - t0), "workers": _ms(t2 - t1), "main_and_pressure": _ms(t3 - t2)}
         self.write_heartbeat(alive, main.get("session_id"), len(self.sup.registry.list()),
                              duration_ms=_ms(timer() - t0), phase_ms=phases)
@@ -767,12 +847,20 @@ class SupervisorLoop:
             except (OSError, StoreError):
                 pass
 
+    def main_gone(self, t: Dict[str, Any]) -> bool:
+        if self.attached is None:
+            return not t["main_alive"]
+        # Attached mode: waiting for the host to start Main is not "gone"; only a Main that ran and ended, with no
+        # live host to bring it back, ends the loop.
+        main = read_main(self.store)
+        return not t["main_alive"] and main.get("status") == "EXITED" and not self.attached.channel.fresh()
+
     def run(self, max_ticks: Optional[int] = None) -> int:
         while True:
             t = self.tick()
             self.svc.out.write(f"tick {t['tick']}: main_alive={t['main_alive']} requests={len(t['requests'])} "
                                f"worker_changes={len(t['workers']['changes'])}\n")
-            if self.watch_main and not t["main_alive"] and self.cfg.exit_with_main:
+            if self.watch_main and self.cfg.exit_with_main and self.main_gone(t):
                 self.svc.out.write("Main is no longer running; supervisor loop ends (workers keep running).\n")
                 return EXIT_OK
             if max_ticks is not None and self.ticks >= max_ticks:
@@ -797,6 +885,13 @@ def cmd_start(svc: Services, a: argparse.Namespace) -> int:
     cfg = svc.config
     root = _repo_root(cfg)
     profile = MainProfile.from_config(cfg)
+    if not a.yes and cfg.main_launch_mode == "attached":
+        _print(svc, {"action": "run the supervisor loop; Main is NOT launched here: start it in the other terminal tab "
+                               "with main-host (attached mode)",
+                     "main_launch_mode": "attached", "cwd": str(root), "state_directory": str(cfg.state_directory(svc.env)),
+                     "auto_replace_main": cfg.auto_replace_main, "run": "python -B -m dev_supervisor start --yes",
+                     "main_tab": "python -B -m dev_supervisor main-host --yes"}, a.json, None)
+        return EXIT_OK
     if not a.yes:
         argv = build_main_argv(profile, "00000000-0000-4000-8000-000000000000", "<state dir>/prompts/main-<uuid>.prompt.txt")
         plan = {"action": "launch interactive Main in a new console window, then run the supervisor loop",
@@ -819,12 +914,43 @@ def cmd_start(svc: Services, a: argparse.Namespace) -> int:
         if not a.no_main:
             main = loop.ensure_main()
             svc.out.write(f"Main session {main.get('session_id')} pid {main.get('pid')} ({main.get('status')})\n")
+            if main.get("status") == "AWAITING_HOST":
+                svc.out.write("Waiting for the Main terminal host. In the Main tab run: "
+                              "python -B -m dev_supervisor main-host --yes\n")
         return loop.run(a.max_ticks)
     except KeyboardInterrupt:
         svc.out.write("interrupted; supervisor loop stopped (Main and workers keep running)\n")
         return EXIT_OK
     finally:
         loop.close()
+
+
+def cmd_main_host(svc: Services, a: argparse.Namespace) -> int:
+    cfg = svc.config
+    root = _repo_root(cfg)
+    store = svc.store()
+    spawner = svc.main_spawner or main_host.ForegroundSpawner()
+    host = main_host.MainHost(store, cfg, spawner, root=str(root), clock=svc.clock, sleep=svc.sleep,
+                              pid_alive=svc.pid_alive, session_factory=svc.session_factory, out=svc.out,
+                              read_sessions=svc.read_sessions)
+    if not a.yes:
+        try:
+            host.guard(a.ignore_recorded_main)
+            guard = "OK: no live Main is recorded"
+        except LaunchError as e:
+            guard = f"WOULD REFUSE: {e}"
+        profile = MainProfile.from_config(cfg)
+        argv = build_main_argv(profile, "00000000-0000-4000-8000-000000000000",
+                               "<state dir>/prompts/main-<uuid>.prompt.txt")
+        _print(svc, {"action": "run the interactive Main in this terminal and own it", "argv": argv, "cwd": str(root),
+                     "main_launch_mode": cfg.main_launch_mode, "duplicate_check": guard,
+                     "isolation": {"repo_root": str(root), "state_directory": str(cfg.state_directory(svc.env)),
+                                   "model": profile.model, "github_issue": cfg.github_issue or None,
+                                   "initial_prompt": profile.initial_prompt},
+                     "run": "python -B -m dev_supervisor main-host --yes"}, a.json, None)
+        return EXIT_OK
+    code = host.run(resume_last=a.resume_last, ignore_recorded=a.ignore_recorded_main, max_ticks=a.max_ticks)
+    return EXIT_OK if code == 0 else EXIT_FAIL
 
 
 def _registry_view(store: StateStore) -> Dict[str, Any]:
@@ -866,6 +992,15 @@ def _usage_text(au: Dict[str, Any]) -> str:
     return (", ".join(parts) or "no windows") + f" [{first.label.value}, observed {first.timestamp}]"
 
 
+def _mark_exited_unless_retired(store: StateStore, session_id: str) -> None:
+    """Mark a session EXITED only while it is still live. A session the replacement already retired (RETIRED) or could
+    not clear (RETIRE_FAILED) keeps that status: its process ending is expected, not a new failure (attached mode)."""
+    rec = replacement.load_sessions(store)["sessions"].get(session_id) or {}
+    if rec.get("status") in (replacement.SessionStatus.RETIRED, replacement.SessionStatus.RETIRE_FAILED):
+        return
+    replacement.mark_exited(store, session_id)
+
+
 def _context_view(store: StateStore, sid: Optional[str]) -> Optional[Dict[str, Any]]:
     """Persisted context-management state of the current Main (read only), None without a Main or on any read error."""
     if not sid:
@@ -876,6 +1011,15 @@ def _context_view(store: StateStore, sid: Optional[str]) -> Optional[Dict[str, A
         return None
     return {"handoff_prepared": st["prepare"]["active"], "handoff_id": st["prepare"]["handoff_id"],
             "compaction": st["compact"]["state"], "last_result": st["compact"]["result"]}
+
+def _host_view(svc: Services, store: StateStore) -> Optional[Dict[str, Any]]:
+    if svc.config.main_launch_mode != "attached":
+        return None
+    h = main_host.read_host(store)
+    return {"state": h.get("state"), "pid": h.get("pid"), "child": h.get("child"),
+            "heartbeat_fresh": main_host.host_fresh(h, svc.clock(), float(svc.config.host_heartbeat_stale_s),
+                                                    svc.pid_alive),
+            "recover_session_id": h.get("recover_session_id")}
 
 
 def cmd_status(svc: Services, a: argparse.Namespace) -> int:
@@ -892,6 +1036,8 @@ def cmd_status(svc: Services, a: argparse.Namespace) -> int:
             "authoritative_main": _authoritative_main(store),
             "context_management": _context_view(store, sid),
             "heartbeat": heartbeat_view(store, svc.clock()),
+            "main_launch_mode": svc.config.main_launch_mode,
+            "main_host": _host_view(svc, store),
             "lock": lock_holder(store, svc.pid_alive),
             "workers": {s: sum(1 for w in reg["workers"] if w["status"] == s) for s in WorkerStatus.ALL
                         if any(w["status"] == s for w in reg["workers"])},
@@ -1254,6 +1400,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--yes", action="store_true")
     p.add_argument("--max-ticks", type=int, default=None, help="stop the loop after N ticks")
     p.add_argument("--no-main", action="store_true", help="supervise workers only; do not launch Main")
+    p = add("main-host", "attached mode: run the interactive Main in this terminal tab (--yes)")
+    p.add_argument("--yes", action="store_true")
+    p.add_argument("--resume-last", action="store_true",
+                   help="resume the session recorded in main.json instead of starting a fresh one")
+    p.add_argument("--ignore-recorded-main", action="store_true",
+                   help="start although main.json records a live Main (only after you verified its pid is stale)")
+    p.add_argument("--max-ticks", type=int, default=None, help=argparse.SUPPRESS)
     add("status", "Main, authority, workers, requests, lock")
     add("workers", "worker registry")
     p = add("assign", "validate (and with --yes queue) a worker assignment")
@@ -1296,7 +1449,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 COMMANDS: Dict[str, Callable[[Services, argparse.Namespace], int]] = {
-    "start": cmd_start, "status": cmd_status, "workers": cmd_workers, "assign": cmd_assign, "handoff": cmd_handoff,
+    "start": cmd_start, "main-host": cmd_main_host, "status": cmd_status, "workers": cmd_workers, "assign": cmd_assign, "handoff": cmd_handoff,
     "compact-check": cmd_compact_check, "replace": cmd_replace, "report": cmd_report, "snapshot": cmd_snapshot,
     "route": cmd_route, "doctor": cmd_doctor, "config": cmd_config,
 }

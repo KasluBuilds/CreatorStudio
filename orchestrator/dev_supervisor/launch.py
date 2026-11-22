@@ -110,7 +110,8 @@ class MainProfile:
         return cls(model=cfg.model(MAIN_ROLE), executable=cfg.claude_executable,
                    permission_mode=cfg.main_permission_mode,
                    dangerously_skip_permissions=cfg.dangerously_skip_permissions is True,
-                   pressure=telemetry.PressureConfig.from_config(cfg))
+                   pressure=telemetry.PressureConfig.from_config(cfg),
+                   initial_prompt=cfg.main_initial_prompt or DEFAULT_INITIAL_PROMPT)
 
 
 def _uuid(session_id: str) -> str:
@@ -120,12 +121,17 @@ def _uuid(session_id: str) -> str:
         raise LaunchError("session id must be a UUID") from None
 
 
-def build_main_argv(profile: MainProfile, session_id: str, prompt_file: os.PathLike | str) -> List[str]:
-    """Argument list for the interactive Main. Raises ``LaunchError`` on anything unsafe."""
+def build_main_argv(profile: MainProfile, session_id: str, prompt_file: os.PathLike | str, *,
+                    resume: bool = False) -> List[str]:
+    """Argument list for the interactive Main. Raises ``LaunchError`` on anything unsafe.
+
+    ``resume=True`` (attached mode recovery only) continues an existing conversation: ``--resume <id>`` replaces
+    ``--session-id <id>`` and no initial prompt is appended. Every other flag and safeguard is identical."""
     if not _MODEL.match(profile.model or ""):
         raise LaunchError(f"refusing model identifier {profile.model!r}: an explicit, plain model id is required")
     sid = _uuid(session_id)
-    argv = [profile.executable, "--model", profile.model, "--session-id", sid, "--name", profile.name,
+    argv = [profile.executable, "--model", profile.model, "--resume" if resume else "--session-id", sid,
+            "--name", profile.name,
             "--append-system-prompt-file", str(prompt_file)]
     if profile.permission_mode is not None:
         if profile.permission_mode not in PERMISSION_MODES:
@@ -136,7 +142,7 @@ def build_main_argv(profile: MainProfile, session_id: str, prompt_file: os.PathL
         argv += ["--permission-mode", profile.permission_mode]
     if profile.dangerously_skip_permissions is True:
         argv.append("--dangerously-skip-permissions")
-    prompt = (profile.initial_prompt or "").strip()
+    prompt = "" if resume else (profile.initial_prompt or "").strip()
     if prompt:
         if prompt.startswith("-") or "\n" in prompt or "\x00" in prompt:
             raise LaunchError("the initial prompt must be one line and must not start with '-'")
