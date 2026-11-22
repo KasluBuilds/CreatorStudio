@@ -33,7 +33,12 @@ nothing here is a real machine value)::
       "poll_interval_s": 15,
       "worker_max_runtime_s": 14400,
       "auto_replace_main": false,
-      "exit_with_main": true
+      "exit_with_main": true,
+      "main_launch_mode": "console",
+      "main_initial_prompt": null,
+      "host_heartbeat_stale_s": 20,
+      "host_command_timeout_s": 60,
+      "host_recovery_wait_s": 180
     }
 
 Rules (IMPLEMENTED, tested offline):
@@ -48,6 +53,11 @@ Rules (IMPLEMENTED, tested offline):
 - Claude Pro versus OmniRoute: this file does NOT choose the provider. The provider of the Main session is decided by
   which local launcher the user runs to open the terminal (the user's own Claude Pro launcher or the OmniRoute one);
   the supervisor inherits that environment and never reads, copies or edits the launchers or ``.mcp.json``.
+
+- ``main_launch_mode``: ``"console"`` (default, unchanged: the supervisor opens Main in a new console window) or
+  ``"attached"`` (Main runs in a VS Code terminal tab under ``python -B -m dev_supervisor main-host``; the supervisor
+  never launches Main itself). See ``MAIN_TERMINAL.md``. Do NOT add the attached-mode keys to a config that an older
+  checkout still reads: older code refuses unknown keys.
 
 The documented single launch command (run from ``orchestrator/`` in a terminal opened by the launcher of choice)::
 
@@ -66,6 +76,7 @@ from .state_store import (UnsafeStoreLocation, check_location, contains_secret, 
 
 ENV_CONFIG = "CREATORSTUDIO_DEV_SUPERVISOR_CONFIG"
 CONFIG_NAME = "config.json"
+LAUNCH_MODES = ("console", "attached")
 PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")  # claude 2.1.316
 DANGEROUS_MODES = ("bypassPermissions",)
 DEFAULT_MODELS = {"main": "opus", "worker": "sonnet", "cheap": "haiku", "strongest": "opus", "standard": "sonnet"}
@@ -104,6 +115,11 @@ class Config:
     worker_max_runtime_s: float = 4 * 3600.0
     auto_replace_main: bool = False
     exit_with_main: bool = True
+    main_launch_mode: str = "console"        # "console" (new console window) or "attached" (Main terminal host)
+    main_initial_prompt: Optional[str] = None  # one plain line replacing the default first prompt (smoke tests)
+    host_heartbeat_stale_s: float = 20.0      # attached mode: a host heartbeat older than this is stale
+    host_command_timeout_s: float = 60.0      # attached mode: how long the supervisor waits for the host to answer
+    host_recovery_wait_s: float = 180.0       # attached mode: how long the host waits before self-recovering
     source: str = "defaults"          # where the values came from (a path, or "defaults"); not a config key
 
     # ------------------------------------------------------------ derived values
@@ -183,7 +199,15 @@ def validate(cfg: Config) -> None:
         raise ConfigError("github_issue must be a non-negative integer")
     if cfg.github_repo and (cfg.github_repo.count("/") != 1 or any(c.isspace() for c in cfg.github_repo)):
         raise ConfigError("github_repo must look like <owner>/<repository>")
-    for name in ("poll_interval_s", "worker_max_runtime_s"):
+    ip = cfg.main_initial_prompt
+    if ip is not None and (not isinstance(ip, str) or not ip.strip() or len(ip) > 300
+                           or any(ch in ip for ch in ("\n", "\r", "\x00"))
+                           or ip.strip().startswith("-")):
+        raise ConfigError("main_initial_prompt must be one short line of plain text that does not start with '-'")
+    if cfg.main_launch_mode not in LAUNCH_MODES:
+        raise ConfigError(f"main_launch_mode {cfg.main_launch_mode!r} is not one of {', '.join(LAUNCH_MODES)}")
+    for name in ("poll_interval_s", "worker_max_runtime_s", "host_heartbeat_stale_s", "host_command_timeout_s",
+                 "host_recovery_wait_s"):
         v = getattr(cfg, name)
         if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0:
             raise ConfigError(f"{name} must be a positive number")
@@ -258,4 +282,9 @@ def example() -> Dict[str, Any]:
         "worker_max_runtime_s": 14400,
         "auto_replace_main": False,
         "exit_with_main": True,
+        "main_launch_mode": "console",
+        "main_initial_prompt": None,
+        "host_heartbeat_stale_s": 20,
+        "host_command_timeout_s": 60,
+        "host_recovery_wait_s": 180,
     }
