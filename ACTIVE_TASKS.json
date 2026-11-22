@@ -1823,6 +1823,40 @@
         "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_context_management.py"
       ],
       "integration_notes": "Completed 2026-11-22. Code merged as PR #112 (merge commit 1a7454c24a3dd7d20167997899d2e0ff67cc2239, 2026-11-21T23:20:06Z) and follow-up PR #114 (merge commit 1aadefa3ba018648b07dff87114d3de4ea511a07, 2026-11-21T23:26:17Z). Close-out: PR #115 set UNDER_REVIEW (merge 15b8023be488); this PR sets COMPLETED. Evidence: PR #112 and #114 CI; the 1166-test baseline cited in SESSION_HANDOFF (2026-11-09) is historical. Approval: source DIRECT, Lukas in session 2026-11-22 ('Proceed with option 1'). Registry-only change: no code review required (integrate gate 5). No ChatGPT review was performed for this close-out. Owned paths and lease released."
+    },
+    {
+      "id": "T-DEV-031",
+      "title": "dev_supervisor: Main in a VS Code integrated terminal (attached mode: main-host plus supervisor adoption)",
+      "description": "Attached launch mode: main-host runs the interactive Main inside a VS Code terminal tab and owns it; the supervisor adopts it and never launches Main in attached mode. Implementation is offline tested only; the live VS Code integrated-terminal test is pending.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/t-dev-031-main-terminal",
+      "worktree": "../CreatorStudio-worktrees/t-dev-031-main-terminal",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-030"
+      ],
+      "lease": {
+        "acquired": "2026-11-22T19:30:00+00:00",
+        "expires": "2026-11-23T19:30:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/config.py",
+        "orchestrator/dev_supervisor/launch.py",
+        "orchestrator/dev_supervisor/main_host.py",
+        "orchestrator/dev_supervisor/MAIN_TERMINAL.md",
+        "orchestrator/tests/test_dev_main_host.py"
+      ],
+      "acceptance_criteria": [
+        "attached mode: Main is launched only by main-host in the terminal tab that runs it",
+        "attached mode: the supervisor never launches Main"
+      ],
+      "test_requirements": [
+        "full suite: python -B -m unittest discover -s tests from orchestrator/ (2675 tests passed on the pre-merge branch, evidence saved outside the repo)"
+      ],
+      "integration_notes": "Implementation exists uncommitted in CreatorStudio-worktrees/dev-supervisor-main-terminal-host (based on cd00a72); to be applied on this branch after the claim merges. Live VS Code test NOT yet run."
     }
   ]
 }
