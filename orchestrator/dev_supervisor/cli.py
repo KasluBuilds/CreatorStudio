@@ -338,6 +338,10 @@ def _heartbeat_text(hb: Dict[str, Any]) -> str:
 
 
 def _authoritative_main(store: StateStore) -> Optional[str]:
+    if read_main(store).get("status") == "EXITED":
+        # A Main whose process ended is never authoritative. In attached mode its session record stays ACTIVE until a
+        # host adopts the next Main, so the record alone must not be trusted here.
+        return None
     doc = replacement.load_sessions(store)
     for sid, rec in doc["sessions"].items():
         if rec.get("role") == MAIN_ROLE and rec.get("authoritative") and rec.get("status") in (
@@ -842,6 +846,7 @@ class SupervisorLoop:
                 self.store.append_event("heartbeat_write_failed", tick=self.ticks, error=e.__class__.__name__)
             except (OSError, StoreError):
                 pass
+
     def main_gone(self, t: Dict[str, Any]) -> bool:
         if self.attached is None:
             return not t["main_alive"]
@@ -1006,6 +1011,7 @@ def _context_view(store: StateStore, sid: Optional[str]) -> Optional[Dict[str, A
         return None
     return {"handoff_prepared": st["prepare"]["active"], "handoff_id": st["prepare"]["handoff_id"],
             "compaction": st["compact"]["state"], "last_result": st["compact"]["result"]}
+
 def _host_view(svc: Services, store: StateStore) -> Optional[Dict[str, Any]]:
     if svc.config.main_launch_mode != "attached":
         return None
