@@ -88,7 +88,6 @@ Status record dated **2026-11-18**. Baseline commit **`93a9a829e073`** on `main`
 |---|---|---|---|---|---|
 | T-RSV-002 Safe, validated DaVinci Resolve execution layer (M-RSV-02) | claude:repository-coordinator | `task/t-rsv-002` | ACTIVE | 2026-11-22T16:00:00+00:00 | orchestrator/resolve_executor/, orchestrator/tests/test_resolve_executor.py, AI_Creator_Studio_Documentation/RESOLVE_INTEGRATION.md, AI_Creator_Studio_Documentation/TECHNICAL_ARCHITECTURE.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 | T-EDT-001 Validated edit-plan schema and Editor planning workflow (M-EDT-01, offline) | claude:repository-coordinator | `task/t-edt-001-edit-plan` | ACTIVE | 2026-11-23T17:00:00+00:00 | orchestrator/edit_plan/, orchestrator/tests/test_edit_plan.py, AI_Creator_Studio_Documentation/EDITING_ENGINE.md |
-| T-DEV-031 dev_supervisor: Main in a VS Code integrated terminal (attached mode: main-host plus supervisor adoption) | claude:repository-coordinator | `task/t-dev-031-main-terminal` | UNDER_REVIEW | 2026-11-23T19:30:00+00:00 | orchestrator/dev_supervisor/cli.py, orchestrator/dev_supervisor/config.py, orchestrator/dev_supervisor/launch.py, orchestrator/dev_supervisor/main_host.py, orchestrator/dev_supervisor/MAIN_TERMINAL.md, orchestrator/tests/test_dev_main_host.py |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
