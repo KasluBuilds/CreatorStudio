@@ -1800,37 +1800,16 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/t-dev-030-context-management",
       "worktree": "../CreatorStudio-worktrees/t-dev-030-context-management",
-      "status": "UNDER_REVIEW",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-029"
       ],
-      "lease": {
-        "acquired": "2026-11-20T19:20:00+00:00",
-        "expires": "2026-11-23T19:20:00+00:00"
-      },
+      "lease": null,
       "exclusive_resources": [],
       "integration_agreements": [
         "AGR-GOV-REGISTRY-01"
       ],
-      "owned_paths": [
-        "orchestrator/dev_supervisor/telemetry.py",
-        "orchestrator/dev_supervisor/compaction.py",
-        "orchestrator/dev_supervisor/cli.py",
-        "orchestrator/dev_supervisor/launch.py",
-        "orchestrator/dev_supervisor/session_policy.py",
-        "orchestrator/dev_supervisor/handoff.py",
-        "orchestrator/dev_supervisor/replacement.py",
-        "orchestrator/dev_supervisor/context_monitor.py",
-        "orchestrator/dev_supervisor/CONTEXT_MANAGEMENT.md",
-        "orchestrator/dev_supervisor/USAGE_ANALYSIS.md",
-        "orchestrator/tests/test_dev_context_management.py",
-        "orchestrator/tests/test_dev_telemetry.py",
-        "orchestrator/tests/test_dev_cli.py",
-        "orchestrator/tests/test_dev_session_policy.py",
-        "orchestrator/tests/test_dev_loop_repair.py",
-        "orchestrator/dev_supervisor/config.py",
-        "orchestrator/tests/test_dev_handoff.py"
-      ],
+      "owned_paths": [],
       "acceptance_criteria": [
         "Context usage OBSERVED from statusLine context_window data when available, transcript estimate labelled INFERRED otherwise, UNAVAILABLE reported honestly",
         "70%: durable mechanical handoff written and verified by read-back; Main notified via hook additionalContext",
@@ -1843,7 +1822,7 @@
       "test_requirements": [
         "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_context_management.py"
       ],
-      "integration_notes": "Close-out step 1 of 2 (2026-11-22): code merged as PR #112 (1a7454c, 2026-11-21T23:20:06Z) and PR #114 (1aadefa, 2026-11-21T23:26:17Z). Status UNDER_REVIEW holds the paths until the close-out PR merges; the next registry PR sets COMPLETED with an empty owned_paths list. Approval source: DIRECT, Lukas in session 2026-11-22: 'Proceed with option 1'. Registry-only change: no code review (integrate gate 5 scope)."
+      "integration_notes": "Completed 2026-11-22. Code merged as PR #112 (merge commit 1a7454c24a3dd7d20167997899d2e0ff67cc2239, 2026-11-21T23:20:06Z) and follow-up PR #114 (merge commit 1aadefa3ba018648b07dff87114d3de4ea511a07, 2026-11-21T23:26:17Z). Close-out: PR #115 set UNDER_REVIEW (merge 15b8023be488); this PR sets COMPLETED. Evidence: PR #112 and #114 CI; the 1166-test baseline cited in SESSION_HANDOFF (2026-11-09) is historical. Approval: source DIRECT, Lukas in session 2026-11-22 ('Proceed with option 1'). Registry-only change: no code review required (integrate gate 5). No ChatGPT review was performed for this close-out. Owned paths and lease released."
     }
   ]
 }
