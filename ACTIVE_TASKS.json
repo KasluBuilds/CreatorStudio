@@ -1868,7 +1868,8 @@
       "owned_paths": [
         "orchestrator/dev_supervisor/dispatch_routing.py",
         "orchestrator/dev_supervisor/cli.py",
-        "orchestrator/tests/test_dev_dispatch_routing.py"
+        "orchestrator/tests/test_dev_dispatch_routing.py",
+        "orchestrator/tests/test_dev_cli.py"
       ],
       "acceptance_criteria": [
         "worker assignment refused with reason when no verified free route is available",
@@ -1880,7 +1881,7 @@
         "focused: python -B -m unittest discover -s tests -p test_dev_dispatch_routing.py from orchestrator/",
         "full suite before merge"
       ],
-      "integration_notes": "Claim for the overnight-readiness routing change requested by Lukas 2026-11-23. Live OmniRoute-backed Claude Code worker is NOT TESTED; the gate stays closed until a live probe verifies it."
+      "integration_notes": "Claim for the overnight-readiness routing change requested by Lukas 2026-11-23. Live OmniRoute-backed Claude Code worker is NOT TESTED; the gate stays closed until a live probe verifies it. Ownership amendment 2026-11-23: test_dev_cli.py added, because three existing worker-spawn tests assumed Anthropic dispatch and must be updated to exercise the gate."
     }
   ]
 }
