@@ -1831,7 +1831,7 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/t-dev-031-main-terminal",
       "worktree": "../CreatorStudio-worktrees/t-dev-031-main-terminal",
-      "status": "ACTIVE",
+      "status": "UNDER_REVIEW",
       "depends_on": [
         "T-DEV-030"
       ],
@@ -1854,9 +1854,9 @@
         "attached mode: the supervisor never launches Main"
       ],
       "test_requirements": [
-        "full suite: python -B -m unittest discover -s tests from orchestrator/ (2675 tests passed on the pre-merge branch, evidence saved outside the repo)"
+        "full suite: python -B -m unittest discover -s tests from orchestrator/ (Ran 3144 tests, OK (skipped=5), exit 0 on the final head 6c84e5e; evidence saved outside the repo)"
       ],
-      "integration_notes": "Implementation exists uncommitted in CreatorStudio-worktrees/dev-supervisor-main-terminal-host (based on cd00a72); to be applied on this branch after the claim merges. Live VS Code test NOT yet run."
+      "integration_notes": "Implementation merged as PR #118 (merge commit d639942aa9dd, head 6c84e5e, diff hash fa554e70f8fff969). Review: claude-sonnet-reviewer-r6 APPROVE for that hash; gates 1-8 PASS at merge. Full suite on the final head: 3144 tests OK (skipped=5). Live VS Code integrated-terminal test: REPORTED by Lukas 2026-11-22 (Main PID 26188, 26 supervisor ticks, Ctrl+C stopped the loop cleanly, Main unaffected); not independently verified beyond a read-only status check. Close-out step 1 (this PR): UNDER_REVIEW, corrected test count. Close-out step 2 will set COMPLETED. Follow-ups (non-blocking, from review): (1) main_host.py stop_child / Ctrl+C: _cmd_stop_child can set EXITED with no child and tick() does not return, and run() swallows KeyboardInterrupt, so the host may keep looping; untested dead end. (2) Temporary stale authoritative Main between ticks: a RUNNING main.json whose process just died is reported authoritative until the next tick; NEEDS_ATTENTION with mark_old=False leaves the old session authoritative. (3) A restarted supervisor overwrites a dead Main's NEEDS_ATTENTION with AWAITING_HOST in ensure_main; the signal survives only in the event log."
     }
   ]
 }
