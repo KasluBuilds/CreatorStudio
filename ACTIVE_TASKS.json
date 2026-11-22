@@ -1847,6 +1847,40 @@
         "full suite: python -B -m unittest discover -s tests from orchestrator/ (Ran 3144 tests, OK (skipped=5), exit 0 on the final head 6c84e5e; evidence saved outside the repo)"
       ],
       "integration_notes": "Implementation merged as PR #118 (merge commit d639942aa9dd, head 6c84e5e, diff hash fa554e70f8fff969). Review: claude-sonnet-reviewer-r6 APPROVE for that hash; gates 1-8 PASS at merge. Full suite on the final head: 3144 tests OK (skipped=5). Live VS Code integrated-terminal test: REPORTED by Lukas 2026-11-22 (Main PID 26188, 26 supervisor ticks, Ctrl+C stopped the loop cleanly, Main unaffected); not independently verified beyond a read-only status check. Close-out step 1 (this PR): UNDER_REVIEW, corrected test count. Close-out step 2 will set COMPLETED. Follow-ups (non-blocking, from review): (1) main_host.py stop_child / Ctrl+C: _cmd_stop_child can set EXITED with no child and tick() does not return, and run() swallows KeyboardInterrupt, so the host may keep looping; untested dead end. (2) Temporary stale authoritative Main between ticks: a RUNNING main.json whose process just died is reported authoritative until the next tick; NEEDS_ATTENTION with mark_old=False leaves the old session authoritative. (3) A restarted supervisor overwrites a dead Main's NEEDS_ATTENTION with AWAITING_HOST in ensure_main; the signal survives only in the event log. Close-out step 2 (2026-11-22): COMPLETED, owned paths and lease released. Registry-only; no code review required (gate 5). Follow-ups recorded above remain open."
+    },
+    {
+      "id": "T-DEV-032",
+      "title": "dev_supervisor: route worker assignments through routing.decide with a verified-free-route gate (no silent Anthropic dispatch)",
+      "description": "assign consults routing.decide(); workers are never dispatched to Anthropic/Claude Pro; dispatch is refused with the reason unless an OmniRoute route is verified for Claude Code workers (flag defaults to not verified, since Claude Code over OmniRoute is NOT TESTED); provider and route are recorded on every assignment; concurrency capped at one live worker.",
+      "owner": "claude:repository-coordinator",
+      "branch": "task/t-dev-032-worker-routing",
+      "worktree": "../CreatorStudio-worktrees/t-dev-032-worker-routing",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-031"
+      ],
+      "lease": {
+        "acquired": "2026-11-23T00:30:00+00:00",
+        "expires": "2026-11-24T00:30:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/dispatch_routing.py",
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/tests/test_dev_dispatch_routing.py"
+      ],
+      "acceptance_criteria": [
+        "worker assignment refused with reason when no verified free route is available",
+        "no assignment ever records provider anthropic",
+        "provider and route recorded in each assignment payload",
+        "at most one live worker at assignment time"
+      ],
+      "test_requirements": [
+        "focused: python -B -m unittest discover -s tests -p test_dev_dispatch_routing.py from orchestrator/",
+        "full suite before merge"
+      ],
+      "integration_notes": "Claim for the overnight-readiness routing change requested by Lukas 2026-11-23. Live OmniRoute-backed Claude Code worker is NOT TESTED; the gate stays closed until a live probe verifies it."
     }
   ]
 }
