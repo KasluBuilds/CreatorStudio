@@ -1800,7 +1800,7 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/t-dev-030-context-management",
       "worktree": "../CreatorStudio-worktrees/t-dev-030-context-management",
-      "status": "ACTIVE",
+      "status": "UNDER_REVIEW",
       "depends_on": [
         "T-DEV-029"
       ],
@@ -1843,7 +1843,7 @@
       "test_requirements": [
         "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_context_management.py"
       ],
-      "integration_notes": "Requested by Lukas on 2026-11-20 (context-pressure and token-usage management). Owner is the dev_supervisor package owner (Main as Repository Coordinator). The running Main is not killed or replaced to test this. Scope widened 2026-11-20 (registry-only, before the code PR): config.py for configurable thresholds/compact_tokens and test_dev_handoff.py for the new threshold defaults."
+      "integration_notes": "Close-out step 1 of 2 (2026-11-22): code merged as PR #112 (1a7454c, 2026-11-21T23:20:06Z) and PR #114 (1aadefa, 2026-11-21T23:26:17Z). Status UNDER_REVIEW holds the paths until the close-out PR merges; the next registry PR sets COMPLETED with an empty owned_paths list. Approval source: DIRECT, Lukas in session 2026-11-22: 'Proceed with option 1'. Registry-only change: no code review (integrate gate 5 scope)."
     }
   ]
 }
