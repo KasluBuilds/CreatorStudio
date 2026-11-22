@@ -1631,5 +1631,38 @@ class LateAckTests(Base):
         self.assertNotEqual(w.sessions()[old]["status"], replacement.SessionStatus.FAILED)
 
 
+class AuthoritativeMainTests(unittest.TestCase):
+    """A dead Main must never be reported as authoritative, whatever its record says (review of PR #118)."""
+
+    def _store(self, tmp):
+        from dev_supervisor.state_store import StateStore
+        return StateStore(tmp, repo_roots=[], clock=lambda: 1.0, pid_alive=lambda pid: False, create=True)
+
+    def test_dead_main_in_awaiting_host_is_not_authoritative(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(tmp)
+            sid = str(uuid.uuid4())
+            replacement.register_session(store, sid, "main")          # ACTIVE and authoritative, process gone
+            launch.write_main(store, session_id=sid, status="AWAITING_HOST", pid=None)
+            self.assertEqual(replacement.load_sessions(store)["sessions"][sid]["status"], "ACTIVE")
+            self.assertIsNone(cli._authoritative_main(store))
+
+    def test_dead_main_marked_exited_is_not_authoritative(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(tmp)
+            sid = str(uuid.uuid4())
+            replacement.register_session(store, sid, "main")
+            launch.write_main(store, session_id=sid, status="EXITED", pid=None)
+            self.assertIsNone(cli._authoritative_main(store))
+
+    def test_running_main_is_authoritative(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(tmp)
+            sid = str(uuid.uuid4())
+            replacement.register_session(store, sid, "main")
+            launch.write_main(store, session_id=sid, status="RUNNING", pid=None)
+            self.assertEqual(cli._authoritative_main(store), sid)
+
+
 if __name__ == "__main__":
     unittest.main()

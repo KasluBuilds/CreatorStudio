@@ -338,9 +338,9 @@ def _heartbeat_text(hb: Dict[str, Any]) -> str:
 
 
 def _authoritative_main(store: StateStore) -> Optional[str]:
-    if read_main(store).get("status") == "EXITED":
-        # A Main whose process ended is never authoritative. In attached mode its session record stays ACTIVE until a
-        # host adopts the next Main, so the record alone must not be trusted here.
+    if read_main(store).get("status") in ("EXITED", "AWAITING_HOST"):
+        # A Main whose process ended is never authoritative, and neither is the state a restarted supervisor writes for
+        # a dead Main in attached mode (AWAITING_HOST): the session record stays ACTIVE until a host adopts the next Main.
         return None
     doc = replacement.load_sessions(store)
     for sid, rec in doc["sessions"].items():
