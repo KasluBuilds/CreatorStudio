@@ -21,7 +21,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dev_supervisor import cli, compaction, handoff, launch, replacement, session_policy  # noqa: E402
+from dev_supervisor import cli, compaction, dispatch_routing, handoff, launch, replacement, session_policy  # noqa: E402
 from dev_supervisor import config as cfgmod  # noqa: E402
 from dev_supervisor.lifecycle import LaunchHandle, LaunchSpec, build_claude_argv  # noqa: E402
 from dev_supervisor.omniroute import TransportError  # noqa: E402
@@ -516,6 +516,7 @@ class CliTests(Offline):
         self.assertIn("no longer running", out)
         self.assertEqual(launch.read_main(env.store())["status"], "EXITED")
 
+    @mock.patch.multiple(dispatch_routing, CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED=True, OMNIROUTE_WORKER_ENV_IMPLEMENTED=True)
     def test_assign_dry_run_then_queue(self):
         env = Env(self)
         pf = env.prompt_file()
@@ -540,6 +541,7 @@ class CliTests(Offline):
         self.assertIn("worktree check", out)
         self.assertFalse(env.state.exists())
 
+    @mock.patch.multiple(dispatch_routing, CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED=True, OMNIROUTE_WORKER_ENV_IMPLEMENTED=True)
     def test_loop_spawns_queued_workers_with_configured_permission_mode(self):
         env = Env(self, worker_permission_mode="acceptEdits")
         env.cli("assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree", str(env.wt),
@@ -774,6 +776,7 @@ class DoctorTests(Offline):
 # ------------------------------------------------------------------ end-to-end with fakes (mandatory)
 
 class EndToEndTests(Offline):
+    @mock.patch.multiple(dispatch_routing, CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED=True, OMNIROUTE_WORKER_ENV_IMPLEMENTED=True)
     def test_start_assign_pressure_handoff_replace_status(self):
         env = Env(self, auto_replace_main=True, github_issue=52, github_repo="owner/repo")
         for task in ("T-E2E-1", "T-E2E-2"):
@@ -801,8 +804,8 @@ class EndToEndTests(Offline):
         code, out = env.cli("start", "--yes", "--max-ticks", "3")
         self.assertEqual(code, 0, out)
 
-        # two workers spawned headless through the L2 path (fake launcher)
-        self.assertEqual(len(env.worker_launcher.specs), 2)
+        # concurrency cap 1 (T-DEV-032): the first queued assignment spawns; the second is refused while it is active
+        self.assertEqual(len(env.worker_launcher.specs), 1)
         self.assertTrue(all(s.argv[1] == "--settings" and s.argv[3:6] == ["--setting-sources", "project,local", "-p"] for s in env.worker_launcher.specs))
         # Main launched twice: the original and its replacement, both interactive
         self.assertEqual(len(env.terminal.opened), 2)
@@ -825,7 +828,7 @@ class EndToEndTests(Offline):
         self.assertEqual(st["main"]["session_id"], new_sid)
         self.assertEqual(st["main"]["replaced_session_id"], old_sid)
         self.assertEqual(st["authoritative_main"], new_sid)
-        self.assertEqual(st["workers"], {"RUNNING": 2})
+        self.assertEqual(st["workers"], {"RUNNING": 1})   # cap 1: the second assignment was refused
         self.assertEqual(st["queued_requests"], 0)
         self.assertIsNone(st["lock"])
         events, bad = env.store().read_events()

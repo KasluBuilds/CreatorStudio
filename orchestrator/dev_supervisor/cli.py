@@ -47,7 +47,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
 from . import compaction, config as config_mod, context_monitor, handoff, main_host, replacement, routing, telemetry
-from . import authority, github_log, omniroute, provider_env, resolve_discovery, session_policy
+from . import authority, dispatch_routing, github_log, omniroute, provider_env, resolve_discovery, session_policy
 from .config import Config, ConfigError
 from .evidence import Evidence, unavailable
 from .launch import (MAIN_ROLE, InteractiveMainLauncher, LaunchError, MainProfile, NewConsoleTerminal,
@@ -482,20 +482,31 @@ class SupervisorLoop:
 
     # -------------------------------------------------- requests
 
+    def _active_worker_count(self) -> int:
+        """Workers that are assigned or live: the concurrency cap counts these (T-DEV-032)."""
+        return len(WorkerRegistry(self.store).list(WorkerStatus.ACTIVE))
+
     def process_requests(self) -> List[Dict[str, Any]]:
         results = []
         for path, req in pending_requests(self.store):
             op, p = req.get("op"), req.get("payload") or {}
             try:
                 if op == "assign":
-                    w = self.sup.assign(task_id=p["task_id"], role=p["role"], branch=p["branch"],
-                                        worktree=p["worktree"], owner_stream=p["owner_stream"], model=p["model"],
-                                        prompt_file=p["prompt_file"], provider=p.get("provider", "anthropic"))
-                    w = self.sup.spawn(w.worker_id)
-                    outcome = {"ok": w.status == WorkerStatus.RUNNING, "worker_id": w.worker_id, "status": w.status}
-                    _gh_event(self.svc, self.store, github_log.EventKind.STEP_DONE, p["task_id"],
-                              "worker spawned" if outcome["ok"] else "worker launch failed",
-                              evidence=(f"worker {w.worker_id}", f"status {w.status}", f"model {w.model}"))
+                    gate = dispatch_routing.gate_provider(p.get("provider"), active_workers=self._active_worker_count())
+                    if not gate.allowed:
+                        # Refused before any worker record exists: nothing is created, launched or charged.
+                        outcome = {"ok": False, "error": "dispatch refused: " + gate.reason}
+                    else:
+                        w = self.sup.assign(task_id=p["task_id"], role=p["role"], branch=p["branch"],
+                                            worktree=p["worktree"], owner_stream=p["owner_stream"], model=p["model"],
+                                            prompt_file=p["prompt_file"], provider=gate.provider)
+                        w = self.sup.spawn(w.worker_id)
+                        outcome = {"ok": w.status == WorkerStatus.RUNNING, "worker_id": w.worker_id,
+                                   "status": w.status, "provider": gate.provider, "route": gate.route}
+                        _gh_event(self.svc, self.store, github_log.EventKind.STEP_DONE, p["task_id"],
+                                  "worker spawned" if outcome["ok"] else "worker launch failed",
+                                  evidence=(f"worker {w.worker_id}", f"status {w.status}", f"model {w.model}",
+                                            f"provider {gate.provider}", f"route {gate.route}"))
                 elif op == "replace":
                     res = self.replace_main(p["handoff_id"])
                     outcome = {"ok": res.get("status") in (replacement.ReplacementStatus.REPLACED,
@@ -1069,10 +1080,21 @@ def cmd_workers(svc: Services, a: argparse.Namespace) -> int:
 def cmd_assign(svc: Services, a: argparse.Namespace) -> int:
     cfg = svc.config
     model = a.model or cfg.model("worker")
+    problems = []
+    try:
+        active = len(WorkerRegistry(svc.store(create=False)).list(WorkerStatus.ACTIVE))
+    except StoreError as e:
+        active = None
+        problems.append(f"worker registry unreadable ({e.__class__.__name__}): refusing to dispatch")
+    dispatch = dispatch_routing.decide_worker_dispatch(active_workers=active or 0) if active is not None else None
+    if dispatch is not None and not dispatch.allowed:
+        problems.append(dispatch.reason)
     payload = {"task_id": a.task, "role": a.role, "branch": a.branch, "worktree": os.path.abspath(a.worktree),
                "owner_stream": a.owner_stream, "model": model, "prompt_file": os.path.abspath(a.prompt_file),
-               "provider": "anthropic"}
-    problems = []
+               "provider": dispatch.provider if dispatch is not None else None,
+               "route": dispatch.route if dispatch is not None else None,
+               "route_model": dispatch.model if dispatch is not None else None,
+               "routing_reason": dispatch.reason if dispatch is not None else None}
     try:
         build_claude_argv(model, str(uuid.uuid4()), executable=cfg.claude_executable,
                           permission_mode=cfg.worker_permission_mode)
