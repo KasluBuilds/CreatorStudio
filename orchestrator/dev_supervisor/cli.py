@@ -828,7 +828,21 @@ class SupervisorLoop:
             main_alive=alive if isinstance(alive, bool) else None, session_status=status,
             eligible_work=len(picture["items"]), progress_marker=picture["fingerprint"],
             pressure_pct=None,   # not wired yet: context pressure is held by check_pressure, not returned here
-            handoff_verified=bool(sid and self._handoff_fresh(sid)))
+            handoff_verified=self._guard_handoff_verified(sid))
+
+    def _guard_handoff_verified(self, sid: Optional[str]) -> bool:
+        """The same gate replace_main uses: a fresh prepared handoff that handoff.verify_handoff reports safe.
+        Any failure to verify means not verified (fail closed)."""
+        if not sid:
+            return False
+        try:
+            hid = self.tracker.load(sid)["prepare"].get("handoff_id")
+            if not hid or not self._handoff_fresh(sid):
+                return False
+            rep = handoff.verify_handoff(self.store, hid, self.svc.ref_checkers_factory(self.cfg, self.root))
+            return bool(rep.safe)
+        except Exception:  # noqa: BLE001 - an unverifiable handoff is never a verified one
+            return False
 
     def _guard_request_handover(self, signals: "guard_loop.Signals") -> Dict[str, Any]:
         """Replacement only through the host's supported handover command; the host checks ownership itself."""

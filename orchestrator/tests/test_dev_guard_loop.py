@@ -241,6 +241,14 @@ class CliWiringTests(unittest.TestCase):
         self.stub.root = self.dir
         self.stub._handoff_fresh = lambda sid: False
 
+        class NoHandoffTracker:
+            def load(_t, sid):
+                return {"prepare": {"handoff_id": None, "prepared_at": None}}
+
+        self.stub.tracker = NoHandoffTracker()
+        self.stub.svc.ref_checkers_factory = lambda cfg, root: "checkers"
+        self.stub._guard_handoff_verified = lambda sid: False
+
     def test_flag_off_means_the_hook_is_not_called(self):
         with mock.patch.dict(os.environ, {}, clear=False),                 mock.patch.object(self.cli.guard_loop, "GuardAdapter", side_effect=AssertionError("must not build")):
             os.environ.pop(gl.ENV_FLAG, None)
@@ -351,6 +359,48 @@ class ReviewRound3Tests(unittest.TestCase):
         from dev_supervisor import cli as cli_mod
         with mock.patch.dict(os.environ, {gl.ENV_FLAG: "1"}),                 mock.patch.object(cli_mod.guard_loop, "GuardAdapter", side_effect=RuntimeError("boom")):
             cli_mod.SupervisorLoop._guard_tick(Stub(), {"session_id": "s"}, True, None)
+
+
+class HandoffGateTests(unittest.TestCase):
+    """The guard's handoff signal must be the same verification replace_main uses (handoff.verify_handoff)."""
+
+    def setUp(self):
+        from dev_supervisor import cli as cli_mod
+        self.cli = cli_mod
+        self.dir = Path(tempfile.mkdtemp())
+
+        class Tracker:
+            def load(_s, sid):
+                return {"prepare": {"handoff_id": "h1", "prepared_at": 0.0}}
+
+        class Stub:
+            pass
+
+        self.stub = Stub()
+        self.stub.store = mock.Mock()
+        self.stub.tracker = Tracker()
+        self.stub._handoff_fresh = lambda sid: True
+        self.stub.svc = mock.Mock(ref_checkers_factory=lambda cfg, root: "checkers")
+        self.stub.cfg = mock.Mock()
+        self.stub.root = self.dir
+
+    def test_unsafe_handoff_is_not_verified(self):
+        rep = mock.Mock(safe=False)
+        with mock.patch.object(self.cli.handoff, "verify_handoff", return_value=rep):
+            self.assertFalse(self.cli.SupervisorLoop._guard_handoff_verified(self.stub, "s"))
+
+    def test_safe_handoff_is_verified_through_verify_handoff(self):
+        rep = mock.Mock(safe=True)
+        with mock.patch.object(self.cli.handoff, "verify_handoff", return_value=rep) as v:
+            self.assertTrue(self.cli.SupervisorLoop._guard_handoff_verified(self.stub, "s"))
+        self.assertEqual(v.call_args.args[1], "h1")
+
+    def test_verification_error_fails_closed(self):
+        with mock.patch.object(self.cli.handoff, "verify_handoff", side_effect=RuntimeError("x")):
+            self.assertFalse(self.cli.SupervisorLoop._guard_handoff_verified(self.stub, "s"))
+
+    def test_no_session_is_not_verified(self):
+        self.assertFalse(self.cli.SupervisorLoop._guard_handoff_verified(self.stub, None))
 
 
 if __name__ == "__main__":
