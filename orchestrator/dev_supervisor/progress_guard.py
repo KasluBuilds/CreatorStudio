@@ -36,6 +36,7 @@ class Policy:
     replace_pressure_pct: float = 85.0  # context pressure at which a replacement is considered
     replace_budget: int = 3             # replacements allowed inside the window
     replace_window_s: float = 3600.0
+    hold_escalate_s: float = 4 * 3600.0   # a hold this long escalates once
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,7 @@ class GuardState:
     replacements: List[float] = field(default_factory=list)
     escalated: bool = False
     budget_escalated: bool = False
+    held_since: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {f.name: getattr(self, f.name) for f in fields(self)}
@@ -127,20 +129,29 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
     """Return (new state, decision). The input state is not mutated."""
     st = GuardState.from_dict(state.to_dict())
 
+    if not _finite_number(obs.now):
+        return st, Decision(NONE, "UNKNOWN", "observation time is not a finite number")
+
+    # Idle continuity: unbroken only while every signal is observed and eligible work exists. Any other tick restarts it.
+    continuous = (obs.main_alive is True and obs.session_status == "idle" and obs.progress_marker is not None
+                  and obs.eligible_work is not None and obs.eligible_work > 0)
+    if not continuous:
+        st.idle_since = None
+
     if obs.main_alive is None:
         return st, Decision(NONE, "UNKNOWN", "Main liveness not observed")
 
     if not obs.main_alive:
         if st.was_alive:
-            # stays "was alive" while dead: a held crash is re-evaluated on later ticks; the replacement budget bounds it
-            st.idle_since = None
-            return st, _replace_or_hold(st, obs, policy, "CRASHED")
+            # stays "was alive" while dead: a held crash is re-evaluated later; the replacement budget bounds it
+            return st, _hold_or_act(st, obs, policy, "CRASHED", _replace_or_hold(st, obs, policy, "CRASHED"))
         return st, Decision(NONE, "NOT_RUNNING", "Main is not running")
 
     st.was_alive = True
 
     if obs.pressure_pct is not None and obs.pressure_pct >= policy.replace_pressure_pct:
-        return st, _replace_or_hold(st, obs, policy, "EXHAUSTED")
+        return st, _hold_or_act(st, obs, policy, "EXHAUSTED", _replace_or_hold(st, obs, policy, "EXHAUSTED"))
+    st.held_since = None
 
     if obs.progress_marker is not None and obs.progress_marker != st.last_marker:
         st.last_marker = obs.progress_marker
@@ -148,30 +159,25 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
         st.escalated = False
 
     if obs.progress_marker is None:
-        st.idle_since = None
         return st, Decision(NONE, "UNKNOWN", "progress not observed; cannot verify progress, so no action")
 
     if obs.session_status is None:
-        st.idle_since = None
         return st, Decision(NONE, "UNKNOWN", "session status not observed")
 
     if obs.session_status == "busy":
-        st.idle_since = None
         return st, Decision(NONE, "BUSY", "Main is observed busy")
 
     if obs.session_status != "idle":
-        st.idle_since = None
         return st, Decision(NONE, "UNKNOWN", "session status is not a recognised value")
 
-    if st.idle_since is None:
-        st.idle_since = obs.now
     if st.escalated:
         return st, Decision(NONE, "ESCALATED", "escalated; waiting for progress before acting again")
     if obs.eligible_work is None:
-        st.idle_since = None
         return st, Decision(NONE, "UNKNOWN", "eligible work not observed")
     if obs.eligible_work <= 0:
         return st, Decision(NONE, "IDLE", "idle with no eligible work")
+    if st.idle_since is None:
+        st.idle_since = obs.now
     idle_for = obs.now - st.idle_since
     if idle_for < policy.idle_min_s:
         return st, Decision(NONE, "IDLE", "idle for " + str(int(idle_for)) + "s, below the minimum")
@@ -183,3 +189,16 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
     st.last_continue_at = obs.now
     st.continuations_without_progress += 1
     return st, Decision(CONTINUE, "IDLE", "idle with eligible work; sending one continuation instruction")
+
+
+def _hold_or_act(st: GuardState, obs: Observation, policy: Policy, label: str, d: Decision) -> Decision:
+    """A held condition that lasts past the hold timeout escalates once; a held condition is never silent forever."""
+    if d.action != HOLD:
+        st.held_since = None
+        return d
+    if st.held_since is None:
+        st.held_since = obs.now
+    if obs.now - st.held_since >= policy.hold_escalate_s and not st.escalated:
+        st.escalated = True
+        return Decision(ESCALATE, label, "held longer than the hold timeout; escalating for a human: " + d.reason)
+    return d

@@ -200,5 +200,38 @@ class ReviewFixTests(unittest.TestCase):
         self.assertFalse(st.escalated)
 
 
+class SecondReviewFixTests(unittest.TestCase):
+    def test_busy_at_pressure_breaks_idle_continuity(self):
+        seq = [obs(0), obs(100, session_status="busy", pressure_pct=10.0),
+               obs(110, pressure_pct=10.0), obs(305, pressure_pct=10.0)]
+        _, ds = run(seq)
+        self.assertEqual(ds[-1].action, pg.NONE, "only 195s of observed idle since the busy tick")
+
+    def test_unobserved_liveness_breaks_idle_continuity(self):
+        seq = [obs(0), obs(200, main_alive=None), obs(300)]
+        _, ds = run(seq)
+        self.assertEqual(ds[-1].action, pg.NONE)
+
+    def test_non_finite_time_refused(self):
+        for bad in (float("nan"), float("inf")):
+            with self.subTest(now=bad):
+                st = pg.GuardState()
+                _, d = pg.decide(st, obs(bad), P)
+                self.assertEqual(d.action, pg.NONE)
+
+    def test_long_hold_escalates_once(self):
+        p = pg.Policy(hold_escalate_s=100.0)
+        st = pg.GuardState()
+        seq = [obs(0), obs(10, main_alive=False, handoff_verified=False, session_status="idle"),
+               obs(60, main_alive=False, handoff_verified=False, session_status="idle"),
+               obs(170, main_alive=False, handoff_verified=False, session_status="idle"),
+               obs(400, main_alive=False, handoff_verified=False, session_status="idle")]
+        actions = []
+        for o in seq:
+            st, d = pg.decide(st, o, p)
+            actions.append(d.action)
+        self.assertEqual(actions, [pg.NONE, pg.HOLD, pg.HOLD, pg.ESCALATE, pg.HOLD])
+
+
 if __name__ == "__main__":
     unittest.main()
