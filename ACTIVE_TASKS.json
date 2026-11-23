@@ -256,6 +256,17 @@
         "orchestrator/dev_supervisor/progress_guard.py",
         "orchestrator/tests/test_dev_progress_guard.py"
       ]
+    },
+    "AGR-DEV-036-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission directs Main to make the progress guard operational. Under that mandate T-DEV-036 may change progress_guard.py and its test file only. T-DEV-035 (closed) shares these paths. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-035",
+        "T-DEV-036"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/progress_guard.py",
+        "orchestrator/tests/test_dev_progress_guard.py"
+      ]
     }
   },
   "tasks": [
@@ -2012,7 +2023,8 @@
       },
       "exclusive_resources": [],
       "integration_agreements": [
-        "AGR-DEV-035-01"
+        "AGR-DEV-035-01",
+        "AGR-DEV-036-01"
       ],
       "owned_paths": [
         "orchestrator/dev_supervisor/progress_guard.py",
@@ -2027,6 +2039,39 @@
         "python -B -I -m unittest discover -s tests -p 'test_dev_progress_guard.py' from orchestrator/"
       ],
       "integration_notes": "Merged as PR #129 (merge commit 6003ff5, head d202755, diff hash 2e6013d3806e3bea). Seven review rounds; the last approved. Per-file validation on the head: 44 files, 3251 tests, no failures. The guard is not yet wired into the Supervisor loop: no process is controlled by it. Open notes: REPLACE ignores escalated; a slow replacement start can spend budget; a long budget hold re-escalates each timeout."
+    },
+    {
+      "id": "T-DEV-036",
+      "title": "dev_supervisor: progress-guard contract change (idle Main with work escalates; no unsupported continuation)",
+      "description": "The guard no longer returns CONTINUE. An idle Main with eligible work means the Stop hook failed to keep it working: the guard escalates once, until progress lands. REPLACE stays, limited to an observed idle session, a verified handoff and the replacement budget. Attached Main has no supported terminal-input channel, so continuation is not part of the contract.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-036-guard-contract",
+      "worktree": "../CreatorStudio-worktrees/t-dev-036-guard-contract",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-035"
+      ],
+      "lease": {
+        "acquired": "2026-11-24T00:00:00+00:00",
+        "expires": "2026-11-25T00:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-036-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/progress_guard.py",
+        "orchestrator/tests/test_dev_progress_guard.py"
+      ],
+      "acceptance_criteria": [
+        "idle Main with eligible work produces one ESCALATE and no CONTINUE, until progress lands",
+        "REPLACE only with an observed idle session, a verified handoff and budget",
+        "fail-closed restore and clock safety are preserved"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_progress_guard.py' from orchestrator/"
+      ],
+      "integration_notes": "Contract change to a merged module (T-DEV-035). Live wiring into SupervisorLoop is a later task."
     }
   ]
 }

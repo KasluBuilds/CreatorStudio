@@ -7,15 +7,20 @@ Observations are only what the Supervisor saw this tick. Any signal that is miss
 
 Actions
 - NONE       nothing to do
-- CONTINUE   send Main one continuation instruction (Main is observed idle, eligible work remains)
 - HOLD       wait: a condition for acting is not met, or a duplicate action would be sent, or no verified handoff exists
 - REPLACE    replace a dead or context-exhausted Main; only when the session is observed idle and a handoff is verified
-- ESCALATE   stop acting and record a blocker for a human: non-progress limit or replacement budget reached
+             (through the host's supported handover command)
+- ESCALATE   record a blocker for a human, once per condition: an idle Main with eligible work (the Stop hook did not
+             keep it working), a replacement budget reached, or a hold that lasted past its timeout
+
+Contract change (T-DEV-036): CONTINUE was removed. Attached Main has no supported terminal-input channel, and an idle
+Main has already ended its turn, so the Stop hook cannot continue it. The state schema keeps its earlier fields
+(last_continue_at, continuations_without_progress, cooldown_s, non_progress_limit) for compatibility; they are unused.
 
 Safety rules
-- Never CONTINUE or REPLACE while the session is observed busy (never interrupt active work).
+- Never REPLACE while the session is observed busy (never interrupt active work).
 - Never REPLACE without a verified handoff.
-- After CONTINUE, the progress marker must change, or the non-progress counter grows; at the limit the guard escalates.
+- An idle Main with eligible work escalates once; escalation holds until the progress marker changes.
 - Replacements inside a window are budgeted; exhausting the budget escalates instead of looping.
 - ESCALATE for a non-progress limit is emitted once and stays until the progress marker changes; budget and hold escalations are emitted once per condition.
 """
@@ -24,8 +29,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Mapping, Optional
 
-NONE, CONTINUE, HOLD, REPLACE, ESCALATE = "NONE", "CONTINUE", "HOLD", "REPLACE", "ESCALATE"
-ACTIONS = (NONE, CONTINUE, HOLD, REPLACE, ESCALATE)
+NONE, HOLD, REPLACE, ESCALATE = "NONE", "HOLD", "REPLACE", "ESCALATE"
+ACTIONS = (NONE, HOLD, REPLACE, ESCALATE)
 
 
 @dataclass(frozen=True)
@@ -120,7 +125,9 @@ def _finite_number(v: Any) -> bool:
 
 
 def _recent_replacements(state: GuardState, now: float, policy: Policy) -> List[float]:
-    return [t for t in state.replacements if now - t < policy.replace_window_s]
+    """The replacement budget is a count, not a time window. A time window cannot tell a real elapsed interval from a
+    forward clock step, so nothing here prunes by time; only a human reset of the state clears it (see PR notes)."""
+    return list(state.replacements)
 
 
 def _replace_or_hold(state: GuardState, obs: Observation, policy: Policy, label: str) -> Decision:
@@ -206,20 +213,13 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
     if obs.eligible_work <= 0:
         return st, Decision(NONE, "IDLE", "idle with no eligible work")
     if st.idle_since is None or st.idle_since > obs.now:
-        st.idle_since = obs.now            # first observed idle tick, or the clock went backwards: restart idle time
+        st.idle_since = obs.now
     idle_for = obs.now - st.idle_since
     if idle_for < policy.idle_min_s:
         return st, Decision(NONE, "IDLE", "idle for " + str(int(idle_for)) + "s, below the minimum")
-    if st.last_continue_at is not None and st.last_continue_at > obs.now:
-        st.last_continue_at = obs.now      # the clock went backwards: the cooldown restarts from now, never ignored
-    if st.last_continue_at is not None and obs.now - st.last_continue_at < policy.cooldown_s:
-        return st, Decision(HOLD, "IDLE", "inside the cooldown after the last continuation (no duplicate sent)")
-    if st.continuations_without_progress >= policy.non_progress_limit:
-        st.escalated = True
-        return st, Decision(ESCALATE, "IDLE", "no progress after the continuation limit; escalating")
-    st.last_continue_at = obs.now
-    st.continuations_without_progress += 1
-    return st, Decision(CONTINUE, "IDLE", "idle with eligible work; sending one continuation instruction")
+    st.escalated = True
+    return st, Decision(ESCALATE, "IDLE", "Main idle with eligible work: the Stop hook did not keep it working; "
+                                          "escalating once (no unsupported continuation)")
 
 
 def _hold_or_act(st: GuardState, obs: Observation, policy: Policy, label: str, d: Decision) -> Decision:
