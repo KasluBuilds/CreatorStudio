@@ -205,5 +205,29 @@ class WorkerEnvRound2Tests(unittest.TestCase):
         self.assertEqual(out["ANTHROPIC_AUTH_TOKEN"], "tok")
 
 
+class WorkerEnvRound3Tests(unittest.TestCase):
+    GATEWAY = {"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-secret-value",
+               "PATH": "p"}
+
+    def test_lowercase_duplicate_of_required_vars_removed(self):
+        out = pe.worker_env(dict(self.GATEWAY, anthropic_base_url="https://api.example.com",
+                                 anthropic_auth_token="other"))
+        self.assertNotIn("anthropic_base_url", out)
+        self.assertNotIn("anthropic_auth_token", out)
+        self.assertEqual(out["ANTHROPIC_BASE_URL"], "http://localhost:20128")
+
+    def test_empty_port_refused(self):
+        with self.assertRaises(pe.WorkerEnvError):
+            pe.worker_env(dict(self.GATEWAY, ANTHROPIC_BASE_URL="http://localhost:"))
+
+    def test_refusal_names_the_right_check(self):
+        with self.assertRaises(pe.WorkerEnvError) as cm:
+            pe.worker_env(dict(self.GATEWAY, ANTHROPIC_BASE_URL="https://api.example.com"))
+        self.assertIn("must be a plain local", str(cm.exception))
+        with self.assertRaises(pe.WorkerEnvError) as cm2:
+            pe.worker_env({"PATH": "p"})
+        self.assertIn("missing variable(s)", str(cm2.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

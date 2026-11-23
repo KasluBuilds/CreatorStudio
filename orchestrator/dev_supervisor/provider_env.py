@@ -91,7 +91,7 @@ def _gateway_url_is_local(url: str) -> bool:
         return False
     host = (parts.hostname or "").lower()
     return (parts.scheme in WORKER_SCHEMES and bool(host) and host in WORKER_LOCAL_HOSTS
-            and parts.netloc.count("@") == 0)
+            and parts.netloc.count("@") == 0 and not parts.netloc.endswith(":"))
 
 
 def worker_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
@@ -113,7 +113,8 @@ def worker_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
         upper = name.upper()
         return (upper in PARENT_SESSION_VARS or upper in _WORKER_STRIPPED
                 or upper.startswith(_WORKER_STRIPPED_PREFIXES) or upper.startswith(AUTHORITY_PREFIX)
-                or upper in {f.upper() for f in WORKER_GATEWAY_FLAGS})
+                or upper in {f.upper() for f in WORKER_GATEWAY_FLAGS}
+                or upper in {r.upper() for r in WORKER_REQUIRED_VARS})
 
     out = {k: v for k, v in base.items() if not _drop(k)}
     out.update(values)                     # the stripped values are what the child receives
