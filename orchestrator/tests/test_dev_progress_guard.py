@@ -259,10 +259,29 @@ class ThirdReviewFixTests(unittest.TestCase):
     def test_hold_escalation_not_suppressed_by_earlier_non_progress_escalation(self):
         p = pg.Policy(hold_escalate_s=100.0)
         st = pg.GuardState(escalated=True, was_alive=True)
-        _, d1 = pg.decide(st, obs(0, main_alive=False, session_status="idle", handoff_verified=False), p)
-        st2, d2 = pg.decide(st, obs(0, main_alive=False, session_status="idle", handoff_verified=False), p)
-        st2, d3 = pg.decide(st2, obs(200, main_alive=False, session_status="idle", handoff_verified=False), p)
+        st, _ = pg.decide(st, obs(0, main_alive=False, session_status="idle", handoff_verified=False), p)
+        st, d3 = pg.decide(st, obs(200, main_alive=False, session_status="idle", handoff_verified=False), p)
         self.assertEqual(d3.action, pg.ESCALATE)
+
+    def test_a_later_separate_hold_escalates_again(self):
+        p = pg.Policy(hold_escalate_s=100.0)
+        st = pg.GuardState(was_alive=True)
+        actions = []
+        for now, alive in ((0, False), (200, False), (210, True), (300, False), (500, False)):
+            st, d = pg.decide(st, obs(now, main_alive=alive, session_status="idle", handoff_verified=False), p)
+            actions.append(d.action)
+        self.assertEqual(actions.count(pg.ESCALATE), 2, actions)
+
+    def test_mixed_corrupt_state_is_fresh_not_partial(self):
+        st = pg.GuardState.from_dict({"escalated": True, "continuations_without_progress": "x", "was_alive": True})
+        self.assertEqual(st.to_dict(), pg.GuardState().to_dict())
+
+    def test_backward_clock_step_does_not_freeze_idle_time(self):
+        st = pg.GuardState(idle_since=1000.0)
+        st, d = pg.decide(st, obs(500), P)
+        self.assertEqual(d.action, pg.NONE)
+        st, d = pg.decide(st, obs(900), P)
+        self.assertEqual(d.action, pg.CONTINUE, "idle time restarted at 500, so 400s has passed")
 
 
 if __name__ == "__main__":

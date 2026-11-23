@@ -87,8 +87,9 @@ class GuardState:
             else:
                 ok = value is None or (isinstance(value, (int, float)) and not isinstance(value, bool)
                                        and value == value and abs(value) != float("inf"))
-            if ok:
-                setattr(out, f.name, list(value) if f.name == "replacements" else value)
+            if not ok:
+                return cls()          # a malformed field makes the whole state fresh; never a partial restore
+            setattr(out, f.name, list(value) if f.name == "replacements" else value)
         return out
 
 
@@ -168,6 +169,7 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
     if obs.pressure_pct is not None and obs.pressure_pct >= policy.replace_pressure_pct:
         return st, _hold_or_act(st, obs, policy, "EXHAUSTED", _replace_or_hold(st, obs, policy, "EXHAUSTED"))
     st.held_since = None
+    st.hold_escalated = False
 
     if obs.progress_marker is not None and obs.progress_marker != st.last_marker:
         st.last_marker = obs.progress_marker
@@ -192,12 +194,12 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
         return st, Decision(NONE, "UNKNOWN", "eligible work not observed")
     if obs.eligible_work <= 0:
         return st, Decision(NONE, "IDLE", "idle with no eligible work")
-    if st.idle_since is None:
-        st.idle_since = obs.now
+    if st.idle_since is None or st.idle_since > obs.now:
+        st.idle_since = obs.now            # first observed idle tick, or the clock went backwards: restart idle time
     idle_for = obs.now - st.idle_since
     if idle_for < policy.idle_min_s:
         return st, Decision(NONE, "IDLE", "idle for " + str(int(idle_for)) + "s, below the minimum")
-    if st.last_continue_at is not None and obs.now - st.last_continue_at < policy.cooldown_s:
+    if st.last_continue_at is not None and 0 <= obs.now - st.last_continue_at < policy.cooldown_s:
         return st, Decision(HOLD, "IDLE", "inside the cooldown after the last continuation (no duplicate sent)")
     if st.continuations_without_progress >= policy.non_progress_limit:
         st.escalated = True
