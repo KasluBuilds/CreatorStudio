@@ -117,8 +117,7 @@ class SpawnerRealProcessTests(unittest.TestCase):
         base = dict(os.environ)
         base.update({"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-dummy-value",
                      "ANTHROPIC_API_KEY": "sk-should-not-pass", "CLAUDE_CODE_OAUTH_TOKEN": "pro-should-not-pass"})
-        argv, env, cwd = ws.build_worker_command(route, work, cfg, "reply ok", [route], base,
-                                                 _executable=sys.executable, _prefix=[str(stub)])
+        argv, env, cwd = ws._command(route, work, cfg, "reply ok", [route], base, sys.executable, [str(stub)])
         proc = subprocess.Popen(argv, cwd=str(cwd), env=env, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = proc.communicate(timeout=60)
         self.assertEqual(proc.returncode, 0, err.decode(errors="replace")[-300:])
@@ -146,11 +145,46 @@ class SpawnerRealProcessTests(unittest.TestCase):
                                     [pro], GOOD)
 
     def test_refusal_starts_no_process(self):
-        calls = []
+        tmp = Path(tempfile.mkdtemp())
+        with mock.patch.object(ws.subprocess, "Popen") as popen:
+            with self.assertRaises(ws.SpawnRefused):
+                ws.spawn_worker(ROUTE, tmp, None, "x", [ROUTE], tmp / "log.txt", base_env=GOOD)
+        popen.assert_not_called()
+
+class SpawnerRound3Tests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.work = self.tmp / "wt"
+        self.work.mkdir()
+        self.cfg = str(self.tmp / "cfg")
+
+    def _refused(self, route, verified=None):
         with self.assertRaises(ws.SpawnRefused):
-            ws.spawn_worker(ROUTE, Path(tempfile.mkdtemp()), None, "x", [ROUTE],
-                            base_env=GOOD, popen=lambda *a, **k: calls.append(a))
-        self.assertEqual(calls, [])
+            ws.build_worker_command(route, self.work, self.cfg, "x", verified if verified is not None else [route], GOOD)
+
+    def test_claude_models_refused_under_any_provider_prefix(self):
+        for model in ("sonnet", "opus", "haiku", "claude-sonnet-5-5", "auto/claude-sonnet", "gemini/claude-haiku"):
+            with self.subTest(model=model):
+                r = ws.VerifiedRoute(model=model, provider="gemini", evidence="e", cost_zero=True)
+                self._refused(r)
+
+    def test_non_boolean_cost_zero_refused(self):
+        r = ws.VerifiedRoute(model="auto/coding", provider="gemini", evidence="e", cost_zero="false")
+        self._refused(r, verified=[r])
+
+    def test_loader_skips_null_model_and_non_dict_entries(self):
+        reg = self.tmp / "routes.json"
+        reg.write_text(json.dumps({"routes": [
+            {"model": None, "provider": "gemini", "evidence": "e", "cost_zero": True},
+            "not-a-dict",
+            {"model": "auto/coding", "provider": "gemini", "evidence": "e", "cost_zero": True},
+        ]}), encoding="utf-8")
+        self.assertEqual([r.model for r in ws.load_verified_routes(reg)], ["auto/coding"])
+
+    def test_loader_refuses_non_object_registry(self):
+        reg = self.tmp / "routes.json"
+        reg.write_text("[1, 2]", encoding="utf-8")
+        self.assertEqual(ws.load_verified_routes(reg), [])
 
 
 if __name__ == "__main__":

@@ -47,15 +47,27 @@ def load_verified_routes(path: Path) -> List[VerifiedRoute]:
     except (OSError, ValueError):
         raise SpawnRefused("verified route registry is missing or unreadable") from None
     routes: List[VerifiedRoute] = []
-    for entry in data.get("routes", []):
-        model = str(entry.get("model", "")).strip()
-        provider = str(entry.get("provider", "")).strip()
-        evidence = str(entry.get("evidence", "")).strip()
-        cost_zero = entry.get("cost_zero") is True
-        if not model or provider not in ALLOWED_PROVIDERS or not evidence or not cost_zero:
+    entries = data.get("routes", []) if isinstance(data, dict) else []
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        model, provider, evidence = entry.get("model"), entry.get("provider"), entry.get("evidence")
+        if not (isinstance(model, str) and isinstance(provider, str) and isinstance(evidence, str)):
+            continue
+        model, provider, evidence = model.strip(), provider.strip(), evidence.strip()
+        if not model or provider not in ALLOWED_PROVIDERS or not evidence or entry.get("cost_zero") is not True:
             continue   # only a route recorded as zero-cost is loaded
-        routes.append(VerifiedRoute(model, provider, evidence, cost_zero))
+        routes.append(VerifiedRoute(model, provider, evidence, True))
     return routes
+
+
+_CLAUDE_MARKERS = ("claude", "sonnet", "opus", "haiku")
+
+
+def _is_claude_model(model: str) -> bool:
+    """Any Claude alias or id, in any provider prefix, is an Anthropic route and is never a worker route."""
+    low = model.lower()
+    return any(marker in low for marker in _CLAUDE_MARKERS)
 
 
 def _refuse_config_dir(config_dir: Optional[str]) -> str:
@@ -69,15 +81,26 @@ def _refuse_config_dir(config_dir: Optional[str]) -> str:
 
 
 def build_worker_command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
-                         verified: Sequence[VerifiedRoute], base_env: Optional[Mapping[str, str]] = None,
-                         *, _executable: str = CLAUDE_EXECUTABLE,
-                         _prefix: Sequence[str] = ()) -> Tuple[List[str], Dict[str, str], Path]:
-    """Return (argv, env, cwd) for a worker, or raise SpawnRefused. Pure: starts nothing."""
+                         verified: Sequence[VerifiedRoute], base_env: Optional[Mapping[str, str]] = None
+                         ) -> Tuple[List[str], Dict[str, str], Path]:
+    """Return (argv, env, cwd) for the production ``claude`` worker, or raise SpawnRefused. Pure: starts nothing."""
+    return _command(route, worktree, config_dir, prompt, verified, base_env, CLAUDE_EXECUTABLE, ())
+
+
+def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
+             verified: Optional[Sequence[VerifiedRoute]], base_env: Optional[Mapping[str, str]],
+             executable: str, prefix: Sequence[str]) -> Tuple[List[str], Dict[str, str], Path]:
+    """Private builder. Tests may reach it to run a stand-in executable; production uses build_worker_command.
+
+    Returns (argv, env, cwd) for a worker, or raises SpawnRefused. Pure: starts nothing.
+    """
     if route.provider not in ALLOWED_PROVIDERS:
         raise SpawnRefused("route provider is not a worker provider")
-    if not route.cost_zero:
+    if _is_claude_model(route.model):
+        raise SpawnRefused("Claude models are never worker routes")
+    if route.cost_zero is not True:
         raise SpawnRefused("route cost is not recorded as zero")
-    if verified is None or not any(r.model == route.model and r.provider == route.provider and r.cost_zero
+    if verified is None or not any(r.model == route.model and r.provider == route.provider and r.cost_zero is True
                                    for r in verified):
         raise SpawnRefused("route is not in the verified registry")
     if not isinstance(prompt, str) or not prompt.strip():
@@ -97,13 +120,15 @@ def build_worker_command(route: VerifiedRoute, worktree: Path, config_dir: Optio
         raise SpawnRefused("worker environment does not carry the worker config directory")
     if "ANTHROPIC_API_KEY" in env or "CLAUDE_CODE_OAUTH_TOKEN" in env:
         raise SpawnRefused("worker environment carries a direct credential")
-    argv = [_executable, *_prefix, *provider_env.worker_claude_args(), "-p", prompt, "--model", route.model]
+    argv = [executable, *prefix, *provider_env.worker_claude_args(), "-p", prompt, "--model", route.model]
     return argv, env, cwd
 
 
 def spawn_worker(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
-                 verified: Sequence[VerifiedRoute], base_env: Optional[Mapping[str, str]] = None,
-                 popen: Any = subprocess.Popen) -> subprocess.Popen:
-    """Start the production worker: ``claude`` with the isolation arguments and the worker environment."""
+                 verified: Sequence[VerifiedRoute], log_path: Path,
+                 base_env: Optional[Mapping[str, str]] = None) -> subprocess.Popen:
+    """Start the production worker. Output goes to ``log_path`` (no unread pipes); stdin is closed."""
     argv, env, cwd = build_worker_command(route, worktree, config_dir, prompt, verified, base_env)
-    return popen(argv, cwd=str(cwd), env=env, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # noqa: S603
+    with open(log_path, "ab") as log:
+        return subprocess.Popen(argv, cwd=str(cwd), env=env, shell=False, stdin=subprocess.DEVNULL,  # noqa: S603
+                                stdout=log, stderr=subprocess.STDOUT)
