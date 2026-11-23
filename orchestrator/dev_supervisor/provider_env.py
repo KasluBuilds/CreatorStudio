@@ -70,7 +70,8 @@ WORKER_GATEWAY_FLAGS = {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
 WORKER_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 WORKER_SCHEMES = ("http", "https")
 # Direct Anthropic credentials, provider switches and proxies that would send a worker around the gateway.
-_WORKER_STRIPPED = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_UNIX_SOCKET",
+_WORKER_STRIPPED = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_UNIX_SOCKET", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL",
                     "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
 # Only committed project settings are read by workers. User settings (~/.claude/settings.json and its env block) and
 # machine-local settings (.claude/settings.local.json) are excluded: neither is reviewed through a pull request.

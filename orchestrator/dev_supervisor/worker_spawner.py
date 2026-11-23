@@ -66,7 +66,10 @@ _CLAUDE_MARKERS = ("claude", "sonnet", "opus", "haiku", "anthropic", "fable")
 
 
 def _is_claude_model(model: str) -> bool:
-    """Any Claude alias or id, in any provider prefix, is an Anthropic route and is never a worker route."""
+    """Any Claude alias or id, in any provider prefix, is an Anthropic route and is never a worker route.
+    Non-ASCII model names are refused outright, so homoglyphs cannot hide a Claude marker."""
+    if not model.isascii():
+        return True
     norm = unicodedata.normalize("NFKC", model).casefold()
     return any(marker in norm for marker in _CLAUDE_MARKERS)
 
@@ -97,6 +100,8 @@ def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], pr
     """
     if route.provider not in ALLOWED_PROVIDERS:
         raise SpawnRefused("route provider is not a worker provider")
+    if not isinstance(route.model, str) or not route.model.strip():
+        raise SpawnRefused("route model must be a non-blank string")
     if _is_claude_model(route.model):
         raise SpawnRefused("Claude models are never worker routes")
     if route.cost_zero is not True:
@@ -106,6 +111,8 @@ def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], pr
         raise SpawnRefused("route is not in the verified registry")
     if not isinstance(prompt, str) or not prompt.strip():
         raise SpawnRefused("a worker prompt is required")
+    if prompt.lstrip().startswith("-"):
+        raise SpawnRefused("a worker prompt may not begin with a dash (it would be read as a flag)")
     if not isinstance(worktree, (str, os.PathLike)) or not str(worktree).strip():
         raise SpawnRefused("a worktree path is required")
     cwd = Path(worktree)
@@ -134,7 +141,7 @@ def spawn_worker(route: VerifiedRoute, worktree: Path, config_dir: Optional[str]
     verified = load_verified_routes(Path(registry_path))
     argv, env, cwd = build_worker_command(route, worktree, config_dir, prompt, verified, base_env)
     log = Path(log_path).resolve()
-    for forbidden in (cwd.resolve(), Path(env["CLAUDE_CONFIG_DIR"]).resolve()):
+    for forbidden in (cwd.resolve(), Path(env["CLAUDE_CONFIG_DIR"]).resolve(), (Path.home() / ".claude").resolve()):
         if log == forbidden or forbidden in log.parents:
             raise SpawnRefused("log path must be outside the worktree and the worker config directory")
     with open(log, "ab") as out:

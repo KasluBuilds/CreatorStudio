@@ -221,5 +221,60 @@ class SpawnerRound4Tests(unittest.TestCase):
                 popen.assert_not_called()
 
 
+class SpawnerRound5Tests(unittest.TestCase):
+    # The stub prints one JSON line describing what the child received. Built from parts to avoid escape issues.
+    STUB = chr(10).join([
+        "import json, os, sys",
+        "print(json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd(), 'config': os.environ.get('CLAUDE_CONFIG_DIR'),",
+        "  'base': os.environ.get('ANTHROPIC_BASE_URL'), 'has_api_key': 'ANTHROPIC_API_KEY' in os.environ,",
+        "  'has_token': 'ANTHROPIC_AUTH_TOKEN' in os.environ}))",
+    ]) + chr(10)
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.work = self.tmp / "wt"
+        self.work.mkdir()
+        self.cfg = str(self.tmp / "cfg")
+        self.reg = self.tmp / "routes.json"
+        self.reg.write_text(json.dumps({"routes": [{"model": "auto/coding", "provider": "gemini",
+                                                    "evidence": "e", "cost_zero": True}]}), encoding="utf-8")
+
+    def test_dash_prompt_refused(self):
+        with self.assertRaises(ws.SpawnRefused):
+            ws.build_worker_command(ROUTE, self.work, self.cfg, "--setting-sources=user", [ROUTE], GOOD)
+
+    def test_non_ascii_and_non_string_models_refused(self):
+        for model in ("s" + chr(0x43e) + "nnet", None, 5):
+            with self.subTest(model=repr(model)):
+                r = ws.VerifiedRoute(model=model, provider="gemini", evidence="e", cost_zero=True)
+                with self.assertRaises(ws.SpawnRefused):
+                    ws.build_worker_command(r, self.work, self.cfg, "x", [r], GOOD)
+
+    def test_log_under_default_claude_dir_refused(self):
+        default_log = Path.home() / ".claude" / "x.log"
+        with mock.patch.object(ws.subprocess, "Popen") as popen:
+            with self.assertRaises(ws.SpawnRefused):
+                ws.spawn_worker(ROUTE, self.work, self.cfg, "x", self.reg, default_log, base_env=GOOD)
+        popen.assert_not_called()
+
+    def test_spawn_worker_end_to_end_with_stub(self):
+        log = self.tmp / "worker.log"
+        base = dict(os.environ)
+        base.update({"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-dummy-value",
+                     "ANTHROPIC_API_KEY": "sk-should-not-pass"})
+        with mock.patch.object(ws, "CLAUDE_EXECUTABLE", sys.executable), \
+                mock.patch.object(ws.provider_env, "worker_claude_args",
+                                  return_value=["-c", self.STUB, "--setting-sources", "project"]):
+            proc = ws.spawn_worker(ROUTE, self.work, self.cfg, "reply ok", self.reg, log, base_env=base)
+            self.assertEqual(proc.wait(timeout=60), 0)
+        text = log.read_text(encoding="utf-8")
+        seen = json.loads(text.strip().splitlines()[-1])
+        self.assertEqual(seen["argv"], ["--setting-sources", "project", "-p", "reply ok", "--model", "auto/coding"])
+        self.assertEqual(Path(seen["cwd"]).resolve(), self.work.resolve())
+        self.assertEqual(Path(seen["config"]).resolve(), Path(self.cfg).resolve())
+        self.assertFalse(seen["has_api_key"])
+        self.assertTrue(seen["has_token"])
+        self.assertNotIn("tok-dummy-value", text)
+
 if __name__ == "__main__":
     unittest.main()
