@@ -798,7 +798,10 @@ class SupervisorLoop:
     # -------------------------------------------------- loop
 
     def _guard_tick(self, main: Dict[str, Any], alive: bool, pressure: Any) -> None:
-        """Feature-flagged progress guard (T-DEV-037). Never raises: a guard failure must not stop supervision."""
+        """Feature-flagged progress guard (T-DEV-037). Off unless CREATORSTUDIO_SUPERVISOR_GUARD is "1".
+        Never raises: a guard failure must not stop supervision."""
+        if not guard_loop.enabled():
+            return
         try:
             if getattr(self, "_guard", None) is None:
                 self._guard = guard_loop.GuardAdapter(
@@ -818,6 +821,7 @@ class SupervisorLoop:
         status = ("idle" if ev.value else "busy") if (ev.available and isinstance(ev.value, bool)) else None
         picture = autonomy.compute_items(self.root, self.store)
         return guard_loop.Signals(
+            session_id=sid if isinstance(sid, str) else None,
             main_alive=alive if isinstance(alive, bool) else None, session_status=status,
             eligible_work=len(picture["items"]), progress_marker=picture["fingerprint"],
             pressure_pct=None,   # not wired yet: context pressure is held by check_pressure, not returned here

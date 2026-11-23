@@ -33,7 +33,7 @@ class Recorder:
 
 def sig(**kw):
     base = dict(main_alive=True, session_status="idle", eligible_work=2, progress_marker="m0", pressure_pct=10.0,
-                handoff_verified=False)
+                handoff_verified=False, session_id=None)
     base.update(kw)
     return gl.Signals(**base)
 
@@ -130,13 +130,13 @@ class TickTests(unittest.TestCase):
     def test_budget_exhaustion_escalates_once(self):
         clock = Clock(0.0)
         a, rec, calls = adapter(self.dir, clock)
-        a.tick(sig())
+        a.tick(sig(session_id="s0"))
         t = 1.0
         for i in range(6):
             clock.t = t
-            a.tick(sig(main_alive=False, session_status="idle", handoff_verified=True))
+            a.tick(sig(main_alive=False, session_status="idle", handoff_verified=True, session_id="s%d" % i))
             clock.t = t + 5
-            a.tick(sig(progress_marker="m%d" % i))
+            a.tick(sig(progress_marker="m%d" % i, session_id="s%d" % (i + 1)))
             t += 60
         self.assertEqual(len(calls), pg.Policy().replace_budget)
         self.assertEqual(rec.kinds().count("guard_escalation"), 1)
@@ -242,12 +242,13 @@ class CliWiringTests(unittest.TestCase):
         self.stub._handoff_fresh = lambda sid: False
 
     def test_flag_off_means_the_hook_is_not_called(self):
-        with mock.patch.dict(os.environ, {}, clear=False):
+        with mock.patch.dict(os.environ, {}, clear=False),                 mock.patch.object(self.cli.guard_loop, "GuardAdapter", side_effect=AssertionError("must not build")):
             os.environ.pop(gl.ENV_FLAG, None)
-            self.assertFalse(gl.enabled())
+            self.cli.SupervisorLoop._guard_tick(self.stub, {"session_id": "s"}, True, None)
+        self.assertEqual(self.events, [])
 
     def test_guard_failure_is_recorded_and_never_raises(self):
-        with mock.patch.object(self.cli.guard_loop, "GuardAdapter", side_effect=RuntimeError("boom")):
+        with mock.patch.dict(os.environ, {gl.ENV_FLAG: "1"}),                 mock.patch.object(self.cli.guard_loop, "GuardAdapter", side_effect=RuntimeError("boom")):
             self.cli.SupervisorLoop._guard_tick(self.stub, {"session_id": "s"}, True, None)
         kinds = [k for k, _ in self.events]
         self.assertIn("guard_error", kinds)
@@ -291,6 +292,46 @@ class CliWiringTests(unittest.TestCase):
         self.assertEqual(args[1], "handover")
         self.assertEqual(args[2], {"old_session_id": "old-sid", "new_session_id": "new-session-id"})
         self.assertEqual(kwargs.get("supervisor_pid"), os.getpid())
+
+
+class ReviewRound2Tests(unittest.TestCase):
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+
+    def test_live_same_session_does_not_clear_a_pending_handover(self):
+        clock = Clock(0.0)
+        a, rec, calls = adapter(self.dir, clock)
+        a.tick(sig(session_id="old"))
+        clock.t = 1.0
+        a.tick(sig(main_alive=False, session_status="idle", handoff_verified=True, session_id="old"))
+        clock.t = 2.0
+        a.tick(sig(main_alive=True, session_status="idle", session_id="old"))
+        clock.t = 3.0
+        a.tick(sig(main_alive=False, session_status="idle", handoff_verified=True, session_id="old"))
+        self.assertEqual(len(calls), 1, "the old Main is still the same session: no duplicate handover")
+
+    def test_intent_is_saved_before_the_command_is_sent(self):
+        clock = Clock(0.0)
+        a, rec, _ = adapter(self.dir, clock)
+        a.tick(sig(session_id="s0"))
+        seen = {}
+
+        def handover(signals):
+            seen["pending_on_disk"] = json.loads((self.dir / gl.STATE_FILE).read_text(encoding="utf-8"))["pending_handover"]
+            return {"sent": True, "cid": "c"}
+
+        a.request_handover = handover
+        clock.t = 1.0
+        a.tick(sig(main_alive=False, session_status="idle", handoff_verified=True, session_id="s0"))
+        self.assertIsNotNone(seen.get("pending_on_disk"), "pending intent must be on disk before the send")
+
+    def test_non_finite_pending_start_is_discarded(self):
+        (self.dir / gl.STATE_FILE).write_text(
+            json.dumps({"guard": pg.GuardState().to_dict(), "pending_handover": {"started": float("nan")}}),
+            encoding="utf-8")
+        a, _, _ = adapter(self.dir, Clock(0.0))
+        _, pending = a.load()
+        self.assertIsNone(pending)
 
 
 if __name__ == "__main__":

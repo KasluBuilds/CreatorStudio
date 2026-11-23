@@ -20,6 +20,7 @@ Nothing here starts a process or sends terminal input. Host ownership checks sta
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,6 +47,7 @@ class Signals:
     progress_marker: Optional[str]
     pressure_pct: Optional[float]
     handoff_verified: bool
+    session_id: Optional[str] = None   # the Main session observed this tick
 
 
 class GuardAdapter:
@@ -68,8 +70,8 @@ class GuardAdapter:
         if not isinstance(data, dict):
             return pg.GuardState.from_dict(None), None
         pending = data.get("pending_handover")
-        if not (isinstance(pending, dict) and isinstance(pending.get("started"), (int, float))
-                and not isinstance(pending.get("started"), bool)):
+        started = pending.get("started") if isinstance(pending, dict) else None
+        if not (isinstance(started, (int, float)) and not isinstance(started, bool) and math.isfinite(started)):
             pending = None
         return pg.GuardState.from_dict(data.get("guard")), pending
 
@@ -77,7 +79,10 @@ class GuardAdapter:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".json.tmp")
         body = {"guard": state.to_dict(), "pending_handover": pending}
-        tmp.write_text(json.dumps(body, sort_keys=True), encoding="utf-8")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(body, sort_keys=True))
+            fh.flush()
+            os.fsync(fh.fileno())
         os.replace(tmp, self.path)
 
     # ---- one tick ----------------------------------------------------------------------------------------------------
@@ -87,8 +92,9 @@ class GuardAdapter:
         if pending is not None and now - float(pending["started"]) >= HANDOVER_PENDING_S:
             self.event("guard_handover_expired", cid=pending.get("cid"))
             pending = None
-        if pending is not None and signals.main_alive is True:
-            self.event("guard_handover_completed", cid=pending.get("cid"))   # Main is alive again: the handover landed
+        if (pending is not None and signals.main_alive is True and signals.session_id is not None
+                and pending.get("sid") is not None and signals.session_id != pending.get("sid")):
+            self.event("guard_handover_completed", cid=pending.get("cid"))   # a different session is Main now
             pending = None
         obs = pg.Observation(now=now, main_alive=signals.main_alive, session_status=signals.session_status,
                              progress_marker=signals.progress_marker, eligible_work=signals.eligible_work,
@@ -100,14 +106,20 @@ class GuardAdapter:
                 self.event("guard_replace_suppressed", reason="a handover is already pending", label=decision.label)
                 new_state = state                        # the decision did not happen: do not spend the budget
             else:
+                # Intent is persisted BEFORE the command is sent, so a failure after sending still blocks duplicates.
+                pending = {"cid": None, "started": now, "sid": signals.session_id}
+                self.save(state, pending)
                 sent = self.request_handover(signals)
                 if sent.get("sent") is True:
-                    pending = {"cid": sent.get("cid"), "started": now}
+                    pending["cid"] = sent.get("cid")
                     acted = True
+                    self.save(new_state, pending)
                     self.event("guard_replace_requested", cid=sent.get("cid"), label=decision.label)
                 else:
-                    self.event("guard_replace_failed", reason=str(sent.get("reason", ""))[:200], label=decision.label)
+                    pending = None
                     new_state = state                    # not sent: the budget is not spent
+                    self.save(new_state, pending)
+                    self.event("guard_replace_failed", reason=str(sent.get("reason", ""))[:200], label=decision.label)
         elif decision.action == pg.ESCALATE:
             self.event("guard_escalation", label=decision.label, reason=decision.reason)
         self.save(new_state, pending)
