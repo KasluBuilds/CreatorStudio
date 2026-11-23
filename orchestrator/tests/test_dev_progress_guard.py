@@ -1,0 +1,173 @@
+import json
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from dev_supervisor import progress_guard as pg  # noqa: E402
+
+P = pg.Policy(idle_min_s=300, cooldown_s=900, non_progress_limit=3, replace_pressure_pct=85,
+              replace_budget=3, replace_window_s=3600)
+
+
+def obs(now, **kw):
+    base = dict(now=now, main_alive=True, session_status="idle", progress_marker="m0", eligible_work=2,
+                pressure_pct=10.0, handoff_verified=False)
+    base.update(kw)
+    return pg.Observation(**base)
+
+
+def run(states_obs):
+    st = pg.GuardState()
+    out = []
+    for o in states_obs:
+        st, d = pg.decide(st, o, P)
+        out.append(d)
+    return st, out
+
+
+class IdleContinuationTests(unittest.TestCase):
+    def test_continues_only_after_minimum_idle_time(self):
+        _, ds = run([obs(0), obs(200), obs(300)])
+        self.assertEqual([d.action for d in ds], [pg.NONE, pg.NONE, pg.CONTINUE])
+
+    def test_busy_never_triggers_action(self):
+        _, ds = run([obs(0, session_status="busy"), obs(1000, session_status="busy")])
+        self.assertTrue(all(d.action == pg.NONE and d.label == "BUSY" for d in ds))
+
+    def test_no_eligible_work_means_no_continuation(self):
+        _, ds = run([obs(0, eligible_work=0), obs(1000, eligible_work=0)])
+        self.assertTrue(all(d.action == pg.NONE for d in ds))
+
+    def test_missing_observations_produce_no_action(self):
+        _, ds = run([obs(0, main_alive=None), obs(1000, session_status=None),
+                     obs(1001, session_status="idle", eligible_work=None), obs(2000, progress_marker=None)])
+        self.assertTrue(all(d.action == pg.NONE for d in ds), [d.action for d in ds])
+
+    def test_unrecognised_status_is_not_idle(self):
+        _, ds = run([obs(0, session_status="weird"), obs(1000, session_status="weird")])
+        self.assertTrue(all(d.action == pg.NONE for d in ds))
+
+
+class DuplicatePreventionTests(unittest.TestCase):
+    def test_no_second_continuation_inside_cooldown(self):
+        _, ds = run([obs(0), obs(300), obs(301), obs(302)])
+        self.assertEqual(ds[2].action, pg.HOLD)  # the CONTINUE at 300 blocks 301 and 302
+        self.assertEqual([d.action for d in ds].count(pg.CONTINUE), 1)
+
+    def test_next_continuation_allowed_after_cooldown(self):
+        _, ds = run([obs(0), obs(300), obs(1300)])
+        self.assertEqual(ds[1].action, pg.CONTINUE)
+        self.assertEqual(ds[2].action, pg.CONTINUE)
+
+
+class NonProgressTests(unittest.TestCase):
+    def test_escalates_after_limit_without_marker_change(self):
+        seq = [obs(0)] + [obs(300 + i * 1000) for i in range(5)]
+        _, ds = run(seq)
+        actions = [d.action for d in ds if d.action != pg.NONE]
+        self.assertEqual(actions, [pg.CONTINUE, pg.CONTINUE, pg.CONTINUE, pg.ESCALATE])
+
+    def test_escalation_is_emitted_once(self):
+        seq = [obs(0)] + [obs(300 + i * 1000) for i in range(8)]
+        _, ds = run(seq)
+        self.assertEqual([d.action for d in ds].count(pg.ESCALATE), 1)
+
+    def test_progress_resets_counter_and_escalation(self):
+        seq = [obs(0), obs(300), obs(1300), obs(2300),
+               obs(3300, progress_marker="m1"), obs(4600)]
+        st, ds = run(seq)
+        self.assertEqual(ds[-1].action, pg.CONTINUE)
+        self.assertFalse(st.escalated)
+
+    def test_escalated_state_waits_for_progress(self):
+        seq = [obs(0), obs(300), obs(1300), obs(2300), obs(3300), obs(4300)]
+        _, ds = run(seq)
+        self.assertEqual(ds[4].action, pg.ESCALATE)
+        self.assertEqual(ds[5].action, pg.NONE)
+        self.assertEqual(ds[5].label, "ESCALATED")
+
+
+class CrashAndExhaustionTests(unittest.TestCase):
+    def test_crash_without_verified_handoff_is_held_not_restarted(self):
+        _, ds = run([obs(0), obs(10, main_alive=False)])
+        self.assertEqual(ds[1].action, pg.HOLD)
+        self.assertEqual(ds[1].label, "CRASHED")
+
+    def test_crash_with_verified_handoff_while_idle_replaces(self):
+        _, ds = run([obs(0), obs(10, main_alive=False, handoff_verified=True, session_status="idle")])
+        self.assertEqual(ds[1].action, pg.REPLACE)
+
+    def test_crash_while_session_busy_is_held(self):
+        _, ds = run([obs(0), obs(10, main_alive=False, handoff_verified=True, session_status="busy")])
+        self.assertEqual(ds[1].action, pg.HOLD)
+
+    def test_never_started_is_not_running(self):
+        _, ds = run([obs(0, main_alive=False)])
+        self.assertEqual(ds[0].label, "NOT_RUNNING")
+        self.assertEqual(ds[0].action, pg.NONE)
+
+    def test_exhaustion_replaces_only_when_idle_and_verified(self):
+        _, busy = run([obs(0, pressure_pct=90, session_status="busy", handoff_verified=True)])
+        self.assertEqual(busy[0].action, pg.HOLD)
+        _, idle = run([obs(0, pressure_pct=90, session_status="idle", handoff_verified=True)])
+        self.assertEqual(idle[0].action, pg.REPLACE)
+        self.assertEqual(idle[0].label, "EXHAUSTED")
+
+
+class RestartLoopTests(unittest.TestCase):
+    def test_replacement_budget_stops_a_restart_loop(self):
+        seq = [obs(0)]
+        t = 10
+        for _ in range(6):
+            seq.append(obs(t, main_alive=False, handoff_verified=True, session_status="idle"))
+            seq.append(obs(t + 1, main_alive=True, session_status="idle", progress_marker="m%d" % t))
+            t += 60
+        _, ds = run(seq)
+        replaces = [d for d in ds if d.action == pg.REPLACE]
+        escalations = [d for d in ds if d.action == pg.ESCALATE]
+        self.assertEqual(len(replaces), P.replace_budget)
+        self.assertEqual(len(escalations), 1)
+
+    def test_budget_recovers_after_window(self):
+        seq = [obs(0)]
+        for i, t in enumerate([10, 20, 30]):
+            seq.append(obs(t, main_alive=False, handoff_verified=True, session_status="idle"))
+            seq.append(obs(t + 1, main_alive=True, session_status="idle", progress_marker="x%d" % i))
+        seq.append(obs(10 + 3600 + 100, main_alive=False, handoff_verified=True, session_status="idle"))
+        _, ds = run(seq)
+        self.assertEqual(ds[-1].action, pg.REPLACE)
+
+
+class StatePersistenceTests(unittest.TestCase):
+    def test_state_survives_json_round_trip_and_keeps_counters(self):
+        st, _ = run([obs(0), obs(300), obs(1300)])
+        restored = pg.GuardState.from_dict(json.loads(json.dumps(st.to_dict())))
+        self.assertEqual(restored.to_dict(), st.to_dict())
+        nxt, d = pg.decide(restored, obs(2300), P)
+        self.assertEqual(d.action, pg.CONTINUE)
+        self.assertEqual(nxt.continuations_without_progress, 3)
+
+    def test_malformed_state_yields_fresh_state(self):
+        for bad in (None, [], "x", {"continuations_without_progress": -1}, {"replacements": "no"},
+                    {"was_alive": "yes"}):
+            with self.subTest(bad=bad):
+                st = pg.GuardState.from_dict(bad)
+                self.assertEqual(st.to_dict(), pg.GuardState().to_dict())
+
+    def test_decide_does_not_mutate_input_state(self):
+        st, _ = run([obs(0)])
+        before = st.to_dict()
+        pg.decide(st, obs(400), P)
+        self.assertEqual(st.to_dict(), before)
+
+    def test_recovery_after_supervisor_restart_does_not_repeat_continuation(self):
+        st, _ = run([obs(0), obs(300)])
+        restored = pg.GuardState.from_dict(json.loads(json.dumps(st.to_dict())))
+        _, d = pg.decide(restored, obs(301), P)
+        self.assertEqual(d.action, pg.HOLD)
+
+
+if __name__ == "__main__":
+    unittest.main()
