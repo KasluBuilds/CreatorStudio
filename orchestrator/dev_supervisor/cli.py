@@ -46,7 +46,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
-from . import compaction, config as config_mod, context_monitor, handoff, main_host, replacement, routing, telemetry
+from . import autonomy, compaction, config as config_mod, context_monitor, guard_loop, handoff, main_host, replacement, routing, telemetry
 from . import authority, github_log, omniroute, provider_env, resolve_discovery, session_policy
 from .config import Config, ConfigError
 from .evidence import Evidence, unavailable
@@ -797,6 +797,74 @@ class SupervisorLoop:
 
     # -------------------------------------------------- loop
 
+    def _guard_tick(self, main: Dict[str, Any], alive: bool, pressure: Any) -> None:
+        """Feature-flagged progress guard (T-DEV-037). Off unless CREATORSTUDIO_SUPERVISOR_GUARD is "1".
+        Never raises: a guard failure must not stop supervision."""
+        if not guard_loop.enabled():
+            return
+        try:
+            if getattr(self, "_guard", None) is None:
+                self._guard = guard_loop.GuardAdapter(
+                    self.store.directory, clock=self.svc.clock, request_handover=self._guard_request_handover,
+                    event=self.store.append_event)
+            self._guard.tick(self._guard_signals(main, alive))
+        except Exception as e:  # noqa: BLE001 - the guard is advisory and must never stop the loop
+            try:
+                self.store.append_event("guard_error", error=e.__class__.__name__, detail=str(e)[:160])
+            except Exception:  # noqa: BLE001 - even recording the failure must not stop the loop
+                pass
+
+    def _guard_signals(self, main: Dict[str, Any], alive: bool) -> "guard_loop.Signals":
+        sid = main.get("session_id") if isinstance(main, dict) else None
+        self._guard_sid = sid
+        sess = None
+        if sid:
+            sess = find_session(self.svc.read_sessions(self.cfg.sessions_directory(), pid_alive=self.svc.pid_alive), sid)
+        ev = idle_evidence(sess)
+        status = ("idle" if ev.value else "busy") if (ev.available and isinstance(ev.value, bool)) else None
+        picture = autonomy.compute_items(self.root, self.store)
+        return guard_loop.Signals(
+            session_id=sid if isinstance(sid, str) else None,
+            main_alive=alive if isinstance(alive, bool) else None, session_status=status,
+            eligible_work=len(picture["items"]), progress_marker=picture["fingerprint"],
+            pressure_pct=None,   # not wired yet: context pressure is held by check_pressure, not returned here
+            # verify only when Main is dead: the check runs git/gh and appends an event each call
+            handoff_verified=self._guard_handoff_verified(sid) if alive is False else False)
+
+    def _guard_handoff_verified(self, sid: Optional[str]) -> bool:
+        """The same gate replace_main uses: a fresh prepared handoff that handoff.verify_handoff reports safe.
+        Any failure to verify means not verified (fail closed)."""
+        if not sid:
+            return False
+        try:
+            hid = self.tracker.load(sid)["prepare"].get("handoff_id")
+            if not hid or not self._handoff_fresh(sid):
+                return False
+            rep = handoff.verify_handoff(self.store, hid, self.svc.ref_checkers_factory(self.cfg, self.root))
+            return bool(rep.safe)
+        except Exception:  # noqa: BLE001 - an unverifiable handoff is never a verified one
+            return False
+
+    def _guard_request_handover(self, signals: "guard_loop.Signals") -> Dict[str, Any]:
+        """REPLACE through the existing replacement procedure (replace_main), only in attached mode and only when the
+        operator has opted in with auto_replace_main (the same opt-in the automatic replacement path honours). In attached
+        mode the procedure sends the host's "handover" command with the full payload, after re-verifying the handoff, and
+        recovers the old session if the new one is not confirmed. Success means a genuinely NEW session, never the old one."""
+        if self.attached is None:
+            return {"sent": False, "reason": "guard replacement needs attached mode (the host's handover command)"}
+        if not self.cfg.auto_replace_main:
+            return {"sent": False, "reason": "auto_replace_main is off"}
+        sid = signals.session_id
+        hid = self.tracker.load(sid)["prepare"].get("handoff_id") if sid else None
+        if not (signals.handoff_verified and sid and hid):
+            return {"sent": False, "reason": "no verified handoff for the current Main"}
+        out = self.replace_main(hid)
+        new_sid = out.get("new_session_id")
+        ok = (out.get("status") in (replacement.ReplacementStatus.REPLACED,
+                                    replacement.ReplacementStatus.REPLACED_OLD_NOT_CLEARED)
+              and isinstance(new_sid, str) and bool(new_sid) and new_sid != sid)
+        return {"sent": ok, "cid": new_sid if ok else None, "reason": str(out.get("status") or out.get("reasons") or "")}
+
     def tick(self) -> Dict[str, Any]:
         self.ticks += 1
         timer = self.svc.timer
@@ -823,6 +891,8 @@ class SupervisorLoop:
                 # Attached mode: the old session's retirement belongs to the host's adoption of the next Main, which
                 # needs the session still RETIRING/ACTIVE to record it as RETIRED (see main_host.MainHost._adopt).
                 _mark_exited_unless_retired(self.store, main["session_id"])
+        if guard_loop.enabled():
+            self._guard_tick(main, alive, pressure)
         phases = {"requests": _ms(t1 - t0), "workers": _ms(t2 - t1), "main_and_pressure": _ms(t3 - t2)}
         self.write_heartbeat(alive, main.get("session_id"), len(self.sup.registry.list()),
                              duration_ms=_ms(timer() - t0), phase_ms=phases)
