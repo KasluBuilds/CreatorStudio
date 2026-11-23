@@ -76,9 +76,6 @@ class ProviderEnvTests(unittest.TestCase):
             self.assertNotIn(name, seen["env"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class WorkerEnvTests(unittest.TestCase):
     GATEWAY = {"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-secret-value",
@@ -122,3 +119,46 @@ class WorkerEnvTests(unittest.TestCase):
         src = dict(self.GATEWAY)
         pe.worker_env(src)
         self.assertEqual(src, self.GATEWAY)
+
+
+class WorkerEnvHardeningTests(unittest.TestCase):
+    GATEWAY = {"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-secret-value",
+               "PATH": "p"}
+
+    def _refused(self, env):
+        with self.assertRaises(pe.WorkerEnvError) as cm:
+            pe.worker_env(env)
+        return str(cm.exception)
+
+    def test_host_edge_cases(self):
+        for url in ("http://localhost@evil.test", "http://localhost.evil.test:20128", "https://api.example.com",
+                    "http://[::1]:20128/x", "http://LOCALHOST:20128"):
+            with self.subTest(url=url):
+                if url in ("http://[::1]:20128/x", "http://LOCALHOST:20128"):
+                    self.assertIn("ANTHROPIC_BASE_URL", pe.worker_env(dict(self.GATEWAY, ANTHROPIC_BASE_URL=url)))
+                else:
+                    self._refused(dict(self.GATEWAY, ANTHROPIC_BASE_URL=url))
+
+    def test_malformed_url_does_not_echo_userinfo(self):
+        msg = self._refused(dict(self.GATEWAY, ANTHROPIC_BASE_URL="http://user:pw-secret@h＃[bad"))
+        self.assertNotIn("pw-secret", msg)
+        self.assertNotIn("user:", msg)
+
+    def test_whitespace_only_token_is_missing(self):
+        msg = self._refused(dict(self.GATEWAY, ANTHROPIC_AUTH_TOKEN="   "))
+        self.assertIn("ANTHROPIC_AUTH_TOKEN", msg)
+
+    def test_provider_switches_and_oauth_token_are_stripped(self):
+        out = pe.worker_env(dict(self.GATEWAY, CLAUDE_CODE_USE_BEDROCK="1", CLAUDE_CODE_USE_VERTEX="1",
+                                 CLAUDE_CODE_OAUTH_TOKEN="oauth-x", ANTHROPIC_UNIX_SOCKET="/tmp/s"))
+        for name in ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_OAUTH_TOKEN",
+                     "ANTHROPIC_UNIX_SOCKET"):
+            self.assertNotIn(name, out)
+
+    def test_gateway_flags_cannot_be_overridden_by_parent(self):
+        out = pe.worker_env(dict(self.GATEWAY, CLAUDE_CODE_DISABLE_REASONING_EFFORT="0"))
+        self.assertEqual(out["CLAUDE_CODE_DISABLE_REASONING_EFFORT"], "1")
+
+
+if __name__ == "__main__":
+    unittest.main()
