@@ -136,7 +136,8 @@ class SpawnerRealProcessTests(unittest.TestCase):
 
     def test_refuses_when_verified_list_omitted(self):
         with self.assertRaises(ws.SpawnRefused):
-            ws.build_worker_command(ROUTE, self.work, self.cfg, "x", None, GOOD)
+            tmp = Path(tempfile.mkdtemp())
+            ws.build_worker_command(ROUTE, tmp, str(tmp / "cfg"), "x", None, GOOD)
 
     def test_refuses_anthropic_route_even_if_listed_as_verified(self):
         pro = ws.VerifiedRoute(model="sonnet", provider="anthropic", evidence="x", cost_zero=True)
