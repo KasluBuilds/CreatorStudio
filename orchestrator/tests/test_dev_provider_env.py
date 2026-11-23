@@ -1,6 +1,11 @@
+import os
+import sys
 import unittest
+from pathlib import Path
 
-from dev_supervisor import provider_env as pe
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from dev_supervisor import provider_env as pe  # noqa: E402
 
 
 class ProviderEnvTests(unittest.TestCase):
@@ -73,3 +78,47 @@ class ProviderEnvTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WorkerEnvTests(unittest.TestCase):
+    GATEWAY = {"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-secret-value",
+               "PATH": "p"}
+
+    def test_routes_through_gateway_and_keeps_token(self):
+        out = pe.worker_env(self.GATEWAY)
+        self.assertEqual(out["ANTHROPIC_BASE_URL"], "http://localhost:20128")
+        self.assertEqual(out["ANTHROPIC_AUTH_TOKEN"], "tok-secret-value")
+        self.assertEqual(out["CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"], "1")
+
+    def test_refuses_when_gateway_missing_naming_variables_only(self):
+        with self.assertRaises(pe.WorkerEnvError) as cm:
+            pe.worker_env({"PATH": "p"})
+        msg = str(cm.exception)
+        self.assertIn("ANTHROPIC_BASE_URL", msg)
+        self.assertIn("ANTHROPIC_AUTH_TOKEN", msg)
+
+    def test_refuses_empty_token(self):
+        with self.assertRaises(pe.WorkerEnvError):
+            pe.worker_env(dict(self.GATEWAY, ANTHROPIC_AUTH_TOKEN=""))
+
+    def test_refuses_non_local_gateway_without_echoing_it(self):
+        with self.assertRaises(pe.WorkerEnvError) as cm:
+            pe.worker_env(dict(self.GATEWAY, ANTHROPIC_BASE_URL="https://api.example.com"))
+        self.assertNotIn("example.com", str(cm.exception))
+
+    def test_strips_direct_key_and_parent_session_markers(self):
+        out = pe.worker_env(dict(self.GATEWAY, ANTHROPIC_API_KEY="k", CLAUDECODE="1",
+                                 CLAUDE_CODE_SESSION_ID="s", CS_AUTHORITY_X="y"))
+        for name in ("ANTHROPIC_API_KEY", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CS_AUTHORITY_X"):
+            self.assertNotIn(name, out)
+
+    def test_never_returns_claude_pro_environment(self):
+        # With the gateway configured the worker keeps it; without it the call refuses instead of dropping to Pro.
+        self.assertIn("ANTHROPIC_BASE_URL", pe.worker_env(self.GATEWAY))
+        with self.assertRaises(pe.WorkerEnvError):
+            pe.worker_env({"ANTHROPIC_MODEL": "sonnet", "PATH": "p"})
+
+    def test_input_not_mutated(self):
+        src = dict(self.GATEWAY)
+        pe.worker_env(src)
+        self.assertEqual(src, self.GATEWAY)

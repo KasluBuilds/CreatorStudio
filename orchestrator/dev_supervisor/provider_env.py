@@ -54,3 +54,42 @@ def child_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
     base = dict(os.environ if base is None else base)
     stripped = PARENT_SESSION_VARS if provider(base) == "inherit" else PARENT_SESSION_VARS + _STRIPPED_FOR_PRO
     return {k: v for k, v in base.items() if k.upper() not in stripped and not k.upper().startswith(AUTHORITY_PREFIX)}
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Worker environment (T-DEV-033). Explicit, separate from the Main/default provider above.
+# A worker is never started on Claude Pro through this function: it requires the local OmniRoute gateway and refuses
+# otherwise. Errors name variables that are missing, never their values.
+# ---------------------------------------------------------------------------------------------------------------------
+WORKER_REQUIRED_VARS = ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN")
+WORKER_GATEWAY_FLAGS = {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
+                        "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT": "1",
+                        "CLAUDE_CODE_DISABLE_REASONING_EFFORT": "1"}
+WORKER_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+_WORKER_STRIPPED = ("ANTHROPIC_API_KEY",)   # a direct Anthropic key would bypass the gateway
+
+
+class WorkerEnvError(Exception):
+    """Refusal to build a worker environment. The message names variables, never values."""
+
+
+def worker_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    """The environment for a worker's ``claude`` child, routed through the local OmniRoute gateway only.
+
+    Refuses (WorkerEnvError) when the gateway variables are absent or the base URL is not local. Removes direct
+    Anthropic credentials and parent-session markers. Never falls back to Claude Pro.
+    """
+    import urllib.parse
+    base = dict(os.environ if base is None else base)
+    missing = [k for k in WORKER_REQUIRED_VARS if not base.get(k)]
+    if missing:
+        raise WorkerEnvError("OmniRoute gateway not configured; missing variable(s): " + ", ".join(missing))
+    host = urllib.parse.urlsplit(base["ANTHROPIC_BASE_URL"]).hostname or ""
+    if host not in WORKER_LOCAL_HOSTS:
+        raise WorkerEnvError("OmniRoute gateway must be local; ANTHROPIC_BASE_URL is not a localhost address")
+    stripped = PARENT_SESSION_VARS + _WORKER_STRIPPED
+    out = {k: v for k, v in base.items()
+           if k.upper() not in stripped and not k.upper().startswith(AUTHORITY_PREFIX)}
+    for name, value in WORKER_GATEWAY_FLAGS.items():
+        out.setdefault(name, value)
+    return out
