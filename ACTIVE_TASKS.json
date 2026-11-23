@@ -260,6 +260,7 @@
     "AGR-DEV-036-01": {
       "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission directs Main to make the progress guard operational. Under that mandate T-DEV-036 may change progress_guard.py and its test file only. REPORTED: the mission text is the basis.",
       "task_ids": [
+        "T-DEV-035",
         "T-DEV-036"
       ],
       "paths": [
@@ -2021,9 +2022,13 @@
       },
       "exclusive_resources": [],
       "integration_agreements": [
-        "AGR-DEV-035-01"
+        "AGR-DEV-035-01",
+        "AGR-DEV-036-01"
       ],
-      "owned_paths": [],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/progress_guard.py",
+        "orchestrator/tests/test_dev_progress_guard.py"
+      ],
       "acceptance_criteria": [
         "CONTINUE only after observed idle for the minimum idle time with eligible work and outside the cooldown",
         "no action while busy, while observations are missing, or while the progress marker is changing",
@@ -2032,7 +2037,7 @@
       "test_requirements": [
         "python -B -I -m unittest discover -s tests -p 'test_dev_progress_guard.py' from orchestrator/"
       ],
-      "integration_notes": "Pure module, no process control. Wiring into SupervisorLoop is a separate task. Owned paths transferred to T-DEV-036 (contract change) after this task closed."
+      "integration_notes": "Pure module, no process control. Wiring into SupervisorLoop is a separate task. The same paths are amended by T-DEV-036 under AGR-DEV-036-01."
     },
     {
       "id": "T-DEV-036",
