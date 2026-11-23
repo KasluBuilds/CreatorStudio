@@ -276,5 +276,36 @@ class SpawnerRound5Tests(unittest.TestCase):
         self.assertTrue(seen["has_token"])
         self.assertNotIn("tok-dummy-value", text)
 
+class SpawnerRound6Tests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.work = self.tmp / "wt"
+        self.work.mkdir()
+        self.cfg = str(self.tmp / "cfg")
+
+    def test_bare_aliases_refused(self):
+        for model in ("default", "best", "sonnet", "opus"):
+            with self.subTest(model=model):
+                r = ws.VerifiedRoute(model=model, provider="gemini", evidence="e", cost_zero=True)
+                with self.assertRaises(ws.SpawnRefused):
+                    ws.build_worker_command(r, self.work, self.cfg, "x", [r], GOOD)
+
+    def test_current_directory_worktree_refused(self):
+        with self.assertRaises(ws.SpawnRefused):
+            ws.build_worker_command(ROUTE, Path("."), self.cfg, "x", [ROUTE], GOOD)
+
+    def test_model_variable_stripped_from_child_env(self):
+        _, env, _ = ws.build_worker_command(ROUTE, self.work, self.cfg, "x", [ROUTE],
+                                            dict(GOOD, ANTHROPIC_MODEL="claude-sonnet-5-5"))
+        self.assertNotIn("ANTHROPIC_MODEL", env)
+
+    def test_missing_executable_is_refused_not_raw_oserror(self):
+        reg = self.tmp / "routes.json"
+        reg.write_text(json.dumps({"routes": [{"model": "auto/coding", "provider": "gemini", "evidence": "e",
+                                               "cost_zero": True}]}), encoding="utf-8")
+        with mock.patch.object(ws, "CLAUDE_EXECUTABLE", str(self.tmp / "no-such-claude-binary")):
+            with self.assertRaises(ws.SpawnRefused):
+                ws.spawn_worker(ROUTE, self.work, self.cfg, "x", reg, self.tmp / "log.txt", base_env=GOOD)
+
 if __name__ == "__main__":
     unittest.main()
