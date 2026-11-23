@@ -78,11 +78,12 @@ class GuardState:
             elif f.name == "continuations_without_progress":
                 ok = isinstance(value, int) and not isinstance(value, bool) and value >= 0
             elif f.name == "replacements":
-                ok = isinstance(value, list) and all(isinstance(v, (int, float)) for v in value)
+                ok = isinstance(value, list) and all(_finite_number(v) for v in value)
             elif f.name == "last_marker":
                 ok = value is None or isinstance(value, str)
             else:
-                ok = value is None or isinstance(value, (int, float))
+                ok = value is None or (isinstance(value, (int, float)) and not isinstance(value, bool)
+                                       and value == value and abs(value) != float("inf"))
             if ok:
                 setattr(out, f.name, list(value) if f.name == "replacements" else value)
         return out
@@ -93,6 +94,10 @@ class Decision:
     action: str
     label: str        # the observed condition: NOT_RUNNING, CRASHED, UNKNOWN, BUSY, IDLE, EXHAUSTED, ESCALATED
     reason: str
+
+
+def _finite_number(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) != float("inf")
 
 
 def _recent_replacements(state: GuardState, now: float, policy: Policy) -> List[float]:
@@ -127,7 +132,7 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
 
     if not obs.main_alive:
         if st.was_alive:
-            st.was_alive = False
+            # stays "was alive" while dead: a held crash is re-evaluated on later ticks; the replacement budget bounds it
             st.idle_since = None
             return st, _replace_or_hold(st, obs, policy, "CRASHED")
         return st, Decision(NONE, "NOT_RUNNING", "Main is not running")
@@ -143,9 +148,11 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
         st.escalated = False
 
     if obs.progress_marker is None:
+        st.idle_since = None
         return st, Decision(NONE, "UNKNOWN", "progress not observed; cannot verify progress, so no action")
 
     if obs.session_status is None:
+        st.idle_since = None
         return st, Decision(NONE, "UNKNOWN", "session status not observed")
 
     if obs.session_status == "busy":
@@ -153,6 +160,7 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
         return st, Decision(NONE, "BUSY", "Main is observed busy")
 
     if obs.session_status != "idle":
+        st.idle_since = None
         return st, Decision(NONE, "UNKNOWN", "session status is not a recognised value")
 
     if st.idle_since is None:
@@ -160,6 +168,7 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
     if st.escalated:
         return st, Decision(NONE, "ESCALATED", "escalated; waiting for progress before acting again")
     if obs.eligible_work is None:
+        st.idle_since = None
         return st, Decision(NONE, "UNKNOWN", "eligible work not observed")
     if obs.eligible_work <= 0:
         return st, Decision(NONE, "IDLE", "idle with no eligible work")

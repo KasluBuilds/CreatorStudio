@@ -169,5 +169,36 @@ class StatePersistenceTests(unittest.TestCase):
         self.assertEqual(d.action, pg.HOLD)
 
 
+class ReviewFixTests(unittest.TestCase):
+    def test_missing_observation_breaks_idle_continuity(self):
+        seq = [obs(0), obs(200), obs(250, eligible_work=None), obs(260)]
+        _, ds = run(seq)
+        self.assertEqual(ds[-1].action, pg.NONE, "idle time restarts after an unobserved tick")
+
+    def test_held_crash_is_replaced_once_a_verified_handoff_exists(self):
+        seq = [obs(0), obs(10, main_alive=False, handoff_verified=False, session_status="idle"),
+               obs(20, main_alive=False, handoff_verified=True, session_status="idle")]
+        _, ds = run(seq)
+        self.assertEqual(ds[1].action, pg.HOLD)
+        self.assertEqual(ds[2].action, pg.REPLACE)
+
+    def test_repeated_death_after_replacement_is_bounded_by_budget(self):
+        seq = [obs(0)]
+        t = 10
+        for _ in range(6):
+            seq.append(obs(t, main_alive=False, handoff_verified=True, session_status="idle"))
+            t += 10
+        _, ds = run(seq)
+        self.assertEqual([d.action for d in ds].count(pg.REPLACE), P.replace_budget)
+        self.assertEqual([d.action for d in ds].count(pg.ESCALATE), 1)
+
+    def test_bools_and_non_finite_numbers_are_refused_in_restore(self):
+        st = pg.GuardState.from_dict({"replacements": [True, float("inf")], "last_continue_at": float("nan"),
+                                      "escalated": "yes"})
+        self.assertEqual(st.replacements, [])
+        self.assertIsNone(st.last_continue_at)
+        self.assertFalse(st.escalated)
+
+
 if __name__ == "__main__":
     unittest.main()
