@@ -122,7 +122,9 @@ def worker_env(config_dir: Optional[str], base: Optional[Mapping[str, str]] = No
 
     def _drop(name: str) -> bool:
         upper = name.upper()
-        return (upper in PARENT_SESSION_VARS or upper in _WORKER_STRIPPED
+        # Any Anthropic or Claude Code variable that names a model is dropped, including future spellings.
+        model_name_var = "MODEL" in upper and upper.startswith(("ANTHROPIC_", "CLAUDE_CODE_"))
+        return (upper in PARENT_SESSION_VARS or upper in _WORKER_STRIPPED or model_name_var
                 or upper.startswith(_WORKER_STRIPPED_PREFIXES) or upper.startswith(AUTHORITY_PREFIX)
                 or upper in {f.upper() for f in WORKER_GATEWAY_FLAGS}
                 or upper in {r.upper() for r in WORKER_REQUIRED_VARS})

@@ -307,5 +307,17 @@ class SpawnerRound6Tests(unittest.TestCase):
             with self.assertRaises(ws.SpawnRefused):
                 ws.spawn_worker(ROUTE, self.work, self.cfg, "x", reg, self.tmp / "log.txt", base_env=GOOD)
 
+class SpawnerRound7Tests(unittest.TestCase):
+    def test_nul_in_prompt_refused(self):
+        tmp = Path(tempfile.mkdtemp())
+        with self.assertRaises(ws.SpawnRefused):
+            ws.build_worker_command(ROUTE, tmp, str(tmp / "c"), "hello" + chr(0) + "x", [ROUTE], GOOD)
+
+    def test_malformed_verified_list_refused(self):
+        tmp = Path(tempfile.mkdtemp())
+        with self.assertRaises(ws.SpawnRefused):
+            ws.build_worker_command(ROUTE, tmp, str(tmp / "c"), "x", 5, GOOD)
+
+
 if __name__ == "__main__":
     unittest.main()

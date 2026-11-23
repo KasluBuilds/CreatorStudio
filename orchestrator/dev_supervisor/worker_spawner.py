@@ -110,9 +110,18 @@ def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], pr
         raise SpawnRefused("Claude models are never worker routes")
     if route.cost_zero is not True:
         raise SpawnRefused("route cost is not recorded as zero")
-    if verified is None or not any(r.model == route.model and r.provider == route.provider and r.cost_zero is True
-                                   for r in verified):
+    if verified is None:
         raise SpawnRefused("route is not in the verified registry")
+    try:
+        registry = list(verified)
+    except TypeError:
+        raise SpawnRefused("verified route list is malformed") from None
+    if not any(isinstance(r, VerifiedRoute) and r.model == route.model and r.provider == route.provider
+               and r.cost_zero is True for r in registry):
+        raise SpawnRefused("route is not in the verified registry")
+    values = list((os.environ if base_env is None else base_env).values())
+    if any('\x00' in str(v) for v in values + [prompt]):
+        raise SpawnRefused("inputs may not contain NUL characters")
     if not isinstance(prompt, str) or not prompt.strip():
         raise SpawnRefused("a worker prompt is required")
     if prompt.lstrip().startswith("-"):
@@ -152,5 +161,7 @@ def spawn_worker(route: VerifiedRoute, worktree: Path, config_dir: Optional[str]
         with open(log, "ab") as out:
             return subprocess.Popen(argv, cwd=str(cwd), env=env, shell=False, stdin=subprocess.DEVNULL,  # noqa: S603
                                     stdout=out, stderr=subprocess.STDOUT)
-    except OSError:
-        raise SpawnRefused("worker executable could not be started") from None
+    except (ValueError, TypeError):
+        raise SpawnRefused("worker launch arguments were rejected") from None
+    except OSError as exc:
+        raise SpawnRefused("worker could not be started (" + type(exc).__name__ + ")") from None
