@@ -71,8 +71,16 @@ WORKER_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 WORKER_SCHEMES = ("http", "https")
 # Direct Anthropic credentials, provider switches and proxies that would send a worker around the gateway.
 _WORKER_STRIPPED = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_UNIX_SOCKET",
-                    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
+                    "CLAUDE_CONFIG_DIR", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
+# User settings (~/.claude/settings.json, including its env block) are excluded for workers. Project and local
+# settings remain: they are committed or machine-local files reviewed through the pull request process.
+WORKER_SETTING_SOURCES = "project,local"
 _WORKER_STRIPPED_PREFIXES = ("CLAUDE_CODE_USE_",)
+
+
+def worker_claude_args() -> list:
+    """Extra ``claude`` arguments a worker must be launched with (the future spawner must pass them)."""
+    return ["--setting-sources", WORKER_SETTING_SOURCES]
 
 
 class WorkerEnvError(Exception):

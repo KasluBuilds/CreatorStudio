@@ -229,5 +229,20 @@ class WorkerEnvRound3Tests(unittest.TestCase):
         self.assertIn("missing variable(s)", str(cm2.exception))
 
 
+class WorkerEnvRound4Tests(unittest.TestCase):
+    GATEWAY = {"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-secret-value",
+               "PATH": "p"}
+
+    def test_claude_config_dir_stripped(self):
+        out = pe.worker_env(dict(self.GATEWAY, CLAUDE_CONFIG_DIR="C:/Users/x/.claude"))
+        self.assertNotIn("CLAUDE_CONFIG_DIR", out)
+
+    def test_worker_args_exclude_user_settings(self):
+        args = pe.worker_claude_args()
+        self.assertEqual(args[0], "--setting-sources")
+        self.assertNotIn("user", args[1].split(","))
+        self.assertIn("project", args[1].split(","))
+
+
 if __name__ == "__main__":
     unittest.main()
