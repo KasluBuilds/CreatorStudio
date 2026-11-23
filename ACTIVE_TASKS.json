@@ -236,6 +236,16 @@
         "orchestrator/dev_supervisor/worker_spawner.py",
         "orchestrator/tests/test_dev_worker_spawner.py"
       ]
+    },
+    "AGR-DEV-034-02": {
+      "description": "T-DEV-034 hardens the worker environment that T-DEV-033 introduced (provider_env.worker_env and its tests). The Main coordinator mission directs Main to build the worker spawner, which needs these changes. REPORTED: the mission text is the basis; the package owner entry is unchanged.",
+      "task_ids": [
+        "T-DEV-034"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py"
+      ]
     }
   },
   "tasks": [
@@ -1955,11 +1965,14 @@
       },
       "exclusive_resources": [],
       "integration_agreements": [
-        "AGR-DEV-034-01"
+        "AGR-DEV-034-01",
+        "AGR-DEV-034-02"
       ],
       "owned_paths": [
         "orchestrator/dev_supervisor/worker_spawner.py",
-        "orchestrator/tests/test_dev_worker_spawner.py"
+        "orchestrator/tests/test_dev_worker_spawner.py",
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py"
       ],
       "acceptance_criteria": [
         "spawn refuses for an unverified route, a route with nonzero cost, a default or blank config dir, or an invalid gateway",
