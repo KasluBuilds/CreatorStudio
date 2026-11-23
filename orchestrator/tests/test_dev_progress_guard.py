@@ -76,7 +76,7 @@ class NonProgressTests(unittest.TestCase):
 
     def test_progress_resets_counter_and_escalation(self):
         seq = [obs(0), obs(300), obs(1300), obs(2300),
-               obs(3300, progress_marker="m1"), obs(4600)]
+               obs(3300, progress_marker="m1"), obs(4600, progress_marker="m1")]
         st, ds = run(seq)
         self.assertEqual(ds[-1].action, pg.CONTINUE)
         self.assertFalse(st.escalated)
@@ -149,12 +149,16 @@ class StatePersistenceTests(unittest.TestCase):
         self.assertEqual(d.action, pg.CONTINUE)
         self.assertEqual(nxt.continuations_without_progress, 3)
 
-    def test_malformed_state_yields_fresh_state(self):
+    def test_malformed_state_is_marked_corrupt_and_fails_closed(self):
         for bad in (None, [], "x", {"continuations_without_progress": -1}, {"replacements": "no"},
                     {"was_alive": "yes"}):
             with self.subTest(bad=bad):
                 st = pg.GuardState.from_dict(bad)
-                self.assertEqual(st.to_dict(), pg.GuardState().to_dict())
+                self.assertTrue(st.corrupt)
+                st1, d1 = pg.decide(st, obs(0), P)
+                self.assertEqual(d1.action, pg.ESCALATE)
+                _, d2 = pg.decide(st1, obs(1000), P)
+                self.assertEqual(d2.action, pg.HOLD)
 
     def test_decide_does_not_mutate_input_state(self):
         st, _ = run([obs(0)])
@@ -272,9 +276,10 @@ class ThirdReviewFixTests(unittest.TestCase):
             actions.append(d.action)
         self.assertEqual(actions.count(pg.ESCALATE), 2, actions)
 
-    def test_mixed_corrupt_state_is_fresh_not_partial(self):
+    def test_mixed_corrupt_state_is_not_a_partial_restore(self):
         st = pg.GuardState.from_dict({"escalated": True, "continuations_without_progress": "x", "was_alive": True})
-        self.assertEqual(st.to_dict(), pg.GuardState().to_dict())
+        self.assertTrue(st.corrupt)
+        self.assertFalse(st.was_alive)
 
     def test_backward_clock_step_does_not_freeze_idle_time(self):
         st = pg.GuardState(idle_since=1000.0)

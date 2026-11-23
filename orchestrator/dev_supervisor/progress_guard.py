@@ -17,7 +17,7 @@ Safety rules
 - Never REPLACE without a verified handoff.
 - After CONTINUE, the progress marker must change, or the non-progress counter grows; at the limit the guard escalates.
 - Replacements inside a window are budgeted; exhausting the budget escalates instead of looping.
-- ESCALATE is emitted once; it stays until the progress marker changes.
+- ESCALATE for a non-progress limit is emitted once and stays until the progress marker changes; budget and hold escalations are emitted once per condition.
 """
 from __future__ import annotations
 
@@ -60,6 +60,7 @@ class GuardState:
     replacements: List[float] = field(default_factory=list)
     escalated: bool = False
     budget_escalated: bool = False
+    corrupt: bool = False
     held_since: Optional[float] = None
     hold_escalated: bool = False
 
@@ -68,15 +69,16 @@ class GuardState:
 
     @classmethod
     def from_dict(cls, data: Any) -> "GuardState":
-        """Restore persisted state. Anything malformed yields a fresh state (safe: no action is forced by it)."""
+        """Restore persisted state. Malformed state is FAIL-CLOSED: the result is marked corrupt and decide() refuses
+        to act on it until a human repairs or resets the state. A missing state file is the caller's concern."""
         if not isinstance(data, Mapping):
-            return cls()
+            return cls(corrupt=True)
         out = cls()
         for f in fields(cls):
             if f.name not in data:
                 continue
             value = data[f.name]
-            if f.name in ("was_alive", "escalated", "budget_escalated", "hold_escalated"):
+            if f.name in ("was_alive", "escalated", "budget_escalated", "hold_escalated", "corrupt"):
                 ok = isinstance(value, bool)
             elif f.name == "continuations_without_progress":
                 ok = isinstance(value, int) and not isinstance(value, bool) and value >= 0
@@ -88,7 +90,7 @@ class GuardState:
                 ok = value is None or (isinstance(value, (int, float)) and not isinstance(value, bool)
                                        and value == value and abs(value) != float("inf"))
             if not ok:
-                return cls()          # a malformed field makes the whole state fresh; never a partial restore
+                return cls(corrupt=True)   # never a partial restore; never a silent reset
             setattr(out, f.name, list(value) if f.name == "replacements" else value)
         return out
 
@@ -142,6 +144,11 @@ def _replace_or_hold(state: GuardState, obs: Observation, policy: Policy, label:
 def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "tuple[GuardState, Decision]":
     """Return (new state, decision). The input state is not mutated."""
     st = GuardState.from_dict(state.to_dict())
+    if st.corrupt:
+        if st.escalated:
+            return st, Decision(HOLD, "UNKNOWN", "persisted guard state is malformed; actions refused until repaired")
+        st.escalated = True
+        return st, Decision(ESCALATE, "UNKNOWN", "persisted guard state is malformed; refusing all actions, escalating")
 
     if not _finite_number(obs.now):
         return st, Decision(NONE, "UNKNOWN", "observation time is not a finite number")
@@ -172,9 +179,12 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
     st.hold_escalated = False
 
     if obs.progress_marker is not None and obs.progress_marker != st.last_marker:
+        landed = st.last_marker is not None   # a change from a known marker is progress landing; the first marker is not
         st.last_marker = obs.progress_marker
         st.continuations_without_progress = 0
         st.escalated = False
+        if landed:
+            return st, Decision(NONE, "PROGRESSING", "progress marker changed; not interrupting this tick")
 
     if obs.progress_marker is None:
         return st, Decision(NONE, "UNKNOWN", "progress not observed; cannot verify progress, so no action")
@@ -199,7 +209,9 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
     idle_for = obs.now - st.idle_since
     if idle_for < policy.idle_min_s:
         return st, Decision(NONE, "IDLE", "idle for " + str(int(idle_for)) + "s, below the minimum")
-    if st.last_continue_at is not None and 0 <= obs.now - st.last_continue_at < policy.cooldown_s:
+    if st.last_continue_at is not None and st.last_continue_at > obs.now:
+        st.last_continue_at = obs.now      # the clock went backwards: the cooldown restarts from now, never ignored
+    if st.last_continue_at is not None and obs.now - st.last_continue_at < policy.cooldown_s:
         return st, Decision(HOLD, "IDLE", "inside the cooldown after the last continuation (no duplicate sent)")
     if st.continuations_without_progress >= policy.non_progress_limit:
         st.escalated = True
@@ -215,8 +227,8 @@ def _hold_or_act(st: GuardState, obs: Observation, policy: Policy, label: str, d
         st.held_since = None
         st.hold_escalated = False
         return d
-    if st.held_since is None:
-        st.held_since = obs.now
+    if st.held_since is None or st.held_since > obs.now:
+        st.held_since = obs.now            # first hold tick, or the clock went backwards: the timer restarts
     if obs.now - st.held_since >= policy.hold_escalate_s and not st.hold_escalated:
         st.hold_escalated = True
         return Decision(ESCALATE, label, "held longer than the hold timeout; escalating for a human: " + d.reason)
