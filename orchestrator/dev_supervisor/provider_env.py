@@ -71,10 +71,10 @@ WORKER_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 WORKER_SCHEMES = ("http", "https")
 # Direct Anthropic credentials, provider switches and proxies that would send a worker around the gateway.
 _WORKER_STRIPPED = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_UNIX_SOCKET",
-                    "CLAUDE_CONFIG_DIR", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
-# User settings (~/.claude/settings.json, including its env block) are excluded for workers. Project and local
-# settings remain: they are committed or machine-local files reviewed through the pull request process.
-WORKER_SETTING_SOURCES = "project,local"
+                    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
+# Only committed project settings are read by workers. User settings (~/.claude/settings.json and its env block) and
+# machine-local settings (.claude/settings.local.json) are excluded: neither is reviewed through a pull request.
+WORKER_SETTING_SOURCES = "project"
 _WORKER_STRIPPED_PREFIXES = ("CLAUDE_CODE_USE_",)
 
 
@@ -102,13 +102,15 @@ def _gateway_url_is_local(url: str) -> bool:
             and parts.netloc.count("@") == 0 and not parts.netloc.endswith(":"))
 
 
-def worker_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+def worker_env(config_dir: Optional[str], base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
     """The environment for a worker's ``claude`` child, routed through the local OmniRoute gateway only.
 
     Refuses (WorkerEnvError) when the gateway variables are absent or the base URL is not a plain local http(s) URL.
     Removes direct Anthropic credentials, Claude Code provider switches, proxies and parent-session markers.
     Never falls back to Claude Pro.
     """
+    if not (config_dir or "").strip():
+        raise WorkerEnvError("a worker-owned CLAUDE_CONFIG_DIR is required (no default config directory is used)")
     base = dict(os.environ if base is None else base)
     values = {k: (base.get(k) or "").strip() for k in WORKER_REQUIRED_VARS}
     missing = [k for k in WORKER_REQUIRED_VARS if not values[k]]
@@ -127,4 +129,5 @@ def worker_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
     out = {k: v for k, v in base.items() if not _drop(k)}
     out.update(values)                     # the stripped values are what the child receives
     out.update(WORKER_GATEWAY_FLAGS)       # forced, and no parent spelling of these names survives
+    out["CLAUDE_CONFIG_DIR"] = config_dir.strip()   # a worker-owned directory, never the default ~/.claude
     return out
