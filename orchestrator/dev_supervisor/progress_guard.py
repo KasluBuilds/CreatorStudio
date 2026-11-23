@@ -21,8 +21,9 @@ Safety rules
 - Never REPLACE while the session is observed busy (never interrupt active work).
 - Never REPLACE without a verified handoff.
 - An idle Main with eligible work escalates once; escalation holds until the progress marker changes.
-- Replacements inside a window are budgeted; exhausting the budget escalates instead of looping.
-- ESCALATE for a non-progress limit is emitted once and stays until the progress marker changes; budget and hold escalations are emitted once per condition.
+- Replacements are budgeted by a lifetime count (a clock step cannot restore it); exhausting it escalates once.
+- ESCALATE for an idle Main with eligible work is emitted once and stays until the progress marker changes; budget and
+  hold escalations are emitted once per condition.
 """
 from __future__ import annotations
 
@@ -35,12 +36,12 @@ ACTIONS = (NONE, HOLD, REPLACE, ESCALATE)
 
 @dataclass(frozen=True)
 class Policy:
-    idle_min_s: float = 300.0           # observed idle this long before a continuation
-    cooldown_s: float = 900.0           # minimum time between continuations (duplicate prevention)
-    non_progress_limit: int = 3         # continuations without a marker change before escalation
+    idle_min_s: float = 300.0           # observed idle this long before an escalation
+    cooldown_s: float = 900.0           # unused since T-DEV-036 (kept for the persisted schema)
+    non_progress_limit: int = 3         # unused since T-DEV-036 (kept for the persisted schema)
     replace_pressure_pct: float = 85.0  # context pressure at which a replacement is considered
-    replace_budget: int = 3             # replacements allowed inside the window
-    replace_window_s: float = 3600.0
+    replace_budget: int = 3             # replacements allowed over the lifetime of the state (no time window)
+    replace_window_s: float = 3600.0    # unused since T-DEV-036 (the budget is a count, not a window)
     hold_escalate_s: float = 4 * 3600.0   # a hold this long escalates once
 
 
@@ -140,7 +141,7 @@ def _replace_or_hold(state: GuardState, obs: Observation, policy: Policy, label:
         if state.budget_escalated:
             return Decision(HOLD, label, "replacement budget exhausted; already escalated, not repeating")
         state.budget_escalated = True
-        return Decision(ESCALATE, label, "replacement budget exhausted inside the window; restart loop refused")
+        return Decision(ESCALATE, label, "replacement budget exhausted; restart loop refused")
     state.budget_escalated = False
     state.replacements = recent + [obs.now]
     state.last_continue_at = None
