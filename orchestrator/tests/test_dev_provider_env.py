@@ -160,5 +160,50 @@ class WorkerEnvHardeningTests(unittest.TestCase):
         self.assertEqual(out["CLAUDE_CODE_DISABLE_REASONING_EFFORT"], "1")
 
 
+class WorkerEnvRound2Tests(unittest.TestCase):
+    GATEWAY = {"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-secret-value",
+               "PATH": "p"}
+
+    def _refused(self, url):
+        with self.assertRaises(pe.WorkerEnvError) as cm:
+            pe.worker_env(dict(self.GATEWAY, ANTHROPIC_BASE_URL=url))
+        return str(cm.exception)
+
+    def test_backslash_userinfo_bypass_refused(self):
+        msg = self._refused("http://evil.test" + chr(92) + "@localhost:20128")
+        self.assertNotIn("evil.test", msg)
+
+    def test_bad_port_and_scheme_refused(self):
+        for url in ("http://localhost:abc", "http://localhost:99999", "//localhost:20128", "ftp://localhost:20128",
+                    "http://localhost bad:20128"):
+            with self.subTest(url=url):
+                self._refused(url)
+
+    def test_whitespace_only_base_url_is_missing(self):
+        msg = self._refused("   ")
+        self.assertIn("ANTHROPIC_BASE_URL", msg)
+
+    def test_missing_token_alone_named(self):
+        env = {k: v for k, v in self.GATEWAY.items() if k != "ANTHROPIC_AUTH_TOKEN"}
+        with self.assertRaises(pe.WorkerEnvError) as cm:
+            pe.worker_env(env)
+        self.assertIn("ANTHROPIC_AUTH_TOKEN", str(cm.exception))
+        self.assertNotIn("ANTHROPIC_BASE_URL", str(cm.exception))
+
+    def test_proxies_stripped(self):
+        out = pe.worker_env(dict(self.GATEWAY, HTTPS_PROXY="http://p", NO_PROXY="x", ALL_PROXY="http://q"))
+        for name in ("HTTPS_PROXY", "NO_PROXY", "ALL_PROXY"):
+            self.assertNotIn(name, out)
+
+    def test_lowercase_flag_duplicate_removed(self):
+        out = pe.worker_env(dict(self.GATEWAY, claude_code_disable_reasoning_effort="0"))
+        self.assertNotIn("claude_code_disable_reasoning_effort", out)
+        self.assertEqual(out["CLAUDE_CODE_DISABLE_REASONING_EFFORT"], "1")
+
+    def test_child_receives_stripped_values(self):
+        out = pe.worker_env(dict(self.GATEWAY, ANTHROPIC_AUTH_TOKEN="  tok  "))
+        self.assertEqual(out["ANTHROPIC_AUTH_TOKEN"], "tok")
+
+
 if __name__ == "__main__":
     unittest.main()

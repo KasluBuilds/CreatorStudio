@@ -60,14 +60,18 @@ def child_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
 # Worker environment (T-DEV-033). Explicit, separate from the Main/default provider above.
 # A worker is never started on Claude Pro through this function: it requires the local OmniRoute gateway and refuses
 # otherwise. Errors name variables that are missing, never their values or the URL.
+# Residual risk (not closed here): a settings.json "env" block could reintroduce provider or base-URL settings that an
+# environment filter cannot see. ANTHROPIC_MODEL is kept on purpose: the dispatcher chooses the model per worker.
 # ---------------------------------------------------------------------------------------------------------------------
 WORKER_REQUIRED_VARS = ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN")
 WORKER_GATEWAY_FLAGS = {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
                         "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT": "1",
                         "CLAUDE_CODE_DISABLE_REASONING_EFFORT": "1"}
 WORKER_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
-# Direct Anthropic credentials and provider switches that would send a worker around the gateway.
-_WORKER_STRIPPED = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_UNIX_SOCKET")
+WORKER_SCHEMES = ("http", "https")
+# Direct Anthropic credentials, provider switches and proxies that would send a worker around the gateway.
+_WORKER_STRIPPED = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_UNIX_SOCKET",
+                    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
 _WORKER_STRIPPED_PREFIXES = ("CLAUDE_CODE_USE_",)
 
 
@@ -75,30 +79,43 @@ class WorkerEnvError(Exception):
     """Refusal to build a worker environment. The message names variables, never values or the URL."""
 
 
+def _gateway_url_is_local(url: str) -> bool:
+    """Strict check: only a plain http(s) URL whose host, as both Python and WHATWG parsers see it, is local."""
+    import urllib.parse
+    if any(c == "\\" or c.isspace() or ord(c) < 32 for c in url):
+        return False                       # backslash and whitespace parse differently in WHATWG (Claude Code)
+    try:
+        parts = urllib.parse.urlsplit(url)
+        parts.port                         # raises ValueError on a bad or out-of-range port
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower()
+    return (parts.scheme in WORKER_SCHEMES and bool(host) and host in WORKER_LOCAL_HOSTS
+            and parts.netloc.count("@") == 0)
+
+
 def worker_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
     """The environment for a worker's ``claude`` child, routed through the local OmniRoute gateway only.
 
-    Refuses (WorkerEnvError) when the gateway variables are absent or the base URL is not local. Removes direct
-    Anthropic credentials, Claude Code provider switches and parent-session markers. Never falls back to Claude Pro.
+    Refuses (WorkerEnvError) when the gateway variables are absent or the base URL is not a plain local http(s) URL.
+    Removes direct Anthropic credentials, Claude Code provider switches, proxies and parent-session markers.
+    Never falls back to Claude Pro.
     """
-    import urllib.parse
     base = dict(os.environ if base is None else base)
     values = {k: (base.get(k) or "").strip() for k in WORKER_REQUIRED_VARS}
     missing = [k for k in WORKER_REQUIRED_VARS if not values[k]]
     if missing:
         raise WorkerEnvError("OmniRoute gateway not configured; missing variable(s): " + ", ".join(missing))
-    try:
-        host = (urllib.parse.urlsplit(values["ANTHROPIC_BASE_URL"]).hostname or "").lower()
-    except ValueError:
-        raise WorkerEnvError("OmniRoute gateway URL is malformed (ANTHROPIC_BASE_URL)") from None
-    if host not in WORKER_LOCAL_HOSTS:
-        raise WorkerEnvError("OmniRoute gateway must be local (ANTHROPIC_BASE_URL is not a localhost address)")
+    if not _gateway_url_is_local(values["ANTHROPIC_BASE_URL"]):
+        raise WorkerEnvError("OmniRoute gateway must be a plain local http(s) URL (ANTHROPIC_BASE_URL is refused)")
 
     def _drop(name: str) -> bool:
         upper = name.upper()
         return (upper in PARENT_SESSION_VARS or upper in _WORKER_STRIPPED
-                or upper.startswith(_WORKER_STRIPPED_PREFIXES) or upper.startswith(AUTHORITY_PREFIX))
+                or upper.startswith(_WORKER_STRIPPED_PREFIXES) or upper.startswith(AUTHORITY_PREFIX)
+                or upper in {f.upper() for f in WORKER_GATEWAY_FLAGS})
 
     out = {k: v for k, v in base.items() if not _drop(k)}
-    out.update(WORKER_GATEWAY_FLAGS)     # assigned, not defaulted: a parent value must not override them
+    out.update(values)                     # the stripped values are what the child receives
+    out.update(WORKER_GATEWAY_FLAGS)       # forced, and no parent spelling of these names survives
     return out
