@@ -809,7 +809,10 @@ class SupervisorLoop:
                     event=self.store.append_event)
             self._guard.tick(self._guard_signals(main, alive))
         except Exception as e:  # noqa: BLE001 - the guard is advisory and must never stop the loop
-            self.store.append_event("guard_error", error=e.__class__.__name__, detail=str(e)[:160])
+            try:
+                self.store.append_event("guard_error", error=e.__class__.__name__, detail=str(e)[:160])
+            except Exception:  # noqa: BLE001 - even recording the failure must not stop the loop
+                pass
 
     def _guard_signals(self, main: Dict[str, Any], alive: bool) -> "guard_loop.Signals":
         sid = main.get("session_id") if isinstance(main, dict) else None
@@ -829,7 +832,7 @@ class SupervisorLoop:
 
     def _guard_request_handover(self, signals: "guard_loop.Signals") -> Dict[str, Any]:
         """Replacement only through the host's supported handover command; the host checks ownership itself."""
-        sid = getattr(self, "_guard_sid", None)
+        sid = signals.session_id
         if not (signals.handoff_verified and sid):
             return {"sent": False, "reason": "no verified handoff for the current Main"}
         new_sid = self.svc.session_factory()

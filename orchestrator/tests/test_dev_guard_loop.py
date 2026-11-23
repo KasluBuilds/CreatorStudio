@@ -284,7 +284,7 @@ class CliWiringTests(unittest.TestCase):
     def test_handover_sent_through_the_host_command_when_verified(self):
         self.stub._guard_sid = "old-sid"
         sig_ = gl.Signals(main_alive=False, session_status="idle", eligible_work=1, progress_marker="m",
-                          pressure_pct=None, handoff_verified=True)
+                          pressure_pct=None, handoff_verified=True, session_id="old-sid")
         with mock.patch.object(self.cli.main_host, "send_command", return_value="cid-9") as send:
             out = self.cli.SupervisorLoop._guard_request_handover(self.stub, sig_)
         self.assertEqual(out, {"sent": True, "cid": "cid-9"})
@@ -332,6 +332,25 @@ class ReviewRound2Tests(unittest.TestCase):
         a, _, _ = adapter(self.dir, Clock(0.0))
         _, pending = a.load()
         self.assertIsNone(pending)
+
+
+class ReviewRound3Tests(unittest.TestCase):
+    def test_failure_while_recording_the_failure_does_not_raise(self):
+        class BrokenStore:
+            directory = Path(tempfile.mkdtemp())
+
+            def append_event(self, kind, **data):
+                raise OSError("disk full")
+
+        class Stub:
+            store = BrokenStore()
+            svc = mock.Mock(clock=lambda: 0.0)
+            cfg = mock.Mock()
+            root = Path(tempfile.mkdtemp())
+
+        from dev_supervisor import cli as cli_mod
+        with mock.patch.dict(os.environ, {gl.ENV_FLAG: "1"}),                 mock.patch.object(cli_mod.guard_loop, "GuardAdapter", side_effect=RuntimeError("boom")):
+            cli_mod.SupervisorLoop._guard_tick(Stub(), {"session_id": "s"}, True, None)
 
 
 if __name__ == "__main__":
