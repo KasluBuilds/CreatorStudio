@@ -2095,13 +2095,14 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-037-guard-loop",
       "worktree": "../CreatorStudio-worktrees/t-dev-037-guard-loop",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-036"
       ],
       "lease": {
         "acquired": "2026-11-24T08:00:00+00:00",
-        "expires": "2026-11-25T08:00:00+00:00"
+        "expires": "2026-11-25T08:00:00+00:00",
+        "released": "2026-11-23T23:16:50+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2121,7 +2122,7 @@
         "python -B -I -m unittest discover -s tests -p 'test_dev_guard_loop.py' from orchestrator/",
         "full per-file validation on the exact head"
       ],
-      "integration_notes": "cli.py change is limited to a feature-flagged call in SupervisorLoop.tick and an optional constructor argument."
+      "integration_notes": "Merged as PR #133 (merge commit f37e9f7, head 3274e47, diff hash 2ec833da6fe0bdd2). Seven independent review rounds; the last approved the exact head. Per-file validation on the head: 3266 tests, no failures. 32 guard tests use fakes and stub SupervisorLoop methods. NOT demonstrated: a live attached-Main session (BLOCKED until a VS Code terminal is available); context pressure is not wired (None); the flag-off test exercises _guard_tick, not SupervisorLoop.tick. The guard is off unless CREATORSTUDIO_SUPERVISOR_GUARD is 1. SECURITY NOTE: the OmniRoute launcher credential held in the gitignored backup.ps1 was printed into two Claude Code session transcripts on this machine (one earlier session, one in the session that built this task). A scan found it in no tracked file on origin/main or the open PR branches and in no scratch file. Recommended: rotate it with a coordinated update of both the gateway and backup.ps1; do not rotate without that recovery plan."
     }
   ]
 }
