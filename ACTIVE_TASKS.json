@@ -1901,13 +1901,14 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-033-worker-env",
       "worktree": "../CreatorStudio-worktrees/t-dev-033-worker-env",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-032"
       ],
       "lease": {
         "acquired": "2026-11-23T12:00:00+00:00",
-        "expires": "2026-11-24T12:00:00+00:00"
+        "expires": "2026-11-24T12:00:00+00:00",
+        "released": "2026-11-23T14:00:00+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -1925,7 +1926,7 @@
       "test_requirements": [
         "python -B -I -m unittest discover -s tests -p 'test_dev_provider_env.py' from orchestrator/"
       ],
-      "integration_notes": "Claims only the two files above. Dispatch stays refused until Claude Code over OmniRoute is verified (T-DEV-032 flags)."
+      "integration_notes": "Merged as PR #125 (merge commit b903af7, head daf2fb1, diff hash fd159e34336ab5f0). Six independent review rounds; the last four approved the final diff. Full suite on the merged head: 3169 tests, OK (skipped=5). Claude Code through OmniRoute is NOT verified: a Gemini route dispatched to the gateway with no Pro/OAuth credential, but Claude Code returned an empty result after tool turns. Worker dispatch stays refused. Spawner not yet implemented."
     }
   ]
 }
