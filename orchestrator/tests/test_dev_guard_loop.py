@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -199,6 +200,97 @@ class PersistenceTests(unittest.TestCase):
             out = a.tick(s)
             self.assertEqual(out["action"], pg.NONE)
         self.assertEqual(calls, [])
+
+
+class CliWiringTests(unittest.TestCase):
+    """Calls the real SupervisorLoop hook methods on a stub with fake services (no live Main)."""
+
+    def setUp(self):
+        from dev_supervisor import cli as cli_mod
+        self.cli = cli_mod
+        self.dir = Path(tempfile.mkdtemp())
+        self.events = []
+
+        class Store:
+            directory = self.dir
+
+            def append_event(_s, kind, **data):
+                self.events.append((kind, data))
+
+        class Svc:
+            clock = staticmethod(lambda: 100.0)
+            pid_alive = staticmethod(lambda pid: True)
+            session_factory = staticmethod(lambda: "new-session-id")
+
+            def read_sessions(_s, *a, **kw):
+                return []
+
+        class Cfg:
+            host_command_timeout_s = 30
+
+            def sessions_directory(_s):
+                return self.dir
+
+        class Stub:
+            pass
+
+        self.stub = Stub()
+        self.stub.store = Store()
+        self.stub.svc = Svc()
+        self.stub.cfg = Cfg()
+        self.stub.root = self.dir
+        self.stub._handoff_fresh = lambda sid: False
+
+    def test_flag_off_means_the_hook_is_not_called(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(gl.ENV_FLAG, None)
+            self.assertFalse(gl.enabled())
+
+    def test_guard_failure_is_recorded_and_never_raises(self):
+        with mock.patch.object(self.cli.guard_loop, "GuardAdapter", side_effect=RuntimeError("boom")):
+            self.cli.SupervisorLoop._guard_tick(self.stub, {"session_id": "s"}, True, None)
+        kinds = [k for k, _ in self.events]
+        self.assertIn("guard_error", kinds)
+
+    def test_signals_come_from_the_injected_sources(self):
+        picture = {"items": [{"id": "a"}, {"id": "b"}], "fingerprint": "fp1"}
+        ev = mock.Mock(available=True, value=True)
+        with mock.patch.object(self.cli.autonomy, "compute_items", return_value=picture),                 mock.patch.object(self.cli, "idle_evidence", return_value=ev),                 mock.patch.object(self.cli, "find_session", return_value={"x": 1}):
+            sig_ = self.cli.SupervisorLoop._guard_signals(self.stub, {"session_id": "s"}, True)
+        self.assertEqual(sig_.main_alive, True)
+        self.assertEqual(sig_.session_status, "idle")
+        self.assertEqual(sig_.eligible_work, 2)
+        self.assertEqual(sig_.progress_marker, "fp1")
+        self.assertIsNone(sig_.pressure_pct, "pressure is not wired yet and must say so")
+        self.assertFalse(sig_.handoff_verified)
+
+    def test_unobserved_session_is_not_idle(self):
+        picture = {"items": [], "fingerprint": "fp"}
+        ev = mock.Mock(available=False, value=None)
+        with mock.patch.object(self.cli.autonomy, "compute_items", return_value=picture),                 mock.patch.object(self.cli, "idle_evidence", return_value=ev),                 mock.patch.object(self.cli, "find_session", return_value=None):
+            sig_ = self.cli.SupervisorLoop._guard_signals(self.stub, {"session_id": "s"}, True)
+        self.assertIsNone(sig_.session_status)
+
+    def test_handover_refused_without_a_verified_handoff(self):
+        self.stub._guard_sid = "old-sid"
+        sig_ = gl.Signals(main_alive=False, session_status="idle", eligible_work=1, progress_marker="m",
+                          pressure_pct=None, handoff_verified=False)
+        with mock.patch.object(self.cli.main_host, "send_command") as send:
+            out = self.cli.SupervisorLoop._guard_request_handover(self.stub, sig_)
+        self.assertFalse(out["sent"])
+        send.assert_not_called()
+
+    def test_handover_sent_through_the_host_command_when_verified(self):
+        self.stub._guard_sid = "old-sid"
+        sig_ = gl.Signals(main_alive=False, session_status="idle", eligible_work=1, progress_marker="m",
+                          pressure_pct=None, handoff_verified=True)
+        with mock.patch.object(self.cli.main_host, "send_command", return_value="cid-9") as send:
+            out = self.cli.SupervisorLoop._guard_request_handover(self.stub, sig_)
+        self.assertEqual(out, {"sent": True, "cid": "cid-9"})
+        args, kwargs = send.call_args
+        self.assertEqual(args[1], "handover")
+        self.assertEqual(args[2], {"old_session_id": "old-sid", "new_session_id": "new-session-id"})
+        self.assertEqual(kwargs.get("supervisor_pid"), os.getpid())
 
 
 if __name__ == "__main__":

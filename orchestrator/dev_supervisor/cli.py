@@ -46,7 +46,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
-from . import compaction, config as config_mod, context_monitor, handoff, main_host, replacement, routing, telemetry
+from . import autonomy, compaction, config as config_mod, context_monitor, guard_loop, handoff, main_host, replacement, routing, telemetry
 from . import authority, github_log, omniroute, provider_env, resolve_discovery, session_policy
 from .config import Config, ConfigError
 from .evidence import Evidence, unavailable
@@ -797,6 +797,42 @@ class SupervisorLoop:
 
     # -------------------------------------------------- loop
 
+    def _guard_tick(self, main: Dict[str, Any], alive: bool, pressure: Any) -> None:
+        """Feature-flagged progress guard (T-DEV-037). Never raises: a guard failure must not stop supervision."""
+        try:
+            if getattr(self, "_guard", None) is None:
+                self._guard = guard_loop.GuardAdapter(
+                    self.store.directory, clock=self.svc.clock, request_handover=self._guard_request_handover,
+                    event=self.store.append_event)
+            self._guard.tick(self._guard_signals(main, alive))
+        except Exception as e:  # noqa: BLE001 - the guard is advisory and must never stop the loop
+            self.store.append_event("guard_error", error=e.__class__.__name__, detail=str(e)[:160])
+
+    def _guard_signals(self, main: Dict[str, Any], alive: bool) -> "guard_loop.Signals":
+        sid = main.get("session_id") if isinstance(main, dict) else None
+        self._guard_sid = sid
+        sess = None
+        if sid:
+            sess = find_session(self.svc.read_sessions(self.cfg.sessions_directory(), pid_alive=self.svc.pid_alive), sid)
+        ev = idle_evidence(sess)
+        status = ("idle" if ev.value else "busy") if (ev.available and isinstance(ev.value, bool)) else None
+        picture = autonomy.compute_items(self.root, self.store)
+        return guard_loop.Signals(
+            main_alive=alive if isinstance(alive, bool) else None, session_status=status,
+            eligible_work=len(picture["items"]), progress_marker=picture["fingerprint"],
+            pressure_pct=None,   # not wired yet: context pressure is held by check_pressure, not returned here
+            handoff_verified=bool(sid and self._handoff_fresh(sid)))
+
+    def _guard_request_handover(self, signals: "guard_loop.Signals") -> Dict[str, Any]:
+        """Replacement only through the host's supported handover command; the host checks ownership itself."""
+        sid = getattr(self, "_guard_sid", None)
+        if not (signals.handoff_verified and sid):
+            return {"sent": False, "reason": "no verified handoff for the current Main"}
+        new_sid = self.svc.session_factory()
+        cid = main_host.send_command(self.store, "handover", {"old_session_id": sid, "new_session_id": new_sid},
+                                     float(self.cfg.host_command_timeout_s), supervisor_pid=os.getpid())
+        return {"sent": True, "cid": cid}
+
     def tick(self) -> Dict[str, Any]:
         self.ticks += 1
         timer = self.svc.timer
@@ -823,6 +859,8 @@ class SupervisorLoop:
                 # Attached mode: the old session's retirement belongs to the host's adoption of the next Main, which
                 # needs the session still RETIRING/ACTIVE to record it as RETIRED (see main_host.MainHost._adopt).
                 _mark_exited_unless_retired(self.store, main["session_id"])
+        if guard_loop.enabled():
+            self._guard_tick(main, alive, pressure)
         phases = {"requests": _ms(t1 - t0), "workers": _ms(t2 - t1), "main_and_pressure": _ms(t3 - t2)}
         self.write_heartbeat(alive, main.get("session_id"), len(self.sup.registry.list()),
                              duration_ms=_ms(timer() - t0), phase_ms=phases)
