@@ -267,6 +267,18 @@
         "orchestrator/dev_supervisor/progress_guard.py",
         "orchestrator/tests/test_dev_progress_guard.py"
       ]
+    },
+    "AGR-DEV-037-01": {
+      "description": "The dev_supervisor package and cli.py are owned by claude:repository-coordinator. The Main coordinator mission directs Main to make the progress guard operational and to coordinate this with the Repository Coordinator through the ownership process. Under that mandate T-DEV-037 may create guard_loop.py and its test file, and edit cli.py only to add a feature-flagged guard call in SupervisorLoop.tick and an optional constructor argument. REPORTED: the mission text is the basis; the Repository Coordinator is the same integrator role that the mission assigns to Main.",
+      "task_ids": [
+        "T-DEV-032",
+        "T-DEV-037"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/guard_loop.py",
+        "orchestrator/tests/test_dev_guard_loop.py",
+        "orchestrator/dev_supervisor/cli.py"
+      ]
     }
   },
   "tasks": [
@@ -1915,7 +1927,9 @@
         "expires": "2026-11-24T00:30:00+00:00"
       },
       "exclusive_resources": [],
-      "integration_agreements": [],
+      "integration_agreements": [
+        "AGR-DEV-037-01"
+      ],
       "owned_paths": [
         "orchestrator/dev_supervisor/dispatch_routing.py",
         "orchestrator/dev_supervisor/cli.py",
@@ -2073,6 +2087,41 @@
         "python -B -I -m unittest discover -s tests -p 'test_dev_progress_guard.py' from orchestrator/"
       ],
       "integration_notes": "Merged as PR #131 (merge commit 7fcddca, head f2b22c5, diff hash c0c54003983f7537). Reviews: six rounds on the original contract change; the last approved the merged diff. Per-file validation on 1db4da5: 3234 tests, no failures. Docs-only follow-up correcting stale window and CONTINUE wording: targeted tests 23 OK, closed under the close-out PR. Live wiring into SupervisorLoop is a separate task."
+    },
+    {
+      "id": "T-DEV-037",
+      "title": "dev_supervisor: progress guard wired into SupervisorLoop (feature-flagged observation and decision adapter)",
+      "description": "A feature-flagged adapter that observes real Main signals, runs the progress guard, persists its state, records ESCALATE events and requests REPLACE through the host's handover command. Off by default (CREATORSTUDIO_SUPERVISOR_GUARD). The live attached-mode smoke test is BLOCKED until the VS Code terminal is available.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-037-guard-loop",
+      "worktree": "../CreatorStudio-worktrees/t-dev-037-guard-loop",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-036"
+      ],
+      "lease": {
+        "acquired": "2026-11-24T08:00:00+00:00",
+        "expires": "2026-11-25T08:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-037-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/guard_loop.py",
+        "orchestrator/tests/test_dev_guard_loop.py",
+        "orchestrator/dev_supervisor/cli.py"
+      ],
+      "acceptance_criteria": [
+        "with the flag off, SupervisorLoop behaves exactly as before",
+        "with the flag on, observations come from real Main signals and REPLACE is sent only through the handover command",
+        "ESCALATE events are recorded once per condition; state persists across restarts; duplicate handovers are refused while one is pending"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_guard_loop.py' from orchestrator/",
+        "full per-file validation on the exact head"
+      ],
+      "integration_notes": "cli.py change is limited to a feature-flagged call in SupervisorLoop.tick and an optional constructor argument."
     }
   ]
 }
