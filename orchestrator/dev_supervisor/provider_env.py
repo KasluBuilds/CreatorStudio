@@ -54,3 +54,85 @@ def child_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
     base = dict(os.environ if base is None else base)
     stripped = PARENT_SESSION_VARS if provider(base) == "inherit" else PARENT_SESSION_VARS + _STRIPPED_FOR_PRO
     return {k: v for k, v in base.items() if k.upper() not in stripped and not k.upper().startswith(AUTHORITY_PREFIX)}
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Worker environment (T-DEV-033). Explicit, separate from the Main/default provider above.
+# A worker is never started on Claude Pro through this function: it requires the local OmniRoute gateway and refuses
+# otherwise. Errors name variables that are missing, never their values or the URL.
+# Residual risk (not closed here): a settings.json "env" block could reintroduce provider or base-URL settings that an
+# environment filter cannot see. ANTHROPIC_MODEL is stripped: the spawner passes --model explicitly.
+# ---------------------------------------------------------------------------------------------------------------------
+WORKER_REQUIRED_VARS = ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN")
+WORKER_GATEWAY_FLAGS = {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
+                        "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT": "1",
+                        "CLAUDE_CODE_DISABLE_REASONING_EFFORT": "1"}
+WORKER_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+WORKER_SCHEMES = ("http", "https")
+# Direct Anthropic credentials, provider switches and proxies that would send a worker around the gateway.
+_WORKER_STRIPPED = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_UNIX_SOCKET", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL",
+                    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
+# Only committed project settings are read by workers. User settings (~/.claude/settings.json and its env block) and
+# machine-local settings (.claude/settings.local.json) are excluded: neither is reviewed through a pull request.
+WORKER_SETTING_SOURCES = "project"
+_WORKER_STRIPPED_PREFIXES = ("CLAUDE_CODE_USE_",)
+
+
+def worker_claude_args() -> list:
+    """Extra ``claude`` arguments a worker must be launched with (the future spawner must pass them)."""
+    return ["--setting-sources", WORKER_SETTING_SOURCES]
+
+
+class WorkerEnvError(Exception):
+    """Refusal to build a worker environment. The message names variables, never values or the URL."""
+
+
+def _gateway_url_is_local(url: str) -> bool:
+    """Strict check: only a plain http(s) URL whose host, as both Python and WHATWG parsers see it, is local."""
+    import urllib.parse
+    if any(c == "\\" or c.isspace() or ord(c) < 32 for c in url):
+        return False                       # backslash and whitespace parse differently in WHATWG (Claude Code)
+    try:
+        parts = urllib.parse.urlsplit(url)
+        parts.port                         # raises ValueError on a bad or out-of-range port
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower()
+    return (parts.scheme in WORKER_SCHEMES and bool(host) and host in WORKER_LOCAL_HOSTS
+            and parts.netloc.count("@") == 0 and not parts.netloc.endswith(":"))
+
+
+def worker_env(config_dir: Optional[str], base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    """The environment for a worker's ``claude`` child, routed through the local OmniRoute gateway only.
+
+    Refuses (WorkerEnvError) when the gateway variables are absent or the base URL is not a plain local http(s) URL.
+    Removes direct Anthropic credentials, Claude Code provider switches, proxies and parent-session markers.
+    Never falls back to Claude Pro.
+    """
+    if not (config_dir or "").strip():
+        raise WorkerEnvError("a worker-owned CLAUDE_CONFIG_DIR is required (no default config directory is used)")
+    base = dict(os.environ if base is None else base)
+    values = {k: (base.get(k) or "").strip() for k in WORKER_REQUIRED_VARS}
+    missing = [k for k in WORKER_REQUIRED_VARS if not values[k]]
+    if missing:
+        raise WorkerEnvError("OmniRoute gateway not configured; missing variable(s): " + ", ".join(missing))
+    if not _gateway_url_is_local(values["ANTHROPIC_BASE_URL"]):
+        raise WorkerEnvError("OmniRoute gateway must be a plain local http(s) URL (ANTHROPIC_BASE_URL is refused)")
+
+    def _drop(name: str) -> bool:
+        upper = name.upper()
+        # Any Anthropic or Claude Code variable that names a model is dropped, including future spellings.
+        model_name_var = "MODEL" in upper and upper.startswith(("ANTHROPIC_", "CLAUDE_CODE_"))
+        # Allowlist for the Anthropic namespace: only the two variables set explicitly below may reach a worker.
+        anthropic_namespace = upper.startswith("ANTHROPIC_")
+        return (upper in PARENT_SESSION_VARS or upper in _WORKER_STRIPPED or model_name_var or anthropic_namespace
+                or upper.startswith(_WORKER_STRIPPED_PREFIXES) or upper.startswith(AUTHORITY_PREFIX)
+                or upper in {f.upper() for f in WORKER_GATEWAY_FLAGS}
+                or upper in {r.upper() for r in WORKER_REQUIRED_VARS})
+
+    out = {k: v for k, v in base.items() if not _drop(k)}
+    out.update(values)                     # the stripped values are what the child receives
+    out.update(WORKER_GATEWAY_FLAGS)       # forced, and no parent spelling of these names survives
+    out["CLAUDE_CONFIG_DIR"] = config_dir.strip()   # a worker-owned directory, never the default ~/.claude
+    return out

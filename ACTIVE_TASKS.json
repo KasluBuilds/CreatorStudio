@@ -216,6 +216,69 @@
         "orchestrator/resolve_executor/",
         "orchestrator/tests/test_resolve_executor.py"
       ]
+    },
+    "AGR-DEV-033-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission (pasted by Lukas, 2026-11-23) directs Main to build the autonomous development operation, which includes the worker environment. Under that mandate T-DEV-033 may edit provider_env.py and its test file only. REPORTED: the mission text is the basis; the package owner entry is unchanged.",
+      "task_ids": [
+        "T-DEV-033"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py"
+      ]
+    },
+    "AGR-DEV-034-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission directs Main to build the worker spawner. Under that mandate T-DEV-034 may create worker_spawner.py and its test file only. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-034"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/worker_spawner.py",
+        "orchestrator/tests/test_dev_worker_spawner.py"
+      ]
+    },
+    "AGR-DEV-034-02": {
+      "description": "T-DEV-034 hardens the worker environment that T-DEV-033 introduced (provider_env.worker_env and its tests). The Main coordinator mission directs Main to build the worker spawner, which needs these changes. REPORTED: the mission text is the basis; the package owner entry is unchanged.",
+      "task_ids": [
+        "T-DEV-034"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py"
+      ]
+    },
+    "AGR-DEV-035-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission directs Main to build Supervisor goal enforcement. Under that mandate T-DEV-035 may create progress_guard.py and its test file. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-035"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/progress_guard.py",
+        "orchestrator/tests/test_dev_progress_guard.py"
+      ]
+    },
+    "AGR-DEV-036-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission directs Main to make the progress guard operational. Under that mandate T-DEV-036 may change progress_guard.py and its test file only. T-DEV-035 (closed) shares these paths. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-035",
+        "T-DEV-036"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/progress_guard.py",
+        "orchestrator/tests/test_dev_progress_guard.py"
+      ]
+    },
+    "AGR-DEV-037-01": {
+      "description": "The dev_supervisor package and cli.py are owned by claude:repository-coordinator. The Main coordinator mission directs Main to make the progress guard operational and to coordinate this with the Repository Coordinator through the ownership process. Under that mandate T-DEV-037 may create guard_loop.py and its test file, and edit cli.py only to add a feature-flagged guard call in SupervisorLoop.tick and an optional constructor argument. REPORTED: the mission text is the basis; the Repository Coordinator is the same integrator role that the mission assigns to Main.",
+      "task_ids": [
+        "T-DEV-032",
+        "T-DEV-037"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/guard_loop.py",
+        "orchestrator/tests/test_dev_guard_loop.py",
+        "orchestrator/dev_supervisor/cli.py"
+      ]
     }
   },
   "tasks": [
@@ -1864,7 +1927,9 @@
         "expires": "2026-11-24T00:30:00+00:00"
       },
       "exclusive_resources": [],
-      "integration_agreements": [],
+      "integration_agreements": [
+        "AGR-DEV-037-01"
+      ],
       "owned_paths": [
         "orchestrator/dev_supervisor/dispatch_routing.py",
         "orchestrator/dev_supervisor/cli.py",
@@ -1883,6 +1948,181 @@
         "full suite before merge"
       ],
       "integration_notes": "Claim for the overnight-readiness routing change requested by Lukas 2026-11-23. Live OmniRoute-backed Claude Code worker is NOT TESTED; the gate stays closed until a live probe verifies it. Ownership amendment 2026-11-23: test_dev_cli.py added, because three existing worker-spawn tests assumed Anthropic dispatch and must be updated to exercise the gate. Ownership amendment 2026-11-23 (second): test_dev_context_management.py added, because two existing tests dispatch workers through assign and must exercise the gate."
+    },
+    {
+      "id": "T-DEV-033",
+      "title": "dev_supervisor: explicit OmniRoute worker environment that never falls back to Claude Pro",
+      "description": "Adds provider_env.worker_env(): the environment for a worker's claude child. It requires the local OmniRoute gateway variables, removes direct Anthropic credentials and parent-session markers, and refuses (naming variables, never values) when the gateway is not configured. Does not change the Main/default provider and does not flip the dispatch flags in dispatch_routing.py.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-033-worker-env",
+      "worktree": "../CreatorStudio-worktrees/t-dev-033-worker-env",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-DEV-032"
+      ],
+      "lease": {
+        "acquired": "2026-11-23T12:00:00+00:00",
+        "expires": "2026-11-24T12:00:00+00:00",
+        "released": "2026-11-23T14:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-033-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py"
+      ],
+      "acceptance_criteria": [
+        "worker_env refuses when the OmniRoute gateway variables are missing or not localhost, naming variables only",
+        "worker_env never returns ANTHROPIC_API_KEY and never returns parent-session markers",
+        "child_env default behaviour (Main/Pro) is unchanged"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_provider_env.py' from orchestrator/"
+      ],
+      "integration_notes": "Merged as PR #125 (merge commit b903af7, head daf2fb1, diff hash fd159e34336ab5f0). Six independent review rounds; the last four approved the final diff. Full suite on the merged head: 3169 tests, OK (skipped=5). Claude Code through OmniRoute is NOT verified: a Gemini route dispatched to the gateway with no Pro/OAuth credential, but Claude Code returned an empty result after tool turns. Worker dispatch stays refused. Spawner not yet implemented."
+    },
+    {
+      "id": "T-DEV-034",
+      "title": "dev_supervisor: worker spawner enforcing isolation and verified free routes",
+      "description": "Builds the component that launches a worker claude process. It refuses unless the route is in a verified registry with zero recorded cost, the config directory is worker-owned and not the default, and the gateway environment is valid. It starts claude with worker_claude_args() and the worker environment, and tests run a real subprocess.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-034-worker-spawner",
+      "worktree": "../CreatorStudio-worktrees/t-dev-034-worker-spawner",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-DEV-033"
+      ],
+      "lease": {
+        "acquired": "2026-11-23T14:00:00+00:00",
+        "expires": "2026-11-24T14:00:00+00:00",
+        "released": "2026-11-23T18:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-034-01",
+        "AGR-DEV-034-02"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/worker_spawner.py",
+        "orchestrator/tests/test_dev_worker_spawner.py",
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py"
+      ],
+      "acceptance_criteria": [
+        "spawn refuses for an unverified route, a route with nonzero cost, a default or blank config dir, or an invalid gateway",
+        "a real subprocess receives the worker environment and the isolation arguments"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_worker_spawner.py' from orchestrator/"
+      ],
+      "integration_notes": "Merged as PR #127 (merge commit a3afbf0, head db15f31, diff hash 30c31adb634cb92c). Twelve review rounds; the last approved the final diff. Per-file validation on the head: 43 of 43 files, 3211 tests, no failures. Worker dispatch remains refused: Claude Code through OmniRoute is not verified end to end (tool-result turn returns 503 on the tested route). Open items: the public builder omits spawn-only checks; those checks lack spawn_worker tests; hard links are not handled; bare claude resolution is limited to claude.exe in absolute PATH entries."
+    },
+    {
+      "id": "T-DEV-035",
+      "title": "dev_supervisor: deterministic progress guard (idle continuation, non-progress, restart-loop limits)",
+      "description": "A pure, deterministic judge over observed signals. It decides NONE, HOLD, REPLACE or ESCALATE with a lifetime replacement budget and holds that escalate once. Contract changed by T-DEV-036: CONTINUE was removed. An idle Main with eligible work escalates once instead.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-035-progress-guard",
+      "worktree": "../CreatorStudio-worktrees/t-dev-035-progress-guard",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-DEV-034"
+      ],
+      "lease": {
+        "acquired": "2026-11-23T20:00:00+00:00",
+        "expires": "2026-11-24T20:00:00+00:00",
+        "released": "2026-11-23T22:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-035-01",
+        "AGR-DEV-036-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/progress_guard.py",
+        "orchestrator/tests/test_dev_progress_guard.py"
+      ],
+      "acceptance_criteria": [
+        "CONTINUE only after observed idle for the minimum idle time with eligible work and outside the cooldown",
+        "no action while busy, while observations are missing, or while the progress marker is changing",
+        "ESCALATE after the non-progress limit and after the replacement budget is exhausted"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_progress_guard.py' from orchestrator/"
+      ],
+      "integration_notes": "Merged as PR #129 (merge commit 6003ff5, head d202755, diff hash 2e6013d3806e3bea). Seven review rounds; the last approved. Per-file validation on the head: 44 files, 3251 tests, no failures. The guard is not yet wired into the Supervisor loop: no process is controlled by it. Open notes: REPLACE ignores escalated; a slow replacement start can spend budget; a long budget hold re-escalates each timeout."
+    },
+    {
+      "id": "T-DEV-036",
+      "title": "dev_supervisor: progress-guard contract change (idle Main with work escalates; no unsupported continuation)",
+      "description": "The guard no longer returns CONTINUE. An idle Main with eligible work means the Stop hook failed to keep it working: the guard escalates once, until progress lands. REPLACE stays, limited to an observed idle session, a verified handoff and the replacement budget. Attached Main has no supported terminal-input channel, so continuation is not part of the contract.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-036-guard-contract",
+      "worktree": "../CreatorStudio-worktrees/t-dev-036-guard-contract",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-DEV-035"
+      ],
+      "lease": {
+        "acquired": "2026-11-24T00:00:00+00:00",
+        "expires": "2026-11-25T00:00:00+00:00",
+        "released": "2026-11-24T06:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-036-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/progress_guard.py",
+        "orchestrator/tests/test_dev_progress_guard.py"
+      ],
+      "acceptance_criteria": [
+        "idle Main with eligible work produces one ESCALATE and no CONTINUE, until progress lands",
+        "REPLACE only with an observed idle session, a verified handoff and budget",
+        "fail-closed restore and clock safety are preserved"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_progress_guard.py' from orchestrator/"
+      ],
+      "integration_notes": "Merged as PR #131 (merge commit 7fcddca, head f2b22c5, diff hash c0c54003983f7537). Reviews: six rounds on the original contract change; the last approved the merged diff. Per-file validation on 1db4da5: 3234 tests, no failures. Docs-only follow-up correcting stale window and CONTINUE wording: targeted tests 23 OK, closed under the close-out PR. Live wiring into SupervisorLoop is a separate task."
+    },
+    {
+      "id": "T-DEV-037",
+      "title": "dev_supervisor: progress guard wired into SupervisorLoop (feature-flagged observation and decision adapter)",
+      "description": "A feature-flagged adapter that observes real Main signals, runs the progress guard, persists its state, records ESCALATE events and requests REPLACE through the host's handover command. Off by default (CREATORSTUDIO_SUPERVISOR_GUARD). The live attached-mode smoke test is BLOCKED until the VS Code terminal is available.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-037-guard-loop",
+      "worktree": "../CreatorStudio-worktrees/t-dev-037-guard-loop",
+      "status": "COMPLETED",
+      "depends_on": [
+        "T-DEV-036"
+      ],
+      "lease": {
+        "acquired": "2026-11-24T08:00:00+00:00",
+        "expires": "2026-11-25T08:00:00+00:00",
+        "released": "2026-11-23T23:16:50+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-037-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/guard_loop.py",
+        "orchestrator/tests/test_dev_guard_loop.py",
+        "orchestrator/dev_supervisor/cli.py"
+      ],
+      "acceptance_criteria": [
+        "with the flag off, SupervisorLoop behaves exactly as before",
+        "with the flag on, observations come from real Main signals and REPLACE is sent only through the handover command",
+        "ESCALATE events are recorded once per condition; state persists across restarts; duplicate handovers are refused while one is pending"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_guard_loop.py' from orchestrator/",
+        "full per-file validation on the exact head"
+      ],
+      "integration_notes": "Merged as PR #133 (merge commit f37e9f7, head 3274e47, diff hash 2ec833da6fe0bdd2). Seven independent review rounds; the last approved the exact head. Per-file validation on the head: 3266 tests, no failures. 32 guard tests use fakes and stub SupervisorLoop methods. NOT demonstrated: a live attached-Main session (BLOCKED until a VS Code terminal is available); context pressure is not wired (None); the flag-off test exercises _guard_tick, not SupervisorLoop.tick. The guard is off unless CREATORSTUDIO_SUPERVISOR_GUARD is 1. SECURITY NOTE: the OmniRoute launcher credential held in the gitignored backup.ps1 was printed into two Claude Code session transcripts on this machine (one earlier session, one in the session that built this task). A scan found it in no tracked file on origin/main or the open PR branches and in no scratch file. Recommended: rotate it with a coordinated update of both the gateway and backup.ps1; do not rotate without that recovery plan."
     }
   ]
 }
