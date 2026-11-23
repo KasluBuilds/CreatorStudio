@@ -105,14 +105,14 @@ class ReplacementTests(unittest.TestCase):
         self.assertEqual(actions.count(pg.REPLACE), P.replace_budget)
         self.assertEqual(actions.count(pg.ESCALATE), 1)
 
-    def test_budget_recovers_after_window(self):
+    def test_budget_is_not_reset_by_elapsed_or_jumped_time(self):
         seq = [obs(0)]
         for i, t in enumerate([10, 20, 30]):
             seq.append(obs(t, main_alive=False, handoff_verified=True))
             seq.append(obs(t + 1, main_alive=True, progress_marker="x%d" % i))
-        seq.append(obs(10 + 3600 + 100, main_alive=False, handoff_verified=True))
+        seq.append(obs(10 + 3600 * 24 * 30, main_alive=False, handoff_verified=True))
         _, ds = run(seq)
-        self.assertEqual(ds[-1].action, pg.REPLACE)
+        self.assertNotEqual(ds[-1].action, pg.REPLACE, "a clock jump must not restore the replacement budget")
 
     def test_replacement_that_never_resumes_work_escalates(self):
         _, ds = run([obs(0), obs(10, main_alive=False, handoff_verified=True),

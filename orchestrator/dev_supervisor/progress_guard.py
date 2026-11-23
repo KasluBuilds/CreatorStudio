@@ -125,7 +125,9 @@ def _finite_number(v: Any) -> bool:
 
 
 def _recent_replacements(state: GuardState, now: float, policy: Policy) -> List[float]:
-    return [t for t in state.replacements if now - t < policy.replace_window_s]
+    """The replacement budget is a count, not a time window. A time window cannot tell a real elapsed interval from a
+    forward clock step, so nothing here prunes by time; only a human reset of the state clears it (see PR notes)."""
+    return list(state.replacements)
 
 
 def _replace_or_hold(state: GuardState, obs: Observation, policy: Policy, label: str) -> Decision:
