@@ -216,6 +216,16 @@
         "orchestrator/resolve_executor/",
         "orchestrator/tests/test_resolve_executor.py"
       ]
+    },
+    "AGR-DEV-033-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission (pasted by Lukas, 2026-11-23) directs Main to build the autonomous development operation, which includes the worker environment. Under that mandate T-DEV-033 may edit provider_env.py and its test file only. REPORTED: the mission text is the basis; the package owner entry is unchanged.",
+      "task_ids": [
+        "T-DEV-033"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py"
+      ]
     }
   },
   "tasks": [
@@ -1883,6 +1893,39 @@
         "full suite before merge"
       ],
       "integration_notes": "Claim for the overnight-readiness routing change requested by Lukas 2026-11-23. Live OmniRoute-backed Claude Code worker is NOT TESTED; the gate stays closed until a live probe verifies it. Ownership amendment 2026-11-23: test_dev_cli.py added, because three existing worker-spawn tests assumed Anthropic dispatch and must be updated to exercise the gate. Ownership amendment 2026-11-23 (second): test_dev_context_management.py added, because two existing tests dispatch workers through assign and must exercise the gate."
+    },
+    {
+      "id": "T-DEV-033",
+      "title": "dev_supervisor: explicit OmniRoute worker environment that never falls back to Claude Pro",
+      "description": "Adds provider_env.worker_env(): the environment for a worker's claude child. It requires the local OmniRoute gateway variables, removes direct Anthropic credentials and parent-session markers, and refuses (naming variables, never values) when the gateway is not configured. Does not change the Main/default provider and does not flip the dispatch flags in dispatch_routing.py.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-033-worker-env",
+      "worktree": "../CreatorStudio-worktrees/t-dev-033-worker-env",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-032"
+      ],
+      "lease": {
+        "acquired": "2026-11-23T12:00:00+00:00",
+        "expires": "2026-11-24T12:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-033-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py"
+      ],
+      "acceptance_criteria": [
+        "worker_env refuses when the OmniRoute gateway variables are missing or not localhost, naming variables only",
+        "worker_env never returns ANTHROPIC_API_KEY and never returns parent-session markers",
+        "child_env default behaviour (Main/Pro) is unchanged"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_provider_env.py' from orchestrator/"
+      ],
+      "integration_notes": "Claims only the two files above. Dispatch stays refused until Claude Code over OmniRoute is verified (T-DEV-032 flags)."
     }
   ]
 }
