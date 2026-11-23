@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -61,13 +62,13 @@ def load_verified_routes(path: Path) -> List[VerifiedRoute]:
     return routes
 
 
-_CLAUDE_MARKERS = ("claude", "sonnet", "opus", "haiku")
+_CLAUDE_MARKERS = ("claude", "sonnet", "opus", "haiku", "anthropic", "fable")
 
 
 def _is_claude_model(model: str) -> bool:
     """Any Claude alias or id, in any provider prefix, is an Anthropic route and is never a worker route."""
-    low = model.lower()
-    return any(marker in low for marker in _CLAUDE_MARKERS)
+    norm = unicodedata.normalize("NFKC", model).casefold()
+    return any(marker in norm for marker in _CLAUDE_MARKERS)
 
 
 def _refuse_config_dir(config_dir: Optional[str]) -> str:
@@ -84,13 +85,13 @@ def build_worker_command(route: VerifiedRoute, worktree: Path, config_dir: Optio
                          verified: Sequence[VerifiedRoute], base_env: Optional[Mapping[str, str]] = None
                          ) -> Tuple[List[str], Dict[str, str], Path]:
     """Return (argv, env, cwd) for the production ``claude`` worker, or raise SpawnRefused. Pure: starts nothing."""
-    return _command(route, worktree, config_dir, prompt, verified, base_env, CLAUDE_EXECUTABLE, ())
+    return _command(route, worktree, config_dir, prompt, verified, base_env, CLAUDE_EXECUTABLE)
 
 
 def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
              verified: Optional[Sequence[VerifiedRoute]], base_env: Optional[Mapping[str, str]],
-             executable: str, prefix: Sequence[str]) -> Tuple[List[str], Dict[str, str], Path]:
-    """Private builder. Tests may reach it to run a stand-in executable; production uses build_worker_command.
+             executable: str) -> Tuple[List[str], Dict[str, str], Path]:
+    """Shared builder. Production passes CLAUDE_EXECUTABLE; tests patch that constant, never the argv shape.
 
     Returns (argv, env, cwd) for a worker, or raises SpawnRefused. Pure: starts nothing.
     """
@@ -105,7 +106,7 @@ def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], pr
         raise SpawnRefused("route is not in the verified registry")
     if not isinstance(prompt, str) or not prompt.strip():
         raise SpawnRefused("a worker prompt is required")
-    if not isinstance(worktree, (str, os.PathLike)):
+    if not isinstance(worktree, (str, os.PathLike)) or not str(worktree).strip():
         raise SpawnRefused("a worktree path is required")
     cwd = Path(worktree)
     if not cwd.is_dir():
@@ -120,15 +121,22 @@ def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], pr
         raise SpawnRefused("worker environment does not carry the worker config directory")
     if "ANTHROPIC_API_KEY" in env or "CLAUDE_CODE_OAUTH_TOKEN" in env:
         raise SpawnRefused("worker environment carries a direct credential")
-    argv = [executable, *prefix, *provider_env.worker_claude_args(), "-p", prompt, "--model", route.model]
+    argv = [executable, *provider_env.worker_claude_args(), "-p", prompt, "--model", route.model]
     return argv, env, cwd
 
 
 def spawn_worker(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
-                 verified: Sequence[VerifiedRoute], log_path: Path,
-                 base_env: Optional[Mapping[str, str]] = None) -> subprocess.Popen:
-    """Start the production worker. Output goes to ``log_path`` (no unread pipes); stdin is closed."""
+                 registry_path: Path, log_path: Path, base_env: Optional[Mapping[str, str]] = None) -> subprocess.Popen:
+    """Start the production worker. The verified list is read from ``registry_path`` here, not supplied by a caller.
+
+    Output goes to ``log_path``, which must not sit inside the worktree or the worker config directory. stdin is closed.
+    """
+    verified = load_verified_routes(Path(registry_path))
     argv, env, cwd = build_worker_command(route, worktree, config_dir, prompt, verified, base_env)
-    with open(log_path, "ab") as log:
+    log = Path(log_path).resolve()
+    for forbidden in (cwd.resolve(), Path(env["CLAUDE_CONFIG_DIR"]).resolve()):
+        if log == forbidden or forbidden in log.parents:
+            raise SpawnRefused("log path must be outside the worktree and the worker config directory")
+    with open(log, "ab") as out:
         return subprocess.Popen(argv, cwd=str(cwd), env=env, shell=False, stdin=subprocess.DEVNULL,  # noqa: S603
-                                stdout=log, stderr=subprocess.STDOUT)
+                                stdout=out, stderr=subprocess.STDOUT)

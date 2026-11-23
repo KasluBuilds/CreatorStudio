@@ -105,32 +105,33 @@ class SpawnerRealProcessTests(unittest.TestCase):
         work = tmp / "wt"
         work.mkdir()
         cfg = str(tmp / "cfg")
-        stub = tmp / "fake_claude.py"
-        stub.write_text(
+        code = (
             "import json, os, sys\n"
-            "print(json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd(),\n"
-            "  'config': os.environ.get('CLAUDE_CONFIG_DIR'), 'base': os.environ.get('ANTHROPIC_BASE_URL'),\n"
-            "  'has_api_key': 'ANTHROPIC_API_KEY' in os.environ, 'has_pro_oauth': 'CLAUDE_CODE_OAUTH_TOKEN' in os.environ,\n"
-            "  'has_token': 'ANTHROPIC_AUTH_TOKEN' in os.environ}))\n",
-            encoding="utf-8")
+            "print(json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd(), "
+            "'config': os.environ.get('CLAUDE_CONFIG_DIR'), 'base': os.environ.get('ANTHROPIC_BASE_URL'), "
+            "'has_api_key': 'ANTHROPIC_API_KEY' in os.environ, 'has_pro_oauth': 'CLAUDE_CODE_OAUTH_TOKEN' in os.environ, "
+            "'has_token': 'ANTHROPIC_AUTH_TOKEN' in os.environ}))\n"
+        )
         route = ws.VerifiedRoute(model="auto/coding", provider="gemini", evidence="stub", cost_zero=True)
         base = dict(os.environ)
         base.update({"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-dummy-value",
                      "ANTHROPIC_API_KEY": "sk-should-not-pass", "CLAUDE_CODE_OAUTH_TOKEN": "pro-should-not-pass"})
-        argv, env, cwd = ws._command(route, work, cfg, "reply ok", [route], base, sys.executable, [str(stub)])
-        proc = subprocess.Popen(argv, cwd=str(cwd), env=env, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        with mock.patch.object(ws, "CLAUDE_EXECUTABLE", sys.executable), \
+                mock.patch.object(ws.provider_env, "worker_claude_args",
+                                  return_value=["-c", code, "--setting-sources", "project"]):
+            argv, env, cwd = ws.build_worker_command(route, work, cfg, "reply ok", [route], base)
+        proc = subprocess.Popen(argv, cwd=str(cwd), env=env, shell=False, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = proc.communicate(timeout=60)
         self.assertEqual(proc.returncode, 0, err.decode(errors="replace")[-300:])
         seen = json.loads(out.decode().strip().splitlines()[-1])
-        self.assertEqual(seen["argv"][:2], ["--setting-sources", "project"])
-        self.assertEqual(seen["argv"][-2:], ["--model", "auto/coding"])
+        self.assertEqual(seen["argv"], ["--setting-sources", "project", "-p", "reply ok", "--model", "auto/coding"])
         self.assertEqual(Path(seen["cwd"]).resolve(), work.resolve())
         self.assertEqual(Path(seen["config"]).resolve(), Path(cfg).resolve())
         self.assertEqual(seen["base"], "http://localhost:20128")
         self.assertFalse(seen["has_api_key"])
         self.assertFalse(seen["has_pro_oauth"])
         self.assertTrue(seen["has_token"])
-        # the token value itself must not be echoed anywhere the child reports
         self.assertNotIn("tok-dummy-value", out.decode())
 
     def test_refuses_when_verified_list_omitted(self):
@@ -146,9 +147,12 @@ class SpawnerRealProcessTests(unittest.TestCase):
 
     def test_refusal_starts_no_process(self):
         tmp = Path(tempfile.mkdtemp())
+        reg = tmp / "routes.json"
+        reg.write_text(json.dumps({"routes": [{"model": "auto/coding", "provider": "gemini", "evidence": "e",
+                                               "cost_zero": True}]}), encoding="utf-8")
         with mock.patch.object(ws.subprocess, "Popen") as popen:
             with self.assertRaises(ws.SpawnRefused):
-                ws.spawn_worker(ROUTE, tmp, None, "x", [ROUTE], tmp / "log.txt", base_env=GOOD)
+                ws.spawn_worker(ROUTE, tmp, None, "x", reg, tmp / "log.txt", base_env=GOOD)
         popen.assert_not_called()
 
 class SpawnerRound3Tests(unittest.TestCase):
@@ -185,6 +189,36 @@ class SpawnerRound3Tests(unittest.TestCase):
         reg = self.tmp / "routes.json"
         reg.write_text("[1, 2]", encoding="utf-8")
         self.assertEqual(ws.load_verified_routes(reg), [])
+
+
+class SpawnerRound4Tests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.work = self.tmp / "wt"
+        self.work.mkdir()
+        self.cfg = str(self.tmp / "cfg")
+
+    def test_blank_or_whitespace_worktree_refused(self):
+        for bad in ("", "   "):
+            with self.subTest(bad=bad), self.assertRaises(ws.SpawnRefused):
+                ws.build_worker_command(ROUTE, bad, self.cfg, "x", [ROUTE], GOOD)
+
+    def test_more_claude_names_refused(self):
+        for model in ("anthropic/x", "fable-5-1", "auto/fable", "ＳＯＮＮＥＴ", "Sonnet"):
+            with self.subTest(model=model):
+                r = ws.VerifiedRoute(model=model, provider="gemini", evidence="e", cost_zero=True)
+                with self.assertRaises(ws.SpawnRefused):
+                    ws.build_worker_command(r, self.work, self.cfg, "x", [r], GOOD)
+
+    def test_log_path_inside_worktree_or_config_refused(self):
+        reg = self.tmp / "routes.json"
+        reg.write_text(json.dumps({"routes": [{"model": "auto/coding", "provider": "gemini", "evidence": "e",
+                                               "cost_zero": True}]}), encoding="utf-8")
+        for bad in (self.work / "log.txt", Path(self.cfg) / "log.txt"):
+            with self.subTest(bad=str(bad)), mock.patch.object(ws.subprocess, "Popen") as popen:
+                with self.assertRaises(ws.SpawnRefused):
+                    ws.spawn_worker(ROUTE, self.work, self.cfg, "x", reg, bad, base_env=GOOD)
+                popen.assert_not_called()
 
 
 if __name__ == "__main__":
