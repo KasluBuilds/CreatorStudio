@@ -156,6 +156,9 @@ def fake_policy_install(*args, **kw):
     return session_policy.install(*args, run=run, **kw)
 
 
+GATEWAY_ENV = {"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "gateway-test-token", "PATH": "p"}
+
+
 class Env:
     """Temp directories plus a Services object built only from fakes."""
 
@@ -253,6 +256,14 @@ class Env:
         p = self.tmp / f"facts-{uuid.uuid4().hex[:6]}.json"
         p.write_text(json.dumps(f), encoding="utf-8")
         return str(p)
+
+    def verified_route(self, model="auto/coding", provider="gemini", cost_zero=True):
+        """Record one verified zero-cost route in the state dir and give the services a gateway-only environment."""
+        self.state.mkdir(parents=True, exist_ok=True)
+        (self.state / "verified_routes.json").write_text(json.dumps({"routes": [
+            {"model": model, "provider": provider, "evidence": "test:synthetic", "cost_zero": cost_zero}]}),
+            encoding="utf-8")
+        self.svc.env = dict(GATEWAY_ENV)
 
     def prompt_file(self):
         p = self.tmp / f"task-{uuid.uuid4().hex[:6]}.txt"
@@ -516,12 +527,12 @@ class CliTests(Offline):
         self.assertIn("no longer running", out)
         self.assertEqual(launch.read_main(env.store())["status"], "EXITED")
 
-    @mock.patch.multiple(dispatch_routing, CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED=True, OMNIROUTE_WORKER_ENV_IMPLEMENTED=True)
     def test_assign_dry_run_then_queue(self):
         env = Env(self)
+        env.verified_route()
         pf = env.prompt_file()
         args = ["assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree", str(env.wt),
-                "--owner-stream", "claude:x", "--prompt-file", pf]
+                "--owner-stream", "claude:x", "--prompt-file", pf, "--model", "auto/coding", "--provider", "gemini"]
         code, out = env.cli(*args)
         self.assertEqual(code, 0, out)
         self.assertEqual(cli.pending_requests(env.store()), [])
@@ -529,23 +540,90 @@ class CliTests(Offline):
         self.assertEqual(code, 0, out)
         reqs = cli.pending_requests(env.store())
         self.assertEqual(len(reqs), 1)
-        self.assertEqual(reqs[0][1]["payload"]["model"], "sonnet")
+        self.assertEqual(reqs[0][1]["payload"]["model"], "auto/coding")
+        self.assertEqual(reqs[0][1]["payload"]["provider"], "gemini")
 
     def test_assign_refuses_bad_worktree_or_missing_prompt(self):
         env = Env(self)
         env.svc.worktree_checker = lambda wt, br: (False, "worktree is on branch 'main'")
         code, out = env.cli("assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree",
-                            str(env.wt), "--owner-stream", "s", "--prompt-file", str(env.tmp / "missing.txt"), "--yes")
+                            str(env.wt), "--owner-stream", "s", "--prompt-file", str(env.tmp / "missing.txt"), "--model", "auto/coding",
+                            "--provider", "gemini", "--yes")
         self.assertEqual(code, 1)
         self.assertIn("prompt file does not exist", out)
         self.assertIn("worktree check", out)
         self.assertFalse(env.state.exists())
 
-    @mock.patch.multiple(dispatch_routing, CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED=True, OMNIROUTE_WORKER_ENV_IMPLEMENTED=True)
+    def _assign_args(self, env, model="auto/coding", provider="gemini"):
+        return ["assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree", str(env.wt),
+                "--owner-stream", "claude:x", "--prompt-file", env.prompt_file(), "--model", model,
+                "--provider", provider, "--yes"]
+
+    def test_assign_is_refused_without_a_verified_route_and_queues_nothing(self):
+        env = Env(self)
+        env.svc.env = dict(GATEWAY_ENV)
+        code, out = env.cli(*self._assign_args(env))
+        self.assertEqual(code, 1, out)
+        self.assertIn("registry unavailable", out)
+        self.assertFalse(env.state.exists(), "a refused assignment must create no state")
+
+    def test_assign_is_refused_for_claude_models_and_for_anthropic(self):
+        env = Env(self)
+        env.verified_route()
+        for model, provider, fragment in (("sonnet", "gemini", "Claude model"), ("auto/coding", "anthropic", "anthropic"),
+                                          ("auto/coding", "groq", "no verified zero-cost route")):
+            with self.subTest(model=model, provider=provider):
+                code, out = env.cli(*self._assign_args(env, model, provider))
+                self.assertEqual(code, 1, out)
+                self.assertIn(fragment, out)
+                self.assertEqual(cli.pending_requests(env.store()), [])
+
+    def test_assign_is_refused_when_the_route_is_not_recorded_as_zero_cost(self):
+        env = Env(self)
+        env.verified_route(cost_zero="yes")
+        code, out = env.cli(*self._assign_args(env))
+        self.assertEqual(code, 1, out)
+        self.assertEqual(cli.pending_requests(env.store()), [])
+
+    def test_assign_is_refused_without_a_gateway_environment(self):
+        env = Env(self)
+        env.verified_route()
+        env.svc.env = {"PATH": "p", "ANTHROPIC_API_KEY": "sk-should-not-matter"}
+        code, out = env.cli(*self._assign_args(env))
+        self.assertEqual(code, 1, out)
+        self.assertIn("worker environment is not safe", out)
+
+    def test_assign_requires_explicit_model_and_provider(self):
+        env = Env(self)
+        env.verified_route()
+        base = ["assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree", str(env.wt),
+                "--owner-stream", "s", "--prompt-file", env.prompt_file(), "--yes"]
+        for extra in ([], ["--model", "auto/coding"], ["--provider", "gemini"]):
+            with self.subTest(extra=extra), mock.patch("sys.stderr", new=io.StringIO()):
+                with self.assertRaises(SystemExit) as cm:        # argparse refuses a missing required option
+                    env.cli(*(base + extra))
+                self.assertNotEqual(cm.exception.code, 0)
+                self.assertEqual(cli.pending_requests(env.store()), [])
+
+    def test_a_queued_request_that_bypasses_the_cli_is_still_gated_at_dispatch(self):
+        """A request file written directly (not through `assign`) with provider anthropic must create no worker."""
+        env = Env(self)
+        env.verified_route()
+        cli.enqueue(env.store(), "assign", {"task_id": "T-X-9", "role": "worker", "branch": "lane/x9",
+                                            "worktree": str(env.wt), "owner_stream": "s", "model": "sonnet",
+                                            "prompt_file": env.prompt_file(), "provider": "anthropic"})
+        code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(env.worker_launcher.specs, [], "no worker launch may happen for a refused request")
+        code, out = env.cli("workers", "--json")
+        self.assertEqual(json.loads(out)["workers"], [])
+
     def test_loop_spawns_queued_workers_with_configured_permission_mode(self):
         env = Env(self, worker_permission_mode="acceptEdits")
+        env.verified_route()
         env.cli("assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree", str(env.wt),
-                "--owner-stream", "s", "--prompt-file", env.prompt_file(), "--yes")
+                "--owner-stream", "s", "--prompt-file", env.prompt_file(), "--model", "auto/coding",
+                "--provider", "gemini", "--yes")
         code, out = env.cli("start", "--yes", "--max-ticks", "2", "--no-main")
         self.assertEqual(code, 0, out)
         self.assertIn("tick 2", out)                                  # no Main is not a reason to stop here
@@ -776,15 +854,15 @@ class DoctorTests(Offline):
 # ------------------------------------------------------------------ end-to-end with fakes (mandatory)
 
 class EndToEndTests(Offline):
-    @mock.patch.multiple(dispatch_routing, CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED=True, OMNIROUTE_WORKER_ENV_IMPLEMENTED=True)
     def test_start_assign_pressure_handoff_replace_status(self):
         env = Env(self, auto_replace_main=True, github_issue=52, github_repo="owner/repo")
+        env.verified_route()
         for task in ("T-E2E-1", "T-E2E-2"):
             wt = env.wt / task
             wt.mkdir()
             code, out = env.cli("assign", "--task", task, "--role", "worker", "--branch", f"lane/{task}",
-                                "--worktree", str(wt), "--owner-stream", "claude:e2e",
-                                "--prompt-file", env.prompt_file(), "--yes")
+                                "--worktree", str(wt), "--owner-stream", "claude:e2e", "--model", "auto/coding",
+                                "--provider", "gemini", "--prompt-file", env.prompt_file(), "--yes")
             self.assertEqual(code, 0, out)
         steps = []
 

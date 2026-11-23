@@ -279,6 +279,23 @@
         "orchestrator/tests/test_dev_guard_loop.py",
         "orchestrator/dev_supervisor/cli.py"
       ]
+    },
+    "AGR-DEV-032-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The overnight mission (2026-11-24) directs Main to make the verified worker spawner and provider policy the only way to start workers and to remove implicit Claude Pro defaults. Under that mandate T-DEV-032 may edit the listed lifecycle, policy, harness and spawner modules and their tests, only for the dispatch gate, the fail-closed launcher environment and the removal of Claude-login launch paths. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-032"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/lifecycle.py",
+        "orchestrator/dev_supervisor/session_policy.py",
+        "orchestrator/dev_supervisor/acceptance.py",
+        "orchestrator/dev_supervisor/live_autonomy.py",
+        "orchestrator/dev_supervisor/worker_spawner.py",
+        "orchestrator/tests/test_dev_lifecycle.py",
+        "orchestrator/tests/test_dev_loop_repair.py",
+        "orchestrator/tests/test_dev_acceptance.py",
+        "orchestrator/tests/test_dev_standing_autonomy.py"
+      ]
     }
   },
   "tasks": [
@@ -1913,8 +1930,8 @@
     },
     {
       "id": "T-DEV-032",
-      "title": "dev_supervisor: route worker assignments through routing.decide with a verified-free-route gate (no silent Anthropic dispatch)",
-      "description": "assign consults routing.decide(); workers are never dispatched to Anthropic/Claude Pro; dispatch is refused with the reason unless an OmniRoute route is verified for Claude Code workers (flag defaults to not verified, since Claude Code over OmniRoute is NOT TESTED); provider and route are recorded on every assignment; concurrency capped at one live worker.",
+      "title": "dev_supervisor: mandatory worker dispatch gate (verified zero-cost route, isolated environment, fail closed)",
+      "description": "A worker is assigned and started only through the registry-based dispatch gate: provider and model must be explicit, not Anthropic or a Claude model, in the verified zero-cost route registry, with a safe gateway-only environment. ClaudeCliLauncher has no default environment and fails closed; the production factory builds the only launcher, with an isolated environment and project-only settings. The acceptance and live harnesses no longer start claude on the Claude login. Project and local settings carrying env or credential helpers are refused. A test audits every launch path.",
       "owner": "claude:repository-coordinator",
       "branch": "task/t-dev-032-worker-routing",
       "worktree": "../CreatorStudio-worktrees/t-dev-032-worker-routing",
@@ -1928,6 +1945,7 @@
       },
       "exclusive_resources": [],
       "integration_agreements": [
+        "AGR-DEV-032-01",
         "AGR-DEV-037-01"
       ],
       "owned_paths": [
@@ -1935,12 +1953,22 @@
         "orchestrator/dev_supervisor/cli.py",
         "orchestrator/tests/test_dev_dispatch_routing.py",
         "orchestrator/tests/test_dev_cli.py",
-        "orchestrator/tests/test_dev_context_management.py"
+        "orchestrator/tests/test_dev_context_management.py",
+        "orchestrator/dev_supervisor/lifecycle.py",
+        "orchestrator/dev_supervisor/session_policy.py",
+        "orchestrator/dev_supervisor/acceptance.py",
+        "orchestrator/dev_supervisor/live_autonomy.py",
+        "orchestrator/dev_supervisor/worker_spawner.py",
+        "orchestrator/tests/test_dev_lifecycle.py",
+        "orchestrator/tests/test_dev_loop_repair.py",
+        "orchestrator/tests/test_dev_acceptance.py",
+        "orchestrator/tests/test_dev_standing_autonomy.py"
       ],
       "acceptance_criteria": [
-        "worker assignment refused with reason when no verified free route is available",
-        "no assignment ever records provider anthropic",
-        "provider and route recorded in each assignment payload",
+        "missing or unverified routes prevent both assignment and spawning, and a rejected launch creates no child process",
+        "no worker environment carries an inherited Claude login, API key, OAuth token or model-name variable (real subprocess test)",
+        "no assignment ever records provider anthropic or a Claude model; there is no default provider or model",
+        "the only production ClaudeCliLauncher is built by dispatch_routing; an audit test fails on a new launch path",
         "at most one live worker at assignment time"
       ],
       "test_requirements": [

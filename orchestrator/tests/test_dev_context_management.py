@@ -461,9 +461,9 @@ class PrepareHandoffTests(Base):
         p = events_of(store, "handoff_prepared")
         self.assertEqual((len(p), p[0]["percent"]), (1, 71.0))
 
-    @mock.patch.multiple(dispatch_routing, CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED=True, OMNIROUTE_WORKER_ENV_IMPLEMENTED=True)
     def test_mechanical_handoff_contents_come_from_recorded_state(self):
         env, store, loop = self.make(github_repo="owner/repo")
+        env.verified_route()
         seed_tasks(env)
         env.run_results["pr list"] = (0, json.dumps([{"number": 7, "state": "OPEN", "headRefName": "task/t-x-1"}]), "")
         pending = store.directory / "approvals" / "pending"
@@ -473,7 +473,8 @@ class PrepareHandoffTests(Base):
         wt = env.wt / "T-X-1"
         wt.mkdir()
         code, out = env.cli("assign", "--task", "T-X-1", "--role", "worker", "--branch", "task/t-x-1", "--worktree",
-                            str(wt), "--owner-stream", "claude:t", "--prompt-file", env.prompt_file(), "--yes")
+                            str(wt), "--owner-stream", "claude:t", "--prompt-file", env.prompt_file(),
+                            "--model", "auto/coding", "--provider", "gemini", "--yes")
         self.assertEqual(code, 0, out)
         sid = self.running_main(env, loop, tokens=150000)
         loop.tick()
@@ -778,14 +779,15 @@ class ReplacementTests(Base):
         self.assertTrue(recs[sid]["authoritative"])
         self.assertEqual([s for s, r in recs.items() if r.get("authoritative")], [sid])
 
-    @mock.patch.multiple(dispatch_routing, CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED=True, OMNIROUTE_WORKER_ENV_IMPLEMENTED=True)
     def test_workers_are_never_killed_by_context_management(self):
         env, store, loop = self.make(auto_replace_main=True)
+        env.verified_route()
         for task in ("T-W-1",):   # concurrency cap 1 (T-DEV-032): one worker is enough for this property
             wt = env.wt / task
             wt.mkdir()
             code, out = env.cli("assign", "--task", task, "--role", "worker", "--branch", f"lane/{task}", "--worktree",
-                                str(wt), "--owner-stream", "claude:t", "--prompt-file", env.prompt_file(), "--yes")
+                                str(wt), "--owner-stream", "claude:t", "--prompt-file", env.prompt_file(),
+                                "--model", "auto/coding", "--provider", "gemini", "--yes")
             self.assertEqual(code, 0, out)
         sid = self.running_main(env, loop, tokens=1000)
         loop.tick()

@@ -77,6 +77,11 @@ def _is_claude_model(model: str) -> bool:
     return any(marker in norm for marker in _CLAUDE_MARKERS)
 
 
+def is_claude_model(model: Any) -> bool:
+    """Public form of the Claude-name rule: True for any Claude alias or id, non-string or non-ASCII name."""
+    return not isinstance(model, str) or _is_claude_model(model)
+
+
 def _refuse_config_dir(config_dir: Optional[str]) -> str:
     if config_dir is not None and chr(0) in str(config_dir):
         raise SpawnRefused("config directory contains an invalid character")

@@ -8,6 +8,7 @@ import os
 import socket
 import sys
 import tempfile
+import time
 import unittest
 import uuid
 from pathlib import Path
@@ -125,7 +126,8 @@ class Base(unittest.TestCase):
 
     def assign(self, s, task="T-SYN-001", wt=None, branch="lane/syn/L1"):
         return s.assign(task_id=task, role="lane", branch=branch, worktree=str(wt or self.wt),
-                        owner_stream="claude:synthetic", model="claude-opus-test", prompt_file=str(self.prompt))
+                        owner_stream="claude:synthetic", model="auto/coding", provider="gemini",
+                        prompt_file=str(self.prompt))
 
     def running(self, s, **kw):
         w = self.assign(s, **kw)
@@ -463,7 +465,7 @@ class TestAssignSpawn(Base):
         s = self.sup()
         with self.assertRaises(LifecycleError):
             s.assign(task_id="T", role="lane", branch="b", worktree=str(self.wt), owner_stream="o", model="",
-                     prompt_file=str(self.prompt))
+                     prompt_file=str(self.prompt), provider="gemini")
 
     def test_spawn_runs_with_argument_list(self):
         s = self.sup()
@@ -572,7 +574,8 @@ class FakePopen:
 class TestClaudeCliLauncher(Base):
     def test_launch_uses_list_no_shell_and_prompt_on_stdin(self):
         FakePopen.calls = []
-        la = ClaudeCliLauncher(which=lambda n: "/fake/bin/claude", popen=FakePopen)
+        la = ClaudeCliLauncher(which=lambda n: "/fake/bin/claude", popen=FakePopen,
+                               env_builder=lambda spec: dict({"PATH": "p", "CLAUDE_CONFIG_DIR": "C:/worker-cfg"}))
         sid = str(uuid.UUID(int=3))
         spec = LaunchSpec(argv=build_claude_argv("m1", sid), cwd=str(self.wt), stdin_path=str(self.prompt),
                           stdout_path=str(self.tmp / "o.jsonl"), stderr_path=str(self.tmp / "e.log"),
@@ -600,6 +603,103 @@ class TestClaudeCliLauncher(Base):
         for fn in (la.poll, la.terminate, la.kill):
             with self.assertRaises(NotOwnedError):
                 fn(1234)
+
+
+class TestWorkerLaunchSafety(Base):
+    """Workers never start on the supervisor's own (Claude Pro) environment, and a refused launch starts nothing."""
+
+    def _spec(self):
+        (self.tmp / "in.txt").write_text("x", encoding="utf-8")
+        return LaunchSpec(argv=build_claude_argv("auto/coding", str(uuid.UUID(int=7))), cwd=str(self.wt),
+                          stdin_path=str(self.tmp / "in.txt"), stdout_path=str(self.tmp / "o.jsonl"),
+                          stderr_path=str(self.tmp / "e.log"), max_runtime_s=10)
+
+    def test_default_launcher_has_no_environment_and_refuses(self):
+        FakePopen.calls = []
+        la = ClaudeCliLauncher(which=lambda n: "/fake/bin/claude", popen=FakePopen)
+        with self.assertRaises(LifecycleError) as cm:
+            la.launch(self._spec())
+        self.assertIn("fail closed", str(cm.exception))
+        self.assertEqual(FakePopen.calls, [], "a refused launch must start no process")
+
+    def test_environment_with_a_direct_credential_is_refused(self):
+        for name in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "anthropic_api_key"):
+            with self.subTest(name=name):
+                FakePopen.calls = []
+                la = ClaudeCliLauncher(which=lambda n: "/fake/bin/claude", popen=FakePopen,
+                                       env_builder=lambda spec, n=name: {"PATH": "p", n: "x"})
+                with self.assertRaises(LifecycleError):
+                    la.launch(self._spec())
+                self.assertEqual(FakePopen.calls, [])
+
+    def test_spec_env_cannot_smuggle_a_credential_in(self):
+        FakePopen.calls = []
+        la = ClaudeCliLauncher(which=lambda n: "/fake/bin/claude", popen=FakePopen, env_builder=lambda spec: {"PATH": "p"})
+        spec = self._spec()
+        spec.env = {"ANTHROPIC_API_KEY": "x"}
+        with self.assertRaises(LifecycleError):
+            la.launch(spec)
+        self.assertEqual(FakePopen.calls, [])
+
+    def test_extra_args_come_first_and_policy_env_is_kept(self):
+        FakePopen.calls = []
+        la = ClaudeCliLauncher(which=lambda n: "/fake/bin/claude", popen=FakePopen, extra_args=["--setting-sources", "project"],
+                               env_builder=lambda spec: dict({"PATH": "p", "CLAUDE_CONFIG_DIR": "C:/worker-cfg"}))
+        spec = self._spec()
+        spec.env = {"CS_AUTHORITY_REPO_ROOT": "X"}
+        la.launch(spec)
+        argv, kw = FakePopen.calls[0]
+        self.assertEqual(argv[1:3], ["--setting-sources", "project"])
+        self.assertEqual(kw["env"]["CS_AUTHORITY_REPO_ROOT"], "X")
+
+    def test_assign_never_accepts_anthropic_or_a_claude_model(self):
+        s = self.sup()
+        for provider, model in (("anthropic", "auto/coding"), ("Anthropic", "auto/coding"), ("gemini", "sonnet"),
+                                ("gemini", "claude-opus-test"), ("gemini", "opus"), ("gemini", "auto/claude-sonnet")):
+            with self.subTest(provider=provider, model=model):
+                with self.assertRaises(LifecycleError):
+                    s.assign(task_id="T-X-1", role="lane", branch="lane/x/L1", worktree=str(self.wt),
+                             owner_stream="o", model=model, prompt_file=str(self.prompt), provider=provider)
+                self.assertEqual(s.registry.list(), [], "a refused assignment must create no worker record")
+
+    def test_assign_requires_an_explicit_provider(self):
+        s = self.sup()
+        with self.assertRaises(TypeError):
+            s.assign(task_id="T-X-2", role="lane", branch="lane/x/L1", worktree=str(self.wt), owner_stream="o",
+                     model="auto/coding", prompt_file=str(self.prompt))
+
+    def test_real_subprocess_receives_no_inherited_credentials(self):
+        """A real child process: the parent holds Claude Pro style credentials, the worker must not receive them."""
+        import json as _json
+        import sys as _sys
+        from dev_supervisor import provider_env
+        out = self.tmp / "child_env.json"
+        script = self.tmp / "dump_env.py"
+        script.write_text(chr(10).join(["import json, os, sys",
+                                        "json.dump({k: v for k, v in os.environ.items() if k.startswith(('ANTHROPIC', 'CLAUDE'))}, "
+                                        "open(sys.argv[1], 'w'))", ""]),
+                          encoding="utf-8")
+        parent = dict(os.environ)
+        parent.update({"ANTHROPIC_API_KEY": "sk-parent-key", "CLAUDE_CODE_OAUTH_TOKEN": "parent-oauth",
+                       "ANTHROPIC_MODEL": "claude-opus-5-5", "CLAUDE_CONFIG_DIR": "C:/Users/someone/.claude",
+                       "ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "gateway-token-value"})
+        builder = lambda spec: provider_env.worker_env(str(self.tmp / "worker-cfg"), parent)  # noqa: E731
+        spec = self._spec()
+        spec.argv = [_sys.executable, str(script), str(out)]       # the launcher replaces argv[0] with the resolved executable
+        la = ClaudeCliLauncher(which=lambda n: _sys.executable, env_builder=builder)
+        h = la.launch(spec)
+        for _ in range(100):
+            if la.poll(h.pid) is not None:
+                break
+            time.sleep(0.1)
+        seen = _json.loads(out.read_text(encoding="utf-8"))
+        self.assertNotIn("ANTHROPIC_API_KEY", seen)
+        self.assertNotIn("CLAUDE_CODE_OAUTH_TOKEN", seen)
+        self.assertNotIn("ANTHROPIC_MODEL", seen)
+        self.assertEqual(seen["CLAUDE_CONFIG_DIR"], str((self.tmp / "worker-cfg").resolve()))
+        self.assertEqual(seen["ANTHROPIC_BASE_URL"], "http://localhost:20128")
+        self.assertIn("ANTHROPIC_AUTH_TOKEN", seen, "only the explicitly authorised gateway credential is passed")
+        self.assertNotIn("sk-parent-key", _json.dumps(seen))
 
 
 class TestGitChecker(Base):

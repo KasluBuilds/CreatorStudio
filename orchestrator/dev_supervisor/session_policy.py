@@ -40,6 +40,9 @@ SETTING_SOURCES = "project,local"   # the user's settings are merged into the de
 COPIED_USER_KEYS = ("hooks", "autoMode", "modelSettings", "model", "statusLine", "permissions")
 DROPPED_PERMISSION_KEYS = ("defaultMode", "additionalDirectories", "allow")   # never widened from the user file
 PROJECT_SETTINGS = ("settings.json", "settings.local.json")   # loaded by --setting-sources project,local
+# Keys a worktree's project or local settings may never carry: they would re-inject credentials, a provider or a model
+# route into a worker after the environment was isolated (T-DEV-032).
+FORBIDDEN_PROJECT_KEYS = ("env", "apiKeyHelper", "awsAuthRefresh", "awsCredentialExport", "otelHeadersHelper")
 DENY_PROBE = "git push --force origin task/policy-probe"
 ALLOW_PROBE = "git status --short"
 
@@ -167,6 +170,9 @@ def check_project_settings(project_dir: str) -> None:
             raise PolicyInstallError(f"project settings {p} is not a JSON object; refusing to launch")
         if "disableAllHooks" in data or data.get("hooks"):
             raise PolicyInstallError(f"project settings {p} sets disableAllHooks or hooks; refusing to launch")
+        bad = [k for k in FORBIDDEN_PROJECT_KEYS if k in data]
+        if bad:
+            raise PolicyInstallError(f"project settings {p} sets {', '.join(bad)}; refusing to launch")
 
 
 def build_settings(command: str, user: Optional[Dict[str, Any]] = None,

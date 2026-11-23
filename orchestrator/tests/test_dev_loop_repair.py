@@ -37,7 +37,7 @@ class Loop(base.Offline):
         wt = env.wt / name
         wt.mkdir(exist_ok=True)
         w = loop.sup.assign(task_id=f"T-{name}", role="impl", branch=f"task/{name}", worktree=str(wt),
-                            owner_stream="s", model="sonnet", prompt_file=str(prompt))
+                            owner_stream="s", model="auto/coding", provider="gemini", prompt_file=str(prompt))
         return loop.sup.spawn(w.worker_id)
 
 
@@ -92,7 +92,8 @@ class WorkerHook(Loop):
         spec = LaunchSpec(argv=["claude"], cwd=str(env.tmp), stdin_path=str(env.tmp / "in.txt"),
                           stdout_path=str(env.tmp / "o"), stderr_path=str(env.tmp / "e"), max_runtime_s=1,
                           env={"CS_AUTHORITY_REPO_ROOT": "X"})
-        ClaudeCliLauncher(which=lambda n: "claude", popen=popen).launch(spec)
+        ClaudeCliLauncher(which=lambda n: "claude", popen=popen,
+                          env_builder=lambda sp: {"PATH": "p"}).launch(spec)
         self.assertEqual(seen["env"]["CS_AUTHORITY_REPO_ROOT"], "X")
 
 

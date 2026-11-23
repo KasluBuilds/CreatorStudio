@@ -1,86 +1,130 @@
-"""Worker dispatch gate (T-DEV-032): which provider a worker assignment may use, and when to refuse.
+"""Worker dispatch gate (T-DEV-032): the one place that decides whether a worker may be assigned and started.
 
-Workers are Claude Code processes. Routing decides which route is best, but this module decides whether a worker may
-be dispatched at all. Rules:
+Fail closed. A worker is assigned only when ALL of these hold, and every refusal carries a reason that names the failed
+check (never a URL, token or credential):
 
-- Claude Pro (``anthropic``) is never a worker route. Claude routes ranked by ``routing.decide`` are excluded, and a
-  refusal never falls back to them.
-- Only OmniRoute routes are eligible, and only when ALL of these hold:
-  1. ``CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED`` is True. It is False because Claude Code running through OmniRoute is
-     NOT TESTED (OMNIROUTE_BENCHMARK.md: "Whether Claude Code itself works through OmniRoute ... NOT TESTED").
-  2. ``OMNIROUTE_WORKER_ENV_IMPLEMENTED`` is True. It is False because no code yet points a worker's ``claude`` child at
-     the OmniRoute gateway; without it a worker labelled OmniRoute would silently run on Claude Pro.
-- At most ``MAX_ACTIVE_WORKERS`` workers may be active (assigned or live) at once.
+- the provider is not Anthropic (Claude Pro) and the model is not a Claude model;
+- the (provider, model) pair is in the verified-route registry with a recorded zero cost (``worker_spawner``);
+- the local OmniRoute gateway environment is valid (``provider_env.worker_env``: no API key, no Pro login, no provider
+  switch, a worker-owned config directory);
+- fewer than MAX_ACTIVE_WORKERS workers are assigned or live.
 
-Every refusal carries a reason. Every decision reports the provider and route, so what handled a task is recorded.
-Standard library only; no process is started here.
+The same checks run again at launch time inside the launcher's environment builder, so a worker that is somehow
+assigned still cannot start without a verified route and a safe environment. The registry lives at
+``<state dir>/verified_routes.json``; if it is missing or unreadable nothing is dispatched.
+
+Standard library plus this package; starts no process by itself.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from pathlib import Path
+from typing import Any, Callable, Dict, Mapping, Optional, Union
 
-from . import routing
+from . import provider_env, worker_spawner
+from .lifecycle import ClaudeCliLauncher, LaunchSpec, LifecycleError
 
-#: Claude Code running through OmniRoute is NOT TESTED. Flip only with live evidence recorded in the registry.
-CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED = False
-#: The worker environment does not yet point ``claude`` at the OmniRoute gateway. Flip only when it does.
-OMNIROUTE_WORKER_ENV_IMPLEMENTED = False
 MAX_ACTIVE_WORKERS = 1
+REGISTRY_FILE = "verified_routes.json"
+WORKER_CONFIG_DIR = "worker-config"
 
-PROVIDER_OMNIROUTE = "omniroute"
-PROVIDER_ANTHROPIC = "anthropic"   # Claude Pro: never a dispatch target through this gate
+PathLike = Union[str, "os.PathLike[str]"]
 
 
 @dataclass(frozen=True)
 class Dispatch:
     allowed: bool
-    provider: Optional[str]     # PROVIDER_OMNIROUTE when allowed, else None
-    route: Optional[str]        # routing route id when allowed, else None
-    model: Optional[str]        # route model name when allowed, else None
+    provider: Optional[str]     # the verified route's provider when allowed, else None
+    route: Optional[str]        # the gateway route (model id) when allowed, else None
+    model: Optional[str]        # the same model id, recorded on the worker
     reason: str
-    excluded: Tuple[Tuple[str, str], ...]
 
     def to_dict(self) -> Dict[str, Any]:
         return {"allowed": self.allowed, "provider": self.provider, "route": self.route, "model": self.model,
-                "reason": self.reason, "excluded": [list(e) for e in self.excluded]}
+                "reason": self.reason}
 
 
-def _refuse(reason: str, excluded: Tuple[Tuple[str, str], ...] = ()) -> Dispatch:
-    return Dispatch(False, None, None, None, reason, excluded)
+def registry_path(state_dir: PathLike) -> Path:
+    return Path(state_dir) / REGISTRY_FILE
 
 
-def decide_worker_dispatch(profile: Optional[routing.TaskProfile] = None, *, active_workers: int = 0,
-                           config: Optional[routing.RoutingConfig] = None,
-                           verified: Optional[bool] = None,
-                           env_implemented: Optional[bool] = None) -> Dispatch:
-    """The single decision used at assignment time and again before spawning. Flags are read at call time."""
-    if verified is None:
-        verified = CLAUDE_CODE_OVER_OMNIROUTE_VERIFIED
-    if env_implemented is None:
-        env_implemented = OMNIROUTE_WORKER_ENV_IMPLEMENTED
+def worker_config_dir(state_dir: PathLike) -> Path:
+    return Path(state_dir) / WORKER_CONFIG_DIR
+
+
+def _refuse(reason: str) -> Dispatch:
+    return Dispatch(False, None, None, None, reason)
+
+
+def _check_route(provider: Any, model: Any, state_dir: PathLike) -> "tuple[Optional[worker_spawner.VerifiedRoute], str]":
+    """(route, "") when verified; (None, reason) otherwise."""
+    if not isinstance(provider, str) or not provider.strip():
+        return None, "a provider is required: workers have no default provider"
+    if provider.strip().lower() == "anthropic":
+        return None, "provider anthropic (Claude Pro) is never a worker provider"
+    if not isinstance(model, str) or not model.strip():
+        return None, "a model is required: workers have no default model"
+    if worker_spawner.is_claude_model(model):
+        return None, "a Claude model is never a worker model"
+    try:
+        routes = worker_spawner.load_verified_routes(registry_path(state_dir))
+    except worker_spawner.SpawnRefused as exc:
+        return None, "verified-route registry unavailable: " + str(exc)
+    for r in routes:
+        if r.model == model and r.provider == provider and r.cost_zero is True:
+            return r, ""
+    return None, "no verified zero-cost route for this provider and model"
+
+
+def decide_worker_dispatch(*, provider: Any, model: Any, active_workers: int, state_dir: PathLike,
+                           base_env: Optional[Mapping[str, str]] = None) -> Dispatch:
+    """The single decision used at assignment time. Refuses without a verified route and a safe gateway environment."""
+    if not isinstance(active_workers, int) or isinstance(active_workers, bool) or active_workers < 0:
+        return _refuse("the number of active workers is not known: refusing to dispatch")
     if active_workers >= MAX_ACTIVE_WORKERS:
         return _refuse(f"concurrency cap: {active_workers} worker(s) active, the cap is {MAX_ACTIVE_WORKERS}")
-    decision = routing.decide(profile or routing.TaskProfile(), config)
-    omni = [r for r in decision.ranking if r.route in routing.OMNI_ROUTES]
-    excluded = tuple(decision.excluded) + tuple(
-        (r.route, "not a worker route: workers never run on Claude Pro or a paid API")
-        for r in decision.ranking if r.route not in routing.OMNI_ROUTES)
-    if not verified:
-        return _refuse("no verified free worker route: Claude Code over OmniRoute is NOT TESTED; refusing rather than "
-                       "falling back to Claude Pro", excluded)
-    if not env_implemented:
-        return _refuse("OmniRoute worker environment is not implemented: refusing rather than running the worker on "
-                       "Claude Pro", excluded)
-    if not omni:
-        return _refuse("no OmniRoute route available: every OmniRoute route was excluded", excluded)
-    best = omni[0]
-    return Dispatch(True, PROVIDER_OMNIROUTE, best.route, best.model,
-                    f"OmniRoute route {best.route} (score {best.score}); " + "; ".join(best.reasons), excluded)
+    route, why = _check_route(provider, model, state_dir)
+    if route is None:
+        return _refuse(why)
+    try:
+        provider_env.worker_env(str(worker_config_dir(state_dir)), base_env)
+    except provider_env.WorkerEnvError as exc:
+        return _refuse("worker environment is not safe: " + str(exc))
+    return Dispatch(True, route.provider, route.model, route.model,
+                    f"verified zero-cost route {route.provider}/{route.model} (evidence: {route.evidence})")
 
 
-def gate_provider(provider: Any, **kwargs: Any) -> Dispatch:
-    """Refuse any assignment whose recorded provider is not OmniRoute, before the route decision is even consulted."""
-    if provider != PROVIDER_OMNIROUTE:
-        return _refuse(f"provider {provider!r} is not a worker provider: only {PROVIDER_OMNIROUTE} may dispatch")
-    return decide_worker_dispatch(**kwargs)
+def make_worker_env_builder(state_dir: PathLike, base_env: Optional[Mapping[str, str]] = None
+                            ) -> Callable[[LaunchSpec], Dict[str, str]]:
+    """The environment builder for ClaudeCliLauncher: repeats the route check against the model actually on the
+    command line and returns the isolated worker environment, or raises LifecycleError (fail closed)."""
+    def build(spec: LaunchSpec) -> Dict[str, str]:
+        argv = list(spec.argv)
+        if "--model" not in argv or argv.index("--model") + 1 >= len(argv):
+            raise LifecycleError("worker launch has no --model: refusing")
+        model = argv[argv.index("--model") + 1]
+        try:
+            routes = worker_spawner.load_verified_routes(registry_path(state_dir))
+        except worker_spawner.SpawnRefused as exc:
+            raise LifecycleError("verified-route registry unavailable: refusing to launch (" + str(exc) + ")") from None
+        if worker_spawner.is_claude_model(model) or not any(r.model == model and r.cost_zero is True for r in routes):
+            raise LifecycleError("the worker model is not a verified zero-cost route: refusing to launch")
+        cfg = worker_config_dir(state_dir)
+        try:
+            env = provider_env.worker_env(str(cfg), base_env)
+        except provider_env.WorkerEnvError as exc:
+            raise LifecycleError("worker environment is not safe: refusing to launch (" + str(exc) + ")") from None
+        try:
+            cfg.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            raise LifecycleError("worker config directory could not be created: refusing to launch") from None
+        return env
+    return build
+
+
+def make_worker_launcher(executable: str, state_dir: PathLike,
+                         base_env: Optional[Mapping[str, str]] = None) -> ClaudeCliLauncher:
+    """The only ClaudeCliLauncher production code builds: isolated environment, project-only settings, verified route."""
+    return ClaudeCliLauncher(executable, env_builder=make_worker_env_builder(state_dir, base_env),
+                             extra_args=provider_env.worker_claude_args())

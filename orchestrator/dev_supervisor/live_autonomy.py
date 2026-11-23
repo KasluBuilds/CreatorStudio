@@ -36,12 +36,27 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 try:
-    from . import authority, session_policy
+    from . import authority, provider_env, session_policy, worker_spawner
 except ImportError:  # pragma: no cover
     import authority  # type: ignore
+    import provider_env  # type: ignore
     import session_policy  # type: ignore
+    import worker_spawner  # type: ignore
 
 PY = sys.executable
+
+
+class HarnessRefused(RuntimeError):
+    """The harness will not start a real claude process without an isolated, gateway-only environment."""
+
+
+def harness_env(lay: "Layout") -> Dict[str, str]:
+    """Environment for EVERY real claude process this harness starts (Main, workers, reviewers): the isolated worker
+    environment through the local gateway. It never falls back to the caller's Claude login (T-DEV-032)."""
+    try:
+        return provider_env.worker_env(str(lay.root / "worker-config"), os.environ)
+    except provider_env.WorkerEnvError as exc:
+        raise HarnessRefused("no safe worker environment: " + str(exc)) from None
 MAX_ATTEMPTS = 2
 STALL_SECONDS = 150
 LOCK_STALE_SECONDS = 300          # longer than the longest lock hold (tests run up to 120 s)
@@ -756,7 +771,7 @@ def finish_worker(lay: Layout, data: Dict[str, Any], wid: str, rec: Dict[str, An
 
 def launch_request(lay: Layout, req: Dict[str, Any], claude: str, model: str, procs: Dict[str, subprocess.Popen], sup_pid: int) -> None:
     wid, tid = req["worker_id"], req["task"]
-    env = dict(os.environ)
+    env = harness_env(lay)
     sid = str(uuid.uuid4())
     marker = f"cs-live-{wid}"
     if req["kind"] == "worker":
@@ -803,7 +818,7 @@ def start_main(lay: Layout, data: Dict[str, Any], claude: str, model: str, procs
     main = data.setdefault("main", {})
     sid = main.get("session_id") or str(uuid.uuid4())
     inst = policy_for(lay, sid, "main", lay.main, [])
-    env = dict(os.environ)
+    env = harness_env(lay)
     env.update(inst.env)
     wrapper = lay.root / "ctl"                     # a plain script path: no quoting for the model to get wrong
     write_atomic(wrapper, '#!/bin/sh\nexec "%s" -B -m dev_supervisor.live_autonomy ctl --root "%s" "$@"\n' % (posix(PY), posix(lay.root)))
@@ -834,6 +849,14 @@ def _wait_until(pred: Callable[[], bool], timeout: float, step: float = 2.0) -> 
 
 
 def run_live(lay: Layout, a: argparse.Namespace) -> int:  # pragma: no cover - needs real claude processes
+    if worker_spawner.is_claude_model(a.model):
+        sys.stderr.write("refused: the harness never runs a Claude model; use a verified gateway route\n")
+        return 2
+    try:
+        harness_env(lay)
+    except HarnessRefused as exc:
+        sys.stderr.write(f"refused: {exc}\n")
+        return 2
     build_sandbox(lay.root)
     write_atomic(lay.main / ".claude" / "settings.json", json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command",
         "command": f'"{posix(PY)}" -B -m dev_supervisor.live_autonomy ctl --root "{posix(lay.root)}" stop-hook'}]}]}}, indent=1))

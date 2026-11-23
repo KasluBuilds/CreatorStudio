@@ -129,7 +129,7 @@ def _real_discover(identity: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 def build_services(cfg: Config) -> Services:
     return Services(config=cfg, terminal=NewConsoleTerminal(),
-                    worker_launcher_factory=lambda: ClaudeCliLauncher(cfg.claude_executable),
+                    worker_launcher_factory=lambda: dispatch_routing.make_worker_launcher(cfg.claude_executable, cfg.state_directory()),
                     worktree_checker=GitWorktreeChecker(), ref_checkers_factory=_real_ref_checkers,
                     run=run_command, which=shutil.which, omniroute_transport=omniroute.urllib_transport,
                     resolve_discover=_real_discover,
@@ -492,13 +492,16 @@ class SupervisorLoop:
             op, p = req.get("op"), req.get("payload") or {}
             try:
                 if op == "assign":
-                    gate = dispatch_routing.gate_provider(p.get("provider"), active_workers=self._active_worker_count())
+                    gate = dispatch_routing.decide_worker_dispatch(
+                        provider=p.get("provider"), model=p.get("model"),
+                        active_workers=self._active_worker_count(), state_dir=self.cfg.state_directory(),
+                        base_env=self.svc.env)
                     if not gate.allowed:
                         # Refused before any worker record exists: nothing is created, launched or charged.
                         outcome = {"ok": False, "error": "dispatch refused: " + gate.reason}
                     else:
                         w = self.sup.assign(task_id=p["task_id"], role=p["role"], branch=p["branch"],
-                                            worktree=p["worktree"], owner_stream=p["owner_stream"], model=p["model"],
+                                            worktree=p["worktree"], owner_stream=p["owner_stream"], model=gate.model,
                                             prompt_file=p["prompt_file"], provider=gate.provider)
                         w = self.sup.spawn(w.worker_id)
                         outcome = {"ok": w.status == WorkerStatus.RUNNING, "worker_id": w.worker_id,
@@ -1149,14 +1152,16 @@ def cmd_workers(svc: Services, a: argparse.Namespace) -> int:
 
 def cmd_assign(svc: Services, a: argparse.Namespace) -> int:
     cfg = svc.config
-    model = a.model or cfg.model("worker")
+    model, provider = a.model, a.provider
     problems = []
     try:
         active = len(WorkerRegistry(svc.store(create=False)).list(WorkerStatus.ACTIVE))
     except StoreError as e:
         active = None
         problems.append(f"worker registry unreadable ({e.__class__.__name__}): refusing to dispatch")
-    dispatch = dispatch_routing.decide_worker_dispatch(active_workers=active or 0) if active is not None else None
+    dispatch = (dispatch_routing.decide_worker_dispatch(provider=provider, model=model, active_workers=active,
+                                                        state_dir=cfg.state_directory(), base_env=svc.env)
+                if active is not None else None)
     if dispatch is not None and not dispatch.allowed:
         problems.append(dispatch.reason)
     payload = {"task_id": a.task, "role": a.role, "branch": a.branch, "worktree": os.path.abspath(a.worktree),
@@ -1508,7 +1513,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--worktree", required=True)
     p.add_argument("--owner-stream", required=True)
     p.add_argument("--prompt-file", required=True)
-    p.add_argument("--model", default=None)
+    p.add_argument("--model", required=True, help="a verified gateway route id; there is no default (never a Claude model)")
+    p.add_argument("--provider", required=True, help="the verified route's provider; there is no default (never anthropic)")
     p.add_argument("--yes", action="store_true")
     p = add("handoff", "build/write/verify a handoff")
     p.add_argument("--input", help="facts JSON (keys: " + ", ".join(FACT_KEYS) + ")")
