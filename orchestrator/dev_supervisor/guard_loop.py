@@ -31,6 +31,7 @@ from . import progress_guard as pg
 ENV_FLAG = "CREATORSTUDIO_SUPERVISOR_GUARD"
 STATE_FILE = "guard_state.json"
 HANDOVER_PENDING_S = 600.0
+FAILURE_BACKOFF_S = 300.0   # after a failed replacement, no new attempt until this has passed
 
 
 def enabled(env: Optional[Mapping[str, str]] = None) -> bool:
@@ -58,6 +59,7 @@ class GuardAdapter:
         self.request_handover = request_handover
         self.event = event
         self.policy = policy
+        self._failed_at: Optional[float] = None
 
     # ---- persistence -------------------------------------------------------------------------------------------------
     def load(self) -> "tuple[pg.GuardState, Optional[Dict[str, Any]]]":
@@ -69,6 +71,9 @@ class GuardAdapter:
             return pg.GuardState.from_dict(None), None          # unreadable: fail closed
         if not isinstance(data, dict):
             return pg.GuardState.from_dict(None), None
+        fa = data.get("failed_at")
+        self._failed_at = float(fa) if (isinstance(fa, (int, float)) and not isinstance(fa, bool)
+                                        and math.isfinite(fa)) else None
         pending = data.get("pending_handover")
         started = pending.get("started") if isinstance(pending, dict) else None
         if not (isinstance(started, (int, float)) and not isinstance(started, bool) and math.isfinite(started)):
@@ -78,7 +83,7 @@ class GuardAdapter:
     def save(self, state: pg.GuardState, pending: Optional[Dict[str, Any]]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".json.tmp")
-        body = {"guard": state.to_dict(), "pending_handover": pending}
+        body = {"guard": state.to_dict(), "pending_handover": pending, "failed_at": self._failed_at}
         with open(tmp, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(body, sort_keys=True))
             fh.flush()
@@ -105,6 +110,9 @@ class GuardAdapter:
             if pending is not None:
                 self.event("guard_replace_suppressed", reason="a handover is already pending", label=decision.label)
                 new_state = state                        # the decision did not happen: do not spend the budget
+            elif self._failed_at is not None and 0 <= now - self._failed_at < FAILURE_BACKOFF_S:
+                self.event("guard_replace_backoff", label=decision.label)
+                new_state = state                        # inside the backoff after a failure: no attempt, no budget spent
             else:
                 # Intent is persisted BEFORE the command is sent, so a failure after sending still blocks duplicates.
                 pending = {"cid": None, "started": now, "sid": signals.session_id}
@@ -112,11 +120,13 @@ class GuardAdapter:
                 sent = self.request_handover(signals)
                 if sent.get("sent") is True:
                     pending["cid"] = sent.get("cid")
+                    self._failed_at = None
                     acted = True
                     self.save(new_state, pending)
                     self.event("guard_replace_requested", cid=sent.get("cid"), label=decision.label)
                 else:
                     pending = None
+                    self._failed_at = now
                     new_state = state                    # not sent: the budget is not spent
                     self.save(new_state, pending)
                     self.event("guard_replace_failed", reason=str(sent.get("reason", ""))[:200], label=decision.label)

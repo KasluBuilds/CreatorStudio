@@ -828,7 +828,8 @@ class SupervisorLoop:
             main_alive=alive if isinstance(alive, bool) else None, session_status=status,
             eligible_work=len(picture["items"]), progress_marker=picture["fingerprint"],
             pressure_pct=None,   # not wired yet: context pressure is held by check_pressure, not returned here
-            handoff_verified=self._guard_handoff_verified(sid))
+            # verify only when Main is dead: the check runs git/gh and appends an event each call
+            handoff_verified=self._guard_handoff_verified(sid) if alive is False else False)
 
     def _guard_handoff_verified(self, sid: Optional[str]) -> bool:
         """The same gate replace_main uses: a fresh prepared handoff that handoff.verify_handoff reports safe.
@@ -845,16 +846,24 @@ class SupervisorLoop:
             return False
 
     def _guard_request_handover(self, signals: "guard_loop.Signals") -> Dict[str, Any]:
-        """REPLACE through the existing replacement procedure (replace_main). In attached mode that procedure sends the
-        host's supported "handover" command with the full payload (model, prompt file, handoff id) after re-verifying the
-        handoff, preflighting, and recovering the old session if the new one is not confirmed."""
+        """REPLACE through the existing replacement procedure (replace_main), only in attached mode and only when the
+        operator has opted in with auto_replace_main (the same opt-in the automatic replacement path honours). In attached
+        mode the procedure sends the host's "handover" command with the full payload, after re-verifying the handoff, and
+        recovers the old session if the new one is not confirmed. Success means a genuinely NEW session, never the old one."""
+        if self.attached is None:
+            return {"sent": False, "reason": "guard replacement needs attached mode (the host's handover command)"}
+        if not self.cfg.auto_replace_main:
+            return {"sent": False, "reason": "auto_replace_main is off"}
         sid = signals.session_id
         hid = self.tracker.load(sid)["prepare"].get("handoff_id") if sid else None
         if not (signals.handoff_verified and sid and hid):
             return {"sent": False, "reason": "no verified handoff for the current Main"}
         out = self.replace_main(hid)
-        new_sid = out.get("authoritative_session_id")
-        return {"sent": bool(new_sid), "cid": new_sid, "reason": str(out.get("status") or out.get("reasons") or "")}
+        new_sid = out.get("new_session_id")
+        ok = (out.get("status") in (replacement.ReplacementStatus.REPLACED,
+                                    replacement.ReplacementStatus.REPLACED_OLD_NOT_CLEARED)
+              and isinstance(new_sid, str) and bool(new_sid) and new_sid != sid)
+        return {"sent": ok, "cid": new_sid if ok else None, "reason": str(out.get("status") or out.get("reasons") or "")}
 
     def tick(self) -> Dict[str, Any]:
         self.ticks += 1

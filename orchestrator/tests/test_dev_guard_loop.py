@@ -158,11 +158,15 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(rec.kinds().count("guard_escalation"), 0)
 
     def test_pending_handover_survives_a_restart(self):
-        a, _, _ = adapter(self.dir, Clock(0.0))
-        a.tick(sig(main_alive=False, session_status="idle", handoff_verified=True))
+        a, _, calls_a = adapter(self.dir, Clock(0.0))
+        a.tick(sig(session_id="old"))
+        a.clock = Clock(1.0)
+        a.tick(sig(main_alive=False, session_status="idle", handoff_verified=True, session_id="old"))
+        self.assertEqual(len(calls_a), 1, "the first supervisor sent the handover")
         b, rec, calls = adapter(self.dir, Clock(5.0))
-        b.tick(sig(main_alive=False, session_status="idle", handoff_verified=True))
+        b.tick(sig(main_alive=False, session_status="idle", handoff_verified=True, session_id="old"))
         self.assertEqual(calls, [], "a restarted supervisor must not duplicate a pending handover")
+        self.assertIn("guard_replace_suppressed", rec.kinds())
 
     def test_malformed_state_file_fails_closed(self):
         (self.dir / gl.STATE_FILE).write_text("{not json", encoding="utf-8")
@@ -227,6 +231,7 @@ class CliWiringTests(unittest.TestCase):
 
         class Cfg:
             host_command_timeout_s = 30
+            auto_replace_main = True
 
             def sessions_directory(_s):
                 return self.dir
@@ -239,6 +244,7 @@ class CliWiringTests(unittest.TestCase):
         self.stub.svc = Svc()
         self.stub.cfg = Cfg()
         self.stub.root = self.dir
+        self.stub.attached = object()
         self.stub._handoff_fresh = lambda sid: False
 
         class NoHandoffTracker:
@@ -280,44 +286,76 @@ class CliWiringTests(unittest.TestCase):
             sig_ = self.cli.SupervisorLoop._guard_signals(self.stub, {"session_id": "s"}, True)
         self.assertIsNone(sig_.session_status)
 
-    def test_replace_refused_without_a_verified_handoff(self):
+    def _sig(self, verified=True, sid="old-sid"):
+        return gl.Signals(main_alive=False, session_status="idle", eligible_work=1, progress_marker="m",
+                          pressure_pct=None, handoff_verified=verified, session_id=sid)
+
+    def _tracker(self):
         class Tracker:
             def load(_t, sid):
                 return {"prepare": {"handoff_id": "h1", "prepared_at": 0.0}}
 
         self.stub.tracker = Tracker()
+
+    def test_replace_refused_without_a_verified_handoff(self):
+        self._tracker()
         self.stub.replace_main = mock.Mock(return_value={})
-        sig_ = gl.Signals(main_alive=False, session_status="idle", eligible_work=1, progress_marker="m",
-                          pressure_pct=None, handoff_verified=False, session_id="old-sid")
-        out = self.cli.SupervisorLoop._guard_request_handover(self.stub, sig_)
+        out = self.cli.SupervisorLoop._guard_request_handover(self.stub, self._sig(verified=False))
         self.assertFalse(out["sent"])
         self.stub.replace_main.assert_not_called()
 
-    def test_replace_goes_through_replace_main_with_the_verified_handoff(self):
-        class Tracker:
-            def load(_t, sid):
-                return {"prepare": {"handoff_id": "h1", "prepared_at": 0.0}}
+    def test_replace_refused_outside_attached_mode(self):
+        self._tracker()
+        self.stub.attached = None
+        self.stub.replace_main = mock.Mock(return_value={})
+        out = self.cli.SupervisorLoop._guard_request_handover(self.stub, self._sig())
+        self.assertFalse(out["sent"])
+        self.stub.replace_main.assert_not_called()
 
-        self.stub.tracker = Tracker()
-        self.stub.replace_main = mock.Mock(return_value={"authoritative_session_id": "new-sid", "status": "OK"})
-        sig_ = gl.Signals(main_alive=False, session_status="idle", eligible_work=1, progress_marker="m",
-                          pressure_pct=None, handoff_verified=True, session_id="old-sid")
-        out = self.cli.SupervisorLoop._guard_request_handover(self.stub, sig_)
+    def test_replace_refused_when_auto_replace_main_is_off(self):
+        self._tracker()
+        self.stub.cfg.auto_replace_main = False
+        self.stub.replace_main = mock.Mock(return_value={})
+        out = self.cli.SupervisorLoop._guard_request_handover(self.stub, self._sig())
+        self.assertFalse(out["sent"])
+        self.stub.replace_main.assert_not_called()
+
+    def test_replace_goes_through_replace_main_and_needs_a_new_session(self):
+        self._tracker()
+        self.stub.replace_main = mock.Mock(return_value={"status": "REPLACED", "new_session_id": "new-sid",
+                                                         "authoritative_session_id": "new-sid"})
+        out = self.cli.SupervisorLoop._guard_request_handover(self.stub, self._sig())
         self.assertTrue(out["sent"])
         self.assertEqual(out["cid"], "new-sid")
         self.stub.replace_main.assert_called_once_with("h1")
 
-    def test_a_replacement_that_is_not_confirmed_is_not_reported_as_sent(self):
-        class Tracker:
-            def load(_t, sid):
-                return {"prepare": {"handoff_id": "h1", "prepared_at": 0.0}}
-
-        self.stub.tracker = Tracker()
-        self.stub.replace_main = mock.Mock(return_value={"status": "REFUSED_HANDOFF_NOT_SAFE"})
-        sig_ = gl.Signals(main_alive=False, session_status="idle", eligible_work=1, progress_marker="m",
-                          pressure_pct=None, handoff_verified=True, session_id="old-sid")
-        out = self.cli.SupervisorLoop._guard_request_handover(self.stub, sig_)
+    def test_rolled_back_replacement_is_not_sent_even_with_the_old_session_as_authoritative(self):
+        self._tracker()
+        self.stub.replace_main = mock.Mock(return_value={"status": "ROLLED_BACK", "new_session_id": None,
+                                                         "authoritative_session_id": "old-sid"})
+        out = self.cli.SupervisorLoop._guard_request_handover(self.stub, self._sig())
         self.assertFalse(out["sent"])
+        self.assertIsNone(out["cid"])
+
+    def test_blocked_and_refused_results_are_not_sent(self):
+        self._tracker()
+        for res in ({"status": "BLOCKED", "new_session_id": "x"}, {"status": "REFUSED_HANDOFF_NOT_SAFE"},
+                    {"status": "REPLACED", "new_session_id": "old-sid"}, {"status": "REPLACED", "new_session_id": ""}):
+            with self.subTest(res=res):
+                self.stub.replace_main = mock.Mock(return_value=res)
+                out = self.cli.SupervisorLoop._guard_request_handover(self.stub, self._sig())
+                self.assertFalse(out["sent"])
+
+    def test_handoff_is_verified_only_when_main_is_dead(self):
+        picture = {"items": [], "fingerprint": "fp"}
+        ev = mock.Mock(available=False, value=None)
+        self.stub._guard_handoff_verified = mock.Mock(return_value=True)
+        with mock.patch.object(self.cli.autonomy, "compute_items", return_value=picture),                 mock.patch.object(self.cli, "idle_evidence", return_value=ev),                 mock.patch.object(self.cli, "find_session", return_value=None):
+            alive = self.cli.SupervisorLoop._guard_signals(self.stub, {"session_id": "s"}, True)
+            self.stub._guard_handoff_verified.assert_not_called()
+            dead = self.cli.SupervisorLoop._guard_signals(self.stub, {"session_id": "s"}, False)
+        self.assertFalse(alive.handoff_verified)
+        self.assertTrue(dead.handoff_verified)
 
 class HandoffGateTests(unittest.TestCase):
     """The guard's handoff signal must be the same verification replace_main uses (handoff.verify_handoff)."""
@@ -359,6 +397,34 @@ class HandoffGateTests(unittest.TestCase):
 
     def test_no_session_is_not_verified(self):
         self.assertFalse(self.cli.SupervisorLoop._guard_handoff_verified(self.stub, None))
+
+
+class BackoffTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+
+    def test_failed_replacement_backs_off_then_retries(self):
+        clock = Clock(0.0)
+        a, rec, calls = adapter(self.dir, clock, handover_reply={"sent": False, "reason": "rolled back"})
+        a.tick(sig(session_id="s"))
+        for t in (1.0, 2.0, 100.0):
+            clock.t = t
+            a.tick(sig(main_alive=False, session_status="idle", handoff_verified=True, session_id="s"))
+        self.assertEqual(len(calls), 1, "no new attempt inside the backoff")
+        self.assertIn("guard_replace_backoff", rec.kinds())
+        clock.t = 1.0 + gl.FAILURE_BACKOFF_S + 1
+        a.tick(sig(main_alive=False, session_status="idle", handoff_verified=True, session_id="s"))
+        self.assertEqual(len(calls), 2, "a retry is allowed once the backoff has passed")
+
+    def test_backoff_survives_a_restart(self):
+        a, _, _ = adapter(self.dir, Clock(0.0), handover_reply={"sent": False, "reason": "x"})
+        a.tick(sig(session_id="s"))
+        a.clock = Clock(1.0)
+        a.tick(sig(main_alive=False, session_status="idle", handoff_verified=True, session_id="s"))
+        b, rec, calls = adapter(self.dir, Clock(10.0))
+        b.tick(sig(main_alive=False, session_status="idle", handoff_verified=True, session_id="s"))
+        self.assertEqual(calls, [])
+        self.assertIn("guard_replace_backoff", rec.kinds())
 
 
 if __name__ == "__main__":
