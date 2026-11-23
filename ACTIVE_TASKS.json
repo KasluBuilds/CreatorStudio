@@ -2008,7 +2008,7 @@
     {
       "id": "T-DEV-035",
       "title": "dev_supervisor: deterministic progress guard (idle continuation, non-progress, restart-loop limits)",
-      "description": "A pure, deterministic judge over observed signals (Main liveness, observed session status, observed progress marker, context pressure, eligible-work count). It decides NONE, CONTINUE, HOLD, REPLACE or ESCALATE with cooldowns, a non-progress counter and a replacement budget. State is a plain dict that persists across restarts. It does not start or message any process; the Supervisor loop wires it later.",
+      "description": "A pure, deterministic judge over observed signals. It decides NONE, HOLD, REPLACE or ESCALATE with a lifetime replacement budget and holds that escalate once. Contract changed by T-DEV-036: CONTINUE was removed. An idle Main with eligible work escalates once instead.",
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-035-progress-guard",
       "worktree": "../CreatorStudio-worktrees/t-dev-035-progress-guard",
@@ -2047,13 +2047,14 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-036-guard-contract",
       "worktree": "../CreatorStudio-worktrees/t-dev-036-guard-contract",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-035"
       ],
       "lease": {
         "acquired": "2026-11-24T00:00:00+00:00",
-        "expires": "2026-11-25T00:00:00+00:00"
+        "expires": "2026-11-25T00:00:00+00:00",
+        "released": "2026-11-24T06:00:00+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2071,7 +2072,7 @@
       "test_requirements": [
         "python -B -I -m unittest discover -s tests -p 'test_dev_progress_guard.py' from orchestrator/"
       ],
-      "integration_notes": "Contract change to a merged module (T-DEV-035). Live wiring into SupervisorLoop is a later task."
+      "integration_notes": "Merged as PR #131 (merge commit 7fcddca, head f2b22c5, diff hash c0c54003983f7537). Reviews: six rounds on the original contract change; the last approved the merged diff. Per-file validation on 1db4da5: 3234 tests, no failures. Docs-only follow-up correcting stale window and CONTINUE wording: targeted tests 23 OK, closed under the close-out PR. Live wiring into SupervisorLoop is a separate task."
     }
   ]
 }
