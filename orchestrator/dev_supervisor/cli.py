@@ -845,14 +845,16 @@ class SupervisorLoop:
             return False
 
     def _guard_request_handover(self, signals: "guard_loop.Signals") -> Dict[str, Any]:
-        """Replacement only through the host's supported handover command; the host checks ownership itself."""
+        """REPLACE through the existing replacement procedure (replace_main). In attached mode that procedure sends the
+        host's supported "handover" command with the full payload (model, prompt file, handoff id) after re-verifying the
+        handoff, preflighting, and recovering the old session if the new one is not confirmed."""
         sid = signals.session_id
-        if not (signals.handoff_verified and sid):
+        hid = self.tracker.load(sid)["prepare"].get("handoff_id") if sid else None
+        if not (signals.handoff_verified and sid and hid):
             return {"sent": False, "reason": "no verified handoff for the current Main"}
-        new_sid = self.svc.session_factory()
-        cid = main_host.send_command(self.store, "handover", {"old_session_id": sid, "new_session_id": new_sid},
-                                     float(self.cfg.host_command_timeout_s), supervisor_pid=os.getpid())
-        return {"sent": True, "cid": cid}
+        out = self.replace_main(hid)
+        new_sid = out.get("authoritative_session_id")
+        return {"sent": bool(new_sid), "cid": new_sid, "reason": str(out.get("status") or out.get("reasons") or "")}
 
     def tick(self) -> Dict[str, Any]:
         self.ticks += 1
