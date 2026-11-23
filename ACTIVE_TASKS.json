@@ -258,7 +258,7 @@
       ]
     },
     "AGR-DEV-036-01": {
-      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission directs Main to make the progress guard operational. Under that mandate T-DEV-036 may change progress_guard.py and its test file only. REPORTED: the mission text is the basis.",
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission directs Main to make the progress guard operational. Under that mandate T-DEV-036 may change progress_guard.py and its test file only. T-DEV-035 (closed) shares these paths. REPORTED: the mission text is the basis.",
       "task_ids": [
         "T-DEV-035",
         "T-DEV-036"
@@ -2012,13 +2012,14 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-035-progress-guard",
       "worktree": "../CreatorStudio-worktrees/t-dev-035-progress-guard",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-034"
       ],
       "lease": {
         "acquired": "2026-11-23T20:00:00+00:00",
-        "expires": "2026-11-24T20:00:00+00:00"
+        "expires": "2026-11-24T20:00:00+00:00",
+        "released": "2026-11-23T22:00:00+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2037,7 +2038,7 @@
       "test_requirements": [
         "python -B -I -m unittest discover -s tests -p 'test_dev_progress_guard.py' from orchestrator/"
       ],
-      "integration_notes": "Pure module, no process control. Wiring into SupervisorLoop is a separate task. The same paths are amended by T-DEV-036 under AGR-DEV-036-01."
+      "integration_notes": "Merged as PR #129 (merge commit 6003ff5, head d202755, diff hash 2e6013d3806e3bea). Seven review rounds; the last approved. Per-file validation on the head: 44 files, 3251 tests, no failures. The guard is not yet wired into the Supervisor loop: no process is controlled by it. Open notes: REPLACE ignores escalated; a slow replacement start can spend budget; a long budget hold re-escalates each timeout."
     },
     {
       "id": "T-DEV-036",
