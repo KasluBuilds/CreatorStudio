@@ -69,14 +69,15 @@ class GuardState:
 
     @classmethod
     def from_dict(cls, data: Any) -> "GuardState":
-        """Restore persisted state. Malformed state is FAIL-CLOSED: the result is marked corrupt and decide() refuses
-        to act on it until a human repairs or resets the state. A missing state file is the caller's concern."""
+        """Restore persisted state. Malformed or incomplete state is FAIL-CLOSED: the result is marked corrupt and decide()
+        refuses to act on it until a human repairs or resets the state. A brand-new guard starts from GuardState(), not
+        from an empty dict; a missing state file is the caller's concern."""
         if not isinstance(data, Mapping):
             return cls(corrupt=True)
         out = cls()
         for f in fields(cls):
             if f.name not in data:
-                continue
+                return cls(corrupt=True)   # a complete state always has every key; a truncated one is malformed
             value = data[f.name]
             if f.name in ("was_alive", "escalated", "budget_escalated", "hold_escalated", "corrupt"):
                 ok = isinstance(value, bool)

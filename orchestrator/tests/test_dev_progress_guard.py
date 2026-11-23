@@ -150,8 +150,8 @@ class StatePersistenceTests(unittest.TestCase):
         self.assertEqual(nxt.continuations_without_progress, 3)
 
     def test_malformed_state_is_marked_corrupt_and_fails_closed(self):
-        for bad in (None, [], "x", {"continuations_without_progress": -1}, {"replacements": "no"},
-                    {"was_alive": "yes"}):
+        for bad in (None, [], "x", {}, {"continuations_without_progress": -1}, {"replacements": "no"},
+                    {"was_alive": "yes"}, {"was_alive": True}):
             with self.subTest(bad=bad):
                 st = pg.GuardState.from_dict(bad)
                 self.assertTrue(st.corrupt)
@@ -287,6 +287,18 @@ class ThirdReviewFixTests(unittest.TestCase):
         self.assertEqual(d.action, pg.NONE)
         st, d = pg.decide(st, obs(900), P)
         self.assertEqual(d.action, pg.CONTINUE, "idle time restarted at 500, so 400s has passed")
+
+
+class SixthReviewFixTests(unittest.TestCase):
+    def test_truncated_state_is_corrupt_not_a_silent_reset(self):
+        full = pg.GuardState(continuations_without_progress=3).to_dict()
+        del full["continuations_without_progress"]
+        st = pg.GuardState.from_dict(full)
+        self.assertTrue(st.corrupt)
+
+    def test_complete_state_round_trips_without_corruption(self):
+        st = pg.GuardState(continuations_without_progress=2, last_marker="m")
+        self.assertFalse(pg.GuardState.from_dict(st.to_dict()).corrupt)
 
 
 if __name__ == "__main__":
