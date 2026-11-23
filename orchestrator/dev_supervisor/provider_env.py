@@ -61,7 +61,7 @@ def child_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
 # A worker is never started on Claude Pro through this function: it requires the local OmniRoute gateway and refuses
 # otherwise. Errors name variables that are missing, never their values or the URL.
 # Residual risk (not closed here): a settings.json "env" block could reintroduce provider or base-URL settings that an
-# environment filter cannot see. ANTHROPIC_MODEL is kept on purpose: the dispatcher chooses the model per worker.
+# environment filter cannot see. ANTHROPIC_MODEL is stripped: the spawner passes --model explicitly.
 # ---------------------------------------------------------------------------------------------------------------------
 WORKER_REQUIRED_VARS = ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN")
 WORKER_GATEWAY_FLAGS = {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
@@ -70,7 +70,8 @@ WORKER_GATEWAY_FLAGS = {"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
 WORKER_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 WORKER_SCHEMES = ("http", "https")
 # Direct Anthropic credentials, provider switches and proxies that would send a worker around the gateway.
-_WORKER_STRIPPED = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_UNIX_SOCKET",
+_WORKER_STRIPPED = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_UNIX_SOCKET", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL",
                     "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
 # Only committed project settings are read by workers. User settings (~/.claude/settings.json and its env block) and
 # machine-local settings (.claude/settings.local.json) are excluded: neither is reviewed through a pull request.
@@ -121,7 +122,11 @@ def worker_env(config_dir: Optional[str], base: Optional[Mapping[str, str]] = No
 
     def _drop(name: str) -> bool:
         upper = name.upper()
-        return (upper in PARENT_SESSION_VARS or upper in _WORKER_STRIPPED
+        # Any Anthropic or Claude Code variable that names a model is dropped, including future spellings.
+        model_name_var = "MODEL" in upper and upper.startswith(("ANTHROPIC_", "CLAUDE_CODE_"))
+        # Allowlist for the Anthropic namespace: only the two variables set explicitly below may reach a worker.
+        anthropic_namespace = upper.startswith("ANTHROPIC_")
+        return (upper in PARENT_SESSION_VARS or upper in _WORKER_STRIPPED or model_name_var or anthropic_namespace
                 or upper.startswith(_WORKER_STRIPPED_PREFIXES) or upper.startswith(AUTHORITY_PREFIX)
                 or upper in {f.upper() for f in WORKER_GATEWAY_FLAGS}
                 or upper in {r.upper() for r in WORKER_REQUIRED_VARS})

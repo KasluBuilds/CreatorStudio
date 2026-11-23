@@ -226,6 +226,26 @@
         "orchestrator/dev_supervisor/provider_env.py",
         "orchestrator/tests/test_dev_provider_env.py"
       ]
+    },
+    "AGR-DEV-034-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission directs Main to build the worker spawner. Under that mandate T-DEV-034 may create worker_spawner.py and its test file only. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-034"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/worker_spawner.py",
+        "orchestrator/tests/test_dev_worker_spawner.py"
+      ]
+    },
+    "AGR-DEV-034-02": {
+      "description": "T-DEV-034 hardens the worker environment that T-DEV-033 introduced (provider_env.worker_env and its tests). The Main coordinator mission directs Main to build the worker spawner, which needs these changes. REPORTED: the mission text is the basis; the package owner entry is unchanged.",
+      "task_ids": [
+        "T-DEV-034"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py"
+      ]
     }
   },
   "tasks": [
@@ -1927,6 +1947,41 @@
         "python -B -I -m unittest discover -s tests -p 'test_dev_provider_env.py' from orchestrator/"
       ],
       "integration_notes": "Merged as PR #125 (merge commit b903af7, head daf2fb1, diff hash fd159e34336ab5f0). Six independent review rounds; the last four approved the final diff. Full suite on the merged head: 3169 tests, OK (skipped=5). Claude Code through OmniRoute is NOT verified: a Gemini route dispatched to the gateway with no Pro/OAuth credential, but Claude Code returned an empty result after tool turns. Worker dispatch stays refused. Spawner not yet implemented."
+    },
+    {
+      "id": "T-DEV-034",
+      "title": "dev_supervisor: worker spawner enforcing isolation and verified free routes",
+      "description": "Builds the component that launches a worker claude process. It refuses unless the route is in a verified registry with zero recorded cost, the config directory is worker-owned and not the default, and the gateway environment is valid. It starts claude with worker_claude_args() and the worker environment, and tests run a real subprocess.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-034-worker-spawner",
+      "worktree": "../CreatorStudio-worktrees/t-dev-034-worker-spawner",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-033"
+      ],
+      "lease": {
+        "acquired": "2026-11-23T14:00:00+00:00",
+        "expires": "2026-11-24T14:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-034-01",
+        "AGR-DEV-034-02"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/worker_spawner.py",
+        "orchestrator/tests/test_dev_worker_spawner.py",
+        "orchestrator/dev_supervisor/provider_env.py",
+        "orchestrator/tests/test_dev_provider_env.py"
+      ],
+      "acceptance_criteria": [
+        "spawn refuses for an unverified route, a route with nonzero cost, a default or blank config dir, or an invalid gateway",
+        "a real subprocess receives the worker environment and the isolation arguments"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_worker_spawner.py' from orchestrator/"
+      ],
+      "integration_notes": "Claims two new files. Dispatch flags in dispatch_routing.py are not changed by this task."
     }
   ]
 }
