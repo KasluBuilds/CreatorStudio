@@ -222,9 +222,12 @@ class ClaudeCliLauncher:
         env = self._env_builder(spec)              # fail closed: the default builder raises
         if not isinstance(env, dict) or any(k.upper() in _FORBIDDEN_WORKER_ENV for k in env):
             raise LifecycleError("worker environment carries a direct Anthropic credential: refusing to launch")
-        env = {**env, **spec.env}                  # authority-policy variables are merged last
-        if any(k.upper() in _FORBIDDEN_WORKER_ENV for k in env):
-            raise LifecycleError("worker environment carries a direct Anthropic credential: refusing to launch")
+        for k in spec.env:                         # only the authority-policy variables may be added, never overridden
+            if not isinstance(k, str) or not k.upper().startswith("CS_AUTHORITY_"):
+                raise LifecycleError("launch spec environment may only carry CS_AUTHORITY_ variables: refusing to launch")
+            if any(k.upper() == e.upper() for e in env):
+                raise LifecycleError("launch spec environment may not override the worker environment: refusing to launch")
+        env = {**env, **spec.env}
         args = list(spec.argv[1:])
         sources = [a for a in args if a == "--setting-sources" or a.startswith("--setting-sources=")]
         if sources:

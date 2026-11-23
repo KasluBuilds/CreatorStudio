@@ -618,6 +618,31 @@ class CliTests(Offline):
         code, out = env.cli("workers", "--json")
         self.assertEqual(json.loads(out)["workers"], [])
 
+    def test_a_direct_request_with_a_valid_pair_but_no_registry_creates_no_worker(self):
+        """The loop's own gate (not Supervisor.assign) must refuse: the pair is valid, only the registry is missing."""
+        env = Env(self)
+        env.svc.env = dict(GATEWAY_ENV)
+        cli.enqueue(env.store(), "assign", {"task_id": "T-X-8", "role": "worker", "branch": "lane/x8",
+                                            "worktree": str(env.wt), "owner_stream": "s", "model": "auto/coding",
+                                            "prompt_file": env.prompt_file(), "provider": "gemini"})
+        code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(env.worker_launcher.specs, [])
+        code, out = env.cli("workers", "--json")
+        self.assertEqual(json.loads(out)["workers"], [])
+
+    def test_a_lost_worker_still_counts_toward_the_concurrency_cap(self):
+        """A LOST worker's process may still be alive: it must keep holding the single worker slot."""
+        from dev_supervisor.workers import Worker, WorkerRegistry, WorkerStatus
+        env = Env(self)
+        env.verified_route()
+        reg = WorkerRegistry(env.store())
+        reg.add(Worker(worker_id=reg.new_id(), role="worker", task_id="T-OLD", branch="lane/old", worktree=str(env.wt / "old"),
+                       owner_stream="s", provider="gemini", model="auto/coding", status=WorkerStatus.LOST))
+        code, out = env.cli(*self._assign_args(env))
+        self.assertEqual(code, 1, out)
+        self.assertIn("concurrency cap", out)
+
     def test_loop_spawns_queued_workers_with_configured_permission_mode(self):
         env = Env(self, worker_permission_mode="acceptEdits")
         env.verified_route()

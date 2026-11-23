@@ -484,7 +484,7 @@ class SupervisorLoop:
 
     def _active_worker_count(self) -> int:
         """Workers that are assigned or live: the concurrency cap counts these (T-DEV-032)."""
-        return len(WorkerRegistry(self.store).list(WorkerStatus.ACTIVE))
+        return len(WorkerRegistry(self.store).list(WorkerStatus.ACTIVE + (WorkerStatus.LOST,)))
 
     def process_requests(self) -> List[Dict[str, Any]]:
         results = []
@@ -1155,7 +1155,7 @@ def cmd_assign(svc: Services, a: argparse.Namespace) -> int:
     model, provider = a.model, a.provider
     problems = []
     try:
-        active = len(WorkerRegistry(svc.store(create=False)).list(WorkerStatus.ACTIVE))
+        active = len(WorkerRegistry(svc.store(create=False)).list(WorkerStatus.ACTIVE + (WorkerStatus.LOST,)))
     except StoreError as e:
         active = None
         problems.append(f"worker registry unreadable ({e.__class__.__name__}): refusing to dispatch")

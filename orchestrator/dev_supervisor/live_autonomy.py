@@ -50,6 +50,11 @@ class HarnessRefused(RuntimeError):
     """The harness will not start a real claude process without an isolated, gateway-only environment."""
 
 
+def refuse_claude_model(model: str) -> None:
+    if worker_spawner.is_claude_model(model):
+        raise HarnessRefused("the harness never runs a Claude model; use a verified gateway route")
+
+
 def harness_env(lay: "Layout") -> Dict[str, str]:
     """Environment for EVERY real claude process this harness starts (Main, workers, reviewers): the isolated worker
     environment through the local gateway. It never falls back to the caller's Claude login (T-DEV-032)."""
@@ -771,6 +776,7 @@ def finish_worker(lay: Layout, data: Dict[str, Any], wid: str, rec: Dict[str, An
 
 def launch_request(lay: Layout, req: Dict[str, Any], claude: str, model: str, procs: Dict[str, subprocess.Popen], sup_pid: int) -> None:
     wid, tid = req["worker_id"], req["task"]
+    refuse_claude_model(model)
     env = harness_env(lay)
     sid = str(uuid.uuid4())
     marker = f"cs-live-{wid}"
@@ -817,6 +823,7 @@ def start_main(lay: Layout, data: Dict[str, Any], claude: str, model: str, procs
                resume: bool) -> None:
     main = data.setdefault("main", {})
     sid = main.get("session_id") or str(uuid.uuid4())
+    refuse_claude_model(model)
     inst = policy_for(lay, sid, "main", lay.main, [])
     env = harness_env(lay)
     env.update(inst.env)

@@ -287,5 +287,99 @@ class LaunchPathAudit(unittest.TestCase):
                 live_autonomy.harness_env(lay)
 
 
+class ReviewRound2Tests(Base):
+    """Findings from the independent security review: probes, spec.env, model flags, harness entry points."""
+
+    def test_live_probes_refuse_the_real_runner_and_start_nothing(self):
+        from dev_supervisor import context_monitor, session_policy
+        with self.assertRaises(session_policy.PolicyInstallError):
+            session_policy.live_probe()
+        with self.assertRaises(RuntimeError):
+            context_monitor.live_compaction_probe()
+        buf = __import__("io").StringIO()
+        with mock.patch("sys.stdout", buf):
+            self.assertEqual(session_policy.main(["live-probe", "--yes"]), 2)
+        self.assertIn("refused", buf.getvalue())
+
+    def test_live_probes_still_accept_an_injected_fake_runner(self):
+        from dev_supervisor import context_monitor
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append(argv)
+            return mock.Mock(returncode=0, stdout="", stderr="")
+        res = context_monitor.live_compaction_probe(run=fake_run, turns=1, projects_dir=str(self.state))
+        self.assertEqual(len(calls), 1)
+        self.assertIn("passed", res)
+
+    def spec_with_env(self, env):
+        prompt = self.state / "prompt.md"
+        prompt.write_text("x", encoding="utf-8")
+        return LaunchSpec(argv=build_claude_argv("auto/coding", "00000000-0000-4000-8000-000000000003"),
+                          cwd=str(self.state), stdin_path=str(prompt), stdout_path=str(self.state / "o"),
+                          stderr_path=str(self.state / "e"), max_runtime_s=1, env=env)
+
+    def test_spec_env_may_only_add_authority_variables_and_never_override(self):
+        write_registry(self.state, [route()])
+        FakePopen.calls = []
+        for bad in ({"ANTHROPIC_BASE_URL": "https://api.example.com"}, {"ANTHROPIC_AUTH_TOKEN": "x"},
+                    {"ANTHROPIC_MODEL": "claude-opus-5-5"}, {"CLAUDE_CONFIG_DIR": "C:/Users/x/.claude"},
+                    {"CLAUDE_CODE_USE_BEDROCK": "1"}, {"claude_config_dir": "C:/x"}, {"PATH": "evil"}):
+            with self.subTest(env=sorted(bad)):
+                la = dr.make_worker_launcher("claude", self.state, dict(GATEWAY))
+                la._which, la._popen = (lambda n: "/fake/bin/claude"), FakePopen
+                with self.assertRaises(LifecycleError):
+                    la.launch(self.spec_with_env(bad))
+        la = dr.make_worker_launcher("claude", self.state, dict(GATEWAY))
+        la._which, la._popen = (lambda n: "/fake/bin/claude"), FakePopen
+        la.launch(self.spec_with_env({"CS_AUTHORITY_REPO_ROOT": "X"}))
+        self.assertEqual(len(FakePopen.calls), 1, "only the authorised launch started a process")
+        self.assertEqual(FakePopen.calls[0][1]["env"]["CS_AUTHORITY_REPO_ROOT"], "X")
+
+    def test_a_cs_authority_key_cannot_override_a_builder_value_in_another_case(self):
+        FakePopen.calls = []
+        la = ClaudeCliLauncher(which=lambda n: "/fake/bin/claude", popen=FakePopen,
+                               env_builder=lambda spec: {"PATH": "p", "CS_AUTHORITY_X": "builder"})
+        with self.assertRaises(LifecycleError):
+            la.launch(self.spec_with_env({"cs_authority_x": "spec"}))
+        self.assertEqual(FakePopen.calls, [])
+
+    def test_exactly_one_model_flag_is_required(self):
+        write_registry(self.state, [route()])
+        b = dr.make_worker_env_builder(self.state, dict(GATEWAY))
+        base = self.spec_with_env({})
+        for argv in (base.argv + ["--model", "sonnet"], base.argv + ["--model=sonnet"],
+                     [a for a in base.argv if a not in ("--model", "auto/coding")]):
+            with self.subTest(argv=argv[-3:]):
+                spec = self.spec_with_env({})
+                spec.argv = argv
+                with self.assertRaises(LifecycleError):
+                    b(spec)
+
+    def test_harness_launch_functions_refuse_claude_models_before_starting_anything(self):
+        lay = mock.Mock(root=Path(tempfile.mkdtemp()))
+        with mock.patch.object(live_autonomy.subprocess, "Popen") as popen, \
+                mock.patch.dict(os.environ, dict(GATEWAY), clear=True):
+            with self.assertRaises(live_autonomy.HarnessRefused):
+                live_autonomy.launch_request(lay, {"worker_id": "w1", "task": "T", "kind": "worker"}, "claude", "haiku", {}, 1)
+            with self.assertRaises(live_autonomy.HarnessRefused):
+                live_autonomy.start_main(lay, {}, "claude", "claude-opus-5-5", {}, 1, False)
+        popen.assert_not_called()
+
+    def test_run_live_refuses_a_claude_model(self):
+        import argparse
+        lay = mock.Mock(root=Path(tempfile.mkdtemp()))
+        buf = __import__("io").StringIO()
+        with mock.patch("sys.stderr", buf):
+            rc = live_autonomy.run_live(lay, argparse.Namespace(model="haiku", claude="claude"))
+        self.assertEqual(rc, 2)
+        self.assertIn("never runs a Claude model", buf.getvalue())
+
+    def test_project_settings_check_covers_login_and_model_routing_keys(self):
+        from dev_supervisor import session_policy
+        for key in ("gcpAuthRefresh", "forceLoginMethod", "forceLoginOrgUUID", "modelOverrides", "env", "apiKeyHelper"):
+            self.assertIn(key, session_policy.FORBIDDEN_PROJECT_KEYS)
+
+
 if __name__ == "__main__":
     unittest.main()

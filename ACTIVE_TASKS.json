@@ -294,7 +294,8 @@
         "orchestrator/tests/test_dev_lifecycle.py",
         "orchestrator/tests/test_dev_loop_repair.py",
         "orchestrator/tests/test_dev_acceptance.py",
-        "orchestrator/tests/test_dev_standing_autonomy.py"
+        "orchestrator/tests/test_dev_standing_autonomy.py",
+        "orchestrator/dev_supervisor/context_monitor.py"
       ]
     }
   },
@@ -1962,7 +1963,8 @@
         "orchestrator/tests/test_dev_lifecycle.py",
         "orchestrator/tests/test_dev_loop_repair.py",
         "orchestrator/tests/test_dev_acceptance.py",
-        "orchestrator/tests/test_dev_standing_autonomy.py"
+        "orchestrator/tests/test_dev_standing_autonomy.py",
+        "orchestrator/dev_supervisor/context_monitor.py"
       ],
       "acceptance_criteria": [
         "missing or unverified routes prevent both assignment and spawning, and a rejected launch creates no child process",

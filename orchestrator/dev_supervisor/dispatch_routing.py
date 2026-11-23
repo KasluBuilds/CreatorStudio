@@ -101,8 +101,9 @@ def make_worker_env_builder(state_dir: PathLike, base_env: Optional[Mapping[str,
     command line and returns the isolated worker environment, or raises LifecycleError (fail closed)."""
     def build(spec: LaunchSpec) -> Dict[str, str]:
         argv = list(spec.argv)
-        if "--model" not in argv or argv.index("--model") + 1 >= len(argv):
-            raise LifecycleError("worker launch has no --model: refusing")
+        if argv.count("--model") != 1 or any(a.startswith("--model=") for a in argv) \
+                or argv.index("--model") + 1 >= len(argv):
+            raise LifecycleError("worker launch needs exactly one --model: refusing")
         model = argv[argv.index("--model") + 1]
         try:
             routes = worker_spawner.load_verified_routes(registry_path(state_dir))
