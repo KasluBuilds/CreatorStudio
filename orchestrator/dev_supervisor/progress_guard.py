@@ -61,6 +61,7 @@ class GuardState:
     escalated: bool = False
     budget_escalated: bool = False
     held_since: Optional[float] = None
+    hold_escalated: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {f.name: getattr(self, f.name) for f in fields(self)}
@@ -75,7 +76,7 @@ class GuardState:
             if f.name not in data:
                 continue
             value = data[f.name]
-            if f.name in ("was_alive", "escalated", "budget_escalated"):
+            if f.name in ("was_alive", "escalated", "budget_escalated", "hold_escalated"):
                 ok = isinstance(value, bool)
             elif f.name == "continuations_without_progress":
                 ok = isinstance(value, int) and not isinstance(value, bool) and value >= 0
@@ -96,6 +97,18 @@ class Decision:
     action: str
     label: str        # the observed condition: NOT_RUNNING, CRASHED, UNKNOWN, BUSY, IDLE, EXHAUSTED, ESCALATED
     reason: str
+
+
+def _normalised(obs: Observation) -> Observation:
+    """Strict observation: non-finite or non-numeric readings become unobserved (None); flags must be exact booleans."""
+    alive = obs.main_alive if isinstance(obs.main_alive, bool) else None
+    status = obs.session_status if isinstance(obs.session_status, str) else None
+    marker = obs.progress_marker if isinstance(obs.progress_marker, str) else None
+    work = obs.eligible_work if (isinstance(obs.eligible_work, int) and not isinstance(obs.eligible_work, bool)
+                                 and obs.eligible_work >= 0) else None
+    pressure = obs.pressure_pct if _finite_number(obs.pressure_pct) else None
+    return Observation(now=obs.now, main_alive=alive, session_status=status, progress_marker=marker,
+                       eligible_work=work, pressure_pct=pressure, handoff_verified=obs.handoff_verified is True)
 
 
 def _finite_number(v: Any) -> bool:
@@ -131,6 +144,9 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
 
     if not _finite_number(obs.now):
         return st, Decision(NONE, "UNKNOWN", "observation time is not a finite number")
+    obs = _normalised(obs)
+    if obs.main_alive is None and obs.progress_marker is None and obs.session_status is None:
+        st.idle_since = None
 
     # Idle continuity: unbroken only while every signal is observed and eligible work exists. Any other tick restarts it.
     continuous = (obs.main_alive is True and obs.session_status == "idle" and obs.progress_marker is not None
@@ -139,9 +155,9 @@ def decide(state: GuardState, obs: Observation, policy: Policy = Policy()) -> "t
         st.idle_since = None
 
     if obs.main_alive is None:
-        return st, Decision(NONE, "UNKNOWN", "Main liveness not observed")
+        return st, Decision(NONE, "UNKNOWN", "Main liveness not observed or not a boolean")
 
-    if not obs.main_alive:
+    if obs.main_alive is False:
         if st.was_alive:
             # stays "was alive" while dead: a held crash is re-evaluated later; the replacement budget bounds it
             return st, _hold_or_act(st, obs, policy, "CRASHED", _replace_or_hold(st, obs, policy, "CRASHED"))
@@ -195,10 +211,11 @@ def _hold_or_act(st: GuardState, obs: Observation, policy: Policy, label: str, d
     """A held condition that lasts past the hold timeout escalates once; a held condition is never silent forever."""
     if d.action != HOLD:
         st.held_since = None
+        st.hold_escalated = False
         return d
     if st.held_since is None:
         st.held_since = obs.now
-    if obs.now - st.held_since >= policy.hold_escalate_s and not st.escalated:
-        st.escalated = True
+    if obs.now - st.held_since >= policy.hold_escalate_s and not st.hold_escalated:
+        st.hold_escalated = True
         return Decision(ESCALATE, label, "held longer than the hold timeout; escalating for a human: " + d.reason)
     return d

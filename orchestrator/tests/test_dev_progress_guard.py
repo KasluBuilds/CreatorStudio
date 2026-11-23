@@ -201,7 +201,7 @@ class ReviewFixTests(unittest.TestCase):
 
 
 class SecondReviewFixTests(unittest.TestCase):
-    def test_busy_at_pressure_breaks_idle_continuity(self):
+    def test_busy_breaks_idle_continuity_even_with_pressure_reading(self):
         seq = [obs(0), obs(100, session_status="busy", pressure_pct=10.0),
                obs(110, pressure_pct=10.0), obs(305, pressure_pct=10.0)]
         _, ds = run(seq)
@@ -231,6 +231,38 @@ class SecondReviewFixTests(unittest.TestCase):
             st, d = pg.decide(st, o, p)
             actions.append(d.action)
         self.assertEqual(actions, [pg.NONE, pg.HOLD, pg.HOLD, pg.ESCALATE, pg.HOLD])
+
+
+class ThirdReviewFixTests(unittest.TestCase):
+    def test_non_finite_pressure_never_replaces(self):
+        for bad in (float("inf"), float("nan")):
+            with self.subTest(pressure=bad):
+                _, d = pg.decide(pg.GuardState(), obs(0, pressure_pct=bad, session_status="idle",
+                                                      handoff_verified=True), P)
+                self.assertNotEqual(d.action, pg.REPLACE)
+
+    def test_infinite_eligible_work_never_continues(self):
+        seq = [obs(0, eligible_work=float("inf")), obs(1000, eligible_work=float("inf"))]
+        _, ds = run(seq)
+        self.assertTrue(all(d.action == pg.NONE for d in ds))
+
+    def test_truthy_non_boolean_liveness_is_not_dead(self):
+        _, d = pg.decide(pg.GuardState(), obs(0, main_alive=0, session_status="idle", handoff_verified=True), P)
+        self.assertNotEqual(d.action, pg.REPLACE)
+        self.assertEqual(d.action, pg.NONE)
+
+    def test_truthy_non_boolean_handoff_is_not_verified(self):
+        st = pg.GuardState(was_alive=True)
+        _, d = pg.decide(st, obs(0, main_alive=False, session_status="idle", handoff_verified=1), P)
+        self.assertNotEqual(d.action, pg.REPLACE)
+
+    def test_hold_escalation_not_suppressed_by_earlier_non_progress_escalation(self):
+        p = pg.Policy(hold_escalate_s=100.0)
+        st = pg.GuardState(escalated=True, was_alive=True)
+        _, d1 = pg.decide(st, obs(0, main_alive=False, session_status="idle", handoff_verified=False), p)
+        st2, d2 = pg.decide(st, obs(0, main_alive=False, session_status="idle", handoff_verified=False), p)
+        st2, d3 = pg.decide(st2, obs(200, main_alive=False, session_status="idle", handoff_verified=False), p)
+        self.assertEqual(d3.action, pg.ESCALATE)
 
 
 if __name__ == "__main__":
