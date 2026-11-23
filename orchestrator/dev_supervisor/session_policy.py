@@ -408,8 +408,8 @@ def parse_probe_transcript(lines: Sequence[str]) -> Dict[str, Any]:
 
 
 def live_probe(claude: str = "claude", model: str = "haiku", python: Optional[str] = None,
-               run: Callable[..., Any] = subprocess.run, workdir: Optional[str] = None) -> Dict[str, Any]:
-    if run is subprocess.run:
+               run: Optional[Callable[..., Any]] = None, workdir: Optional[str] = None) -> Dict[str, Any]:
+    if run is None or run is subprocess.run:
         # The probe starts a real claude from the caller's environment (the Claude login) with a Claude model.
         # Workers and probes never do that (T-DEV-032); a test may inject a fake runner.
         raise PolicyInstallError("live probe refused: it would start claude on the caller's Claude login; "

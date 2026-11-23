@@ -105,12 +105,17 @@ def make_worker_env_builder(state_dir: PathLike, base_env: Optional[Mapping[str,
                 or argv.index("--model") + 1 >= len(argv):
             raise LifecycleError("worker launch needs exactly one --model: refusing")
         model = argv[argv.index("--model") + 1]
+        provider = spec.provider
+        if not isinstance(provider, str) or not provider.strip() or provider.strip().lower() == "anthropic":
+            raise LifecycleError("the worker record has no usable provider (never anthropic): refusing to launch")
         try:
             routes = worker_spawner.load_verified_routes(registry_path(state_dir))
         except worker_spawner.SpawnRefused as exc:
             raise LifecycleError("verified-route registry unavailable: refusing to launch (" + str(exc) + ")") from None
-        if worker_spawner.is_claude_model(model) or not any(r.model == model and r.cost_zero is True for r in routes):
-            raise LifecycleError("the worker model is not a verified zero-cost route: refusing to launch")
+        # The (provider, model) PAIR must be verified: a restarted old record cannot ride on another provider's route.
+        if worker_spawner.is_claude_model(model) or not any(
+                r.model == model and r.provider == provider and r.cost_zero is True for r in routes):
+            raise LifecycleError("the worker provider and model are not a verified zero-cost route: refusing to launch")
         cfg = worker_config_dir(state_dir)
         try:
             env = provider_env.worker_env(str(cfg), base_env)

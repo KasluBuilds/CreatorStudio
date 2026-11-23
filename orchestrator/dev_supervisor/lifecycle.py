@@ -98,6 +98,7 @@ class LaunchSpec:
     stderr_path: str
     max_runtime_s: float
     env: Dict[str, str] = field(default_factory=dict)   # extra child environment (authority policy), merged last
+    provider: str = ""                                  # the worker's recorded provider; the launch gate checks the pair
 
 
 @dataclass
@@ -186,6 +187,13 @@ def build_claude_argv(model: str, session_id: str, executable: str = "claude",
 _FORBIDDEN_WORKER_ENV = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
 
 
+def _forbidden_worker_env(name: str) -> bool:
+    """A direct Anthropic credential or login variable: never allowed in a worker environment, in any spelling."""
+    up = name.upper()
+    return (up in _FORBIDDEN_WORKER_ENV or "OAUTH" in up or up.endswith("API_KEY") or up.endswith("_API_KEY_FILE_DESCRIPTOR")
+            or up.startswith("CLAUDE_CODE_USE_"))
+
+
 def _no_worker_env(spec: "LaunchSpec") -> Dict[str, str]:
     """Default environment builder: there is none. A launcher built without an explicit, safe builder refuses to start a
     worker, so a worker can never fall back to the supervisor's own (Claude Pro) environment."""
@@ -220,7 +228,7 @@ class ClaudeCliLauncher:
         if not spec.argv or any(not isinstance(a, str) for a in spec.argv):
             raise LifecycleError("argv must be a non-empty list of strings")
         env = self._env_builder(spec)              # fail closed: the default builder raises
-        if not isinstance(env, dict) or any(k.upper() in _FORBIDDEN_WORKER_ENV for k in env):
+        if not isinstance(env, dict) or any(_forbidden_worker_env(k) for k in env):
             raise LifecycleError("worker environment carries a direct Anthropic credential: refusing to launch")
         for k in spec.env:                         # only the authority-policy variables may be added, never overridden
             if not isinstance(k, str) or not k.upper().startswith("CS_AUTHORITY_"):
@@ -428,7 +436,7 @@ class Supervisor:
         d = self._log_dir(w)
         return LaunchSpec(argv=argv, cwd=w.worktree, stdin_path=str(w.prompt_file),
                           stdout_path=str(self.stdout_path(w)), stderr_path=str(d / f"run-{w.restart_count}.stderr.log"),
-                          max_runtime_s=self.policy.max_runtime_s)
+                          max_runtime_s=self.policy.max_runtime_s, provider=w.provider)
 
     def spawn(self, worker_id: str) -> Worker:
         w = self.registry.get(worker_id)

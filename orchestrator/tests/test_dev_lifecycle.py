@@ -662,6 +662,12 @@ class TestWorkerLaunchSafety(Base):
                              owner_stream="o", model=model, prompt_file=str(self.prompt), provider=provider)
                 self.assertEqual(s.registry.list(), [], "a refused assignment must create no worker record")
 
+    def test_the_launch_spec_carries_the_workers_recorded_provider(self):
+        s = self.sup()
+        w = self.assign(s)
+        w.session_id = str(uuid.UUID(int=9))                  # a worker gets its session id at launch
+        self.assertEqual(s.build_spec(w).provider, "gemini")
+
     def test_assign_requires_an_explicit_provider(self):
         s = self.sup()
         with self.assertRaises(TypeError):

@@ -112,7 +112,7 @@ class DecideTests(Base):
 class EnvBuilderTests(Base):
     def spec(self, model="auto/coding"):
         return LaunchSpec(argv=build_claude_argv(model, "00000000-0000-4000-8000-000000000001"), cwd=str(self.state),
-                          stdin_path="x", stdout_path="y", stderr_path="z", max_runtime_s=1)
+                          stdin_path="x", stdout_path="y", stderr_path="z", max_runtime_s=1, provider="gemini")
 
     def test_builds_the_isolated_environment_and_the_worker_config_dir(self):
         write_registry(self.state, [route()])
@@ -164,7 +164,7 @@ class LauncherTests(Base):
         prompt.write_text("x", encoding="utf-8")
         return LaunchSpec(argv=build_claude_argv(model, "00000000-0000-4000-8000-000000000002"), cwd=str(self.state),
                           stdin_path=str(prompt), stdout_path=str(self.state / "o"), stderr_path=str(self.state / "e"),
-                          max_runtime_s=1)
+                          max_runtime_s=1, provider="gemini")
 
     def launcher(self, env=None):
         la = dr.make_worker_launcher("claude", self.state, env if env is not None else dict(GATEWAY))
@@ -241,24 +241,37 @@ class LaunchPathAudit(unittest.TestCase):
 
     @classmethod
     def calls(cls):
-        out = {"popen": {}, "launcher": {}, "child_env": {}}
+        out = {"popen": {}, "launcher": {}, "child_env": {}, "run_defaults": {}, "imports": {}}
         for f in sorted(PKG.glob("*.py")):
             tree = ast.parse(f.read_text(encoding="utf-8"))
             for n in ast.walk(tree):
-                if not isinstance(n, ast.Call):
-                    continue
-                fn = n.func
-                name = (ast.unparse(fn.value) + "." + fn.attr) if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
-                if name in ("subprocess.Popen", "Popen"):
-                    out["popen"].setdefault(f.name, []).append(n.lineno)
-                if name == "ClaudeCliLauncher":
-                    out["launcher"].setdefault(f.name, []).append(n.lineno)
-                if name in ("provider_env.child_env", "child_env"):
-                    out["child_env"].setdefault(f.name, []).append(n.lineno)
+                if isinstance(n, ast.Call):
+                    fn = n.func
+                    last = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+                    full = (ast.unparse(fn.value) + "." + fn.attr) if isinstance(fn, ast.Attribute) else last
+                    if last == "Popen":
+                        out["popen"].setdefault(f.name, []).append(n.lineno)
+                    if last == "ClaudeCliLauncher":
+                        out["launcher"].setdefault(f.name, []).append(n.lineno)
+                    if full in ("provider_env.child_env", "child_env"):
+                        out["child_env"].setdefault(f.name, []).append(n.lineno)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for d in list(n.args.defaults) + [x for x in n.args.kw_defaults if x is not None]:
+                        if ast.unparse(d) in ("subprocess.run", "subprocess.Popen"):
+                            out["run_defaults"].setdefault(f.name, set()).add(n.name)
+                if isinstance(n, ast.ImportFrom) and n.module == "subprocess":
+                    if any(a.name in ("Popen", "run", "call", "check_call", "check_output") for a in n.names):
+                        out["imports"].setdefault(f.name, []).append(n.lineno)
+                if isinstance(n, ast.Import) and any(a.name == "subprocess" and a.asname for a in n.names):
+                    out["imports"].setdefault(f.name, []).append(n.lineno)
         return out
 
     def test_only_reviewed_modules_call_popen_directly(self):
         self.assertEqual(sorted(self.calls()["popen"]), ["live_autonomy.py", "worker_spawner.py"])
+
+    def test_no_module_imports_a_subprocess_function_by_name_or_aliases_subprocess(self):
+        """`from subprocess import Popen` or `import subprocess as sp` would hide a launch from the audit."""
+        self.assertEqual(self.calls()["imports"], {})
 
     def test_claude_cli_launcher_is_constructed_in_exactly_one_production_place(self):
         self.assertEqual(sorted(self.calls()["launcher"]), ["dispatch_routing.py"])
@@ -266,6 +279,15 @@ class LaunchPathAudit(unittest.TestCase):
     def test_the_claude_login_environment_is_used_only_by_the_main_launch_paths(self):
         """child_env defaults to Claude Pro. Main is meant to run on it; no worker module may use it."""
         self.assertEqual(sorted(self.calls()["child_env"]), ["launch.py", "main_host.py"])
+
+    def test_functions_that_default_to_a_real_process_runner_are_the_reviewed_ones(self):
+        """A function defaulting to subprocess.run/Popen can start a process without a visible call. Every one is listed;
+        adding another must be a reviewed decision. The two probes that used to start claude default to None now."""
+        got = {k: sorted(v) for k, v in self.calls()["run_defaults"].items()}
+        self.assertNotIn("live_probe", got.get("session_policy.py", []))
+        self.assertNotIn("live_compaction_probe", got.get("context_monitor.py", []))
+        self.assertEqual(sorted(got), ["context_monitor.py", "handoff.py", "launch.py", "lifecycle.py", "main_host.py",
+                                       "resolve_discovery.py", "session_policy.py"])
 
     def test_the_launcher_has_no_default_environment(self):
         self.assertIs(ClaudeCliLauncher.__init__.__defaults__[3], lifecycle._no_worker_env)
@@ -317,7 +339,7 @@ class ReviewRound2Tests(Base):
         prompt.write_text("x", encoding="utf-8")
         return LaunchSpec(argv=build_claude_argv("auto/coding", "00000000-0000-4000-8000-000000000003"),
                           cwd=str(self.state), stdin_path=str(prompt), stdout_path=str(self.state / "o"),
-                          stderr_path=str(self.state / "e"), max_runtime_s=1, env=env)
+                          stderr_path=str(self.state / "e"), max_runtime_s=1, env=env, provider="gemini")
 
     def test_spec_env_may_only_add_authority_variables_and_never_override(self):
         write_registry(self.state, [route()])
@@ -343,6 +365,50 @@ class ReviewRound2Tests(Base):
         with self.assertRaises(LifecycleError):
             la.launch(self.spec_with_env({"cs_authority_x": "spec"}))
         self.assertEqual(FakePopen.calls, [])
+
+    def test_the_provider_and_model_pair_must_be_verified_at_launch(self):
+        """A restarted or recovered old record cannot ride on another provider's verified route."""
+        write_registry(self.state, [route(model="auto/coding", provider="gemini")])
+        FakePopen.calls = []
+        for provider in ("anthropic", "Anthropic", "groq", "", "  "):
+            with self.subTest(provider=provider):
+                spec = self.spec_with_env({})
+                spec.provider = provider
+                la = dr.make_worker_launcher("claude", self.state, dict(GATEWAY))
+                la._which, la._popen = (lambda n: "/fake/bin/claude"), FakePopen
+                with self.assertRaises(LifecycleError):
+                    la.launch(spec)
+        self.assertEqual(FakePopen.calls, [], "no process for an unverified provider and model pair")
+        la = dr.make_worker_launcher("claude", self.state, dict(GATEWAY))
+        la._which, la._popen = (lambda n: "/fake/bin/claude"), FakePopen
+        la.launch(self.spec_with_env({}))                          # the verified pair does launch
+        self.assertEqual(len(FakePopen.calls), 1)
+
+    def test_a_spec_without_a_provider_is_refused(self):
+        write_registry(self.state, [route()])
+        spec = self.spec_with_env({})
+        spec.provider = ""
+        with self.assertRaises(LifecycleError):
+            dr.make_worker_env_builder(self.state, dict(GATEWAY))(spec)
+
+    def test_more_credential_and_login_variables_are_refused_in_any_spelling(self):
+        FakePopen.calls = []
+        for name in ("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "claude_code_oauth_token_file_descriptor", "OPENAI_API_KEY",
+                     "x_api_key", "CLAUDE_CODE_USE_VERTEX"):
+            with self.subTest(name=name):
+                la = ClaudeCliLauncher(which=lambda n: "/fake/bin/claude", popen=FakePopen,
+                                       env_builder=lambda spec, n=name: {"PATH": "p", n: "x"})
+                with self.assertRaises(LifecycleError):
+                    la.launch(self.spec_with_env({}))
+        self.assertEqual(FakePopen.calls, [])
+
+    def test_probes_refuse_when_no_runner_is_injected_even_if_subprocess_run_is_patched(self):
+        from dev_supervisor import context_monitor, session_policy
+        with mock.patch.object(session_policy.subprocess, "run", lambda *a, **k: self.fail("a process was started")):
+            with self.assertRaises(session_policy.PolicyInstallError):
+                session_policy.live_probe()
+            with self.assertRaises(RuntimeError):
+                context_monitor.live_compaction_probe()
 
     def test_exactly_one_model_flag_is_required(self):
         write_registry(self.state, [route()])

@@ -219,11 +219,11 @@ _PROBE_TOPICS = ("rivers", "bridges", "bread", "clocks", "lighthouses", "orchard
 
 
 def live_compaction_probe(claude: str = "claude", model: str = "haiku", turns: int = 4,
-                          run: Callable[..., Any] = subprocess.run, projects_dir: Optional[Any] = None,
+                          run: Optional[Callable[..., Any]] = None, projects_dir: Optional[Any] = None,
                           workdir: Optional[str] = None, timeout: float = 300.0) -> Dict[str, Any]:
     """A throwaway headless session: CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=1 makes Claude Code compact itself at 1% of the
     window, so a few turns must produce a ``compact_boundary`` record. Reports where it was seen."""
-    if run is subprocess.run:
+    if run is None or run is subprocess.run:
         # Starting claude from the caller's environment would use the Claude login (T-DEV-032): refused.
         raise RuntimeError("live compaction probe refused: it would start claude on the caller's Claude login")
     work = Path(workdir or tempfile.mkdtemp(prefix="cs-compaction-probe-"))
