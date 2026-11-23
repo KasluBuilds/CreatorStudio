@@ -1955,13 +1955,14 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-034-worker-spawner",
       "worktree": "../CreatorStudio-worktrees/t-dev-034-worker-spawner",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-033"
       ],
       "lease": {
         "acquired": "2026-11-23T14:00:00+00:00",
-        "expires": "2026-11-24T14:00:00+00:00"
+        "expires": "2026-11-24T14:00:00+00:00",
+        "released": "2026-11-23T18:00:00+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -1981,7 +1982,7 @@
       "test_requirements": [
         "python -B -I -m unittest discover -s tests -p 'test_dev_worker_spawner.py' from orchestrator/"
       ],
-      "integration_notes": "Claims two new files. Dispatch flags in dispatch_routing.py are not changed by this task."
+      "integration_notes": "Merged as PR #127 (merge commit a3afbf0, head db15f31, diff hash 30c31adb634cb92c). Twelve review rounds; the last approved the final diff. Per-file validation on the head: 43 of 43 files, 3211 tests, no failures. Worker dispatch remains refused: Claude Code through OmniRoute is not verified end to end (tool-result turn returns 503 on the tested route). Open items: the public builder omits spawn-only checks; those checks lack spawn_worker tests; hard links are not handled; bare claude resolution is limited to claude.exe in absolute PATH entries."
     }
   ]
 }
