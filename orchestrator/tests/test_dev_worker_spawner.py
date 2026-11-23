@@ -319,5 +319,35 @@ class SpawnerRound7Tests(unittest.TestCase):
             ws.build_worker_command(ROUTE, tmp, str(tmp / "c"), "x", 5, GOOD)
 
 
+class SpawnerRound8Tests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.work = self.tmp / "wt"
+        self.work.mkdir()
+        self.cfg = str(self.tmp / "cfg")
+
+    def test_non_mapping_base_env_refused(self):
+        with self.assertRaises(ws.SpawnRefused):
+            ws.build_worker_command(ROUTE, self.work, self.cfg, "x", [ROUTE], "not-a-mapping")
+
+    def test_non_string_gateway_value_refused_not_raw(self):
+        with self.assertRaises(ws.SpawnRefused):
+            ws.build_worker_command(ROUTE, self.work, self.cfg, "x", [ROUTE], dict(GOOD, ANTHROPIC_AUTH_TOKEN=123))
+
+    def test_missing_registry_path_refused(self):
+        with self.assertRaises(ws.SpawnRefused):
+            ws.spawn_worker(ROUTE, self.work, self.cfg, "x", None, self.tmp / "log.txt", base_env=GOOD)
+
+    def test_nul_in_config_dir_refused(self):
+        with self.assertRaises(ws.SpawnRefused):
+            ws.build_worker_command(ROUTE, self.work, "c" + chr(0) + "fg", "x", [ROUTE], GOOD)
+
+    def test_executable_inside_worktree_refused(self):
+        planted = self.work / "claude.exe"
+        planted.write_text("x", encoding="utf-8")
+        with self.assertRaises(ws.SpawnRefused):
+            ws._resolve_executable(str(planted), self.work)
+
+
 if __name__ == "__main__":
     unittest.main()

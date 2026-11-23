@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import unicodedata
 from dataclasses import dataclass
@@ -77,6 +78,8 @@ def _is_claude_model(model: str) -> bool:
 
 
 def _refuse_config_dir(config_dir: Optional[str]) -> str:
+    if config_dir is not None and chr(0) in str(config_dir):
+        raise SpawnRefused("config directory contains an invalid character")
     if config_dir is None or not str(config_dir).strip():
         raise SpawnRefused("a worker-owned config directory is required")
     cfg = Path(str(config_dir).strip()).expanduser().resolve()
@@ -86,11 +89,21 @@ def _refuse_config_dir(config_dir: Optional[str]) -> str:
     return str(cfg)
 
 
+def _fail_closed(fn, *args):
+    """Run a builder; any exception other than SpawnRefused becomes SpawnRefused (fail closed, no raw errors)."""
+    try:
+        return fn(*args)
+    except SpawnRefused:
+        raise
+    except Exception as exc:  # noqa: BLE001 - deliberate: every unexpected input is a refusal
+        raise SpawnRefused("worker input was rejected (" + type(exc).__name__ + ")") from None
+
+
 def build_worker_command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
                          verified: Sequence[VerifiedRoute], base_env: Optional[Mapping[str, str]] = None
                          ) -> Tuple[List[str], Dict[str, str], Path]:
     """Return (argv, env, cwd) for the production ``claude`` worker, or raise SpawnRefused. Pure: starts nothing."""
-    return _command(route, worktree, config_dir, prompt, verified, base_env, CLAUDE_EXECUTABLE)
+    return _fail_closed(_command, route, worktree, config_dir, prompt, verified, base_env, CLAUDE_EXECUTABLE)
 
 
 def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
@@ -145,14 +158,25 @@ def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], pr
     return argv, env, cwd
 
 
-def spawn_worker(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
-                 registry_path: Path, log_path: Path, base_env: Optional[Mapping[str, str]] = None) -> subprocess.Popen:
-    """Start the production worker. The verified list is read from ``registry_path`` here, not supplied by a caller.
+def _resolve_executable(name: str, worktree: Path) -> str:
+    """Absolute path of the claude executable. Refused when it resolves inside the worktree (a planted binary)."""
+    found = shutil.which(name)
+    if not found:
+        raise SpawnRefused("claude executable was not found on PATH")
+    resolved = Path(found).resolve()
+    wt = Path(worktree).resolve()
+    if resolved == wt or wt in resolved.parents:
+        raise SpawnRefused("claude executable resolves inside the worktree")
+    return str(resolved)
 
-    Output goes to ``log_path``, which must not sit inside the worktree or the worker config directory. stdin is closed.
-    """
+
+def _spawn(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
+           registry_path: Path, log_path: Path, base_env: Optional[Mapping[str, str]]) -> subprocess.Popen:
+    if registry_path is None or log_path is None:
+        raise SpawnRefused("a registry path and a log path are required")
     verified = load_verified_routes(Path(registry_path))
     argv, env, cwd = build_worker_command(route, worktree, config_dir, prompt, verified, base_env)
+    argv[0] = _resolve_executable(argv[0], cwd)
     log = Path(log_path).resolve()
     for forbidden in (cwd.resolve(), Path(env["CLAUDE_CONFIG_DIR"]).resolve(), (Path.home() / ".claude").resolve()):
         if log == forbidden or forbidden in log.parents:
@@ -164,4 +188,10 @@ def spawn_worker(route: VerifiedRoute, worktree: Path, config_dir: Optional[str]
     except (ValueError, TypeError):
         raise SpawnRefused("worker launch arguments were rejected") from None
     except OSError as exc:
-        raise SpawnRefused("worker could not be started (" + type(exc).__name__ + ")") from None
+        raise SpawnRefused("worker could not be started or its log could not be opened (" + type(exc).__name__ + ")") from None
+
+
+def spawn_worker(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
+                 registry_path: Path, log_path: Path, base_env: Optional[Mapping[str, str]] = None) -> subprocess.Popen:
+    """Start the production worker. Fails closed: any unexpected input raises SpawnRefused, never a raw error."""
+    return _fail_closed(_spawn, route, worktree, config_dir, prompt, registry_path, log_path, base_env)
