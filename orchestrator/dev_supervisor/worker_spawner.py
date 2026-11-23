@@ -115,8 +115,8 @@ def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], pr
     """
     if route.provider not in ALLOWED_PROVIDERS:
         raise SpawnRefused("route provider is not a worker provider")
-    if not isinstance(route.model, str) or not route.model.strip():
-        raise SpawnRefused("route model must be a non-blank string")
+    if not isinstance(route.model, str) or not route.model.strip() or route.model != route.model.strip():
+        raise SpawnRefused("route model must be a non-blank string without surrounding spaces")
     if not _PROVIDER_MODEL.fullmatch(route.model.strip()):
         raise SpawnRefused("route model must be written as provider/model (bare aliases are refused)")
     if _is_claude_model(route.model):
@@ -159,15 +159,22 @@ def _command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], pr
 
 
 def _resolve_executable(name: str, worktree: Path) -> str:
-    """Absolute path of the claude executable. Refused when it resolves inside the worktree (a planted binary)."""
-    found = shutil.which(name)
-    if not found:
-        raise SpawnRefused("claude executable was not found on PATH")
-    resolved = Path(found).resolve()
+    """Absolute path of claude.exe, searched only in absolute PATH entries (never the working directory, never
+    .cmd or .bat shims, which would run through cmd.exe). Refused when it resolves inside the worktree."""
+    if name != CLAUDE_EXECUTABLE:
+        raise SpawnRefused("worker executable name is fixed")
     wt = Path(worktree).resolve()
-    if resolved == wt or wt in resolved.parents:
-        raise SpawnRefused("claude executable resolves inside the worktree")
-    return str(resolved)
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry or not os.path.isabs(entry):
+            continue                       # relative PATH entries would search the working directory
+        candidate = Path(entry) / (CLAUDE_EXECUTABLE + ".exe")
+        if not candidate.is_file():
+            continue
+        resolved = candidate.resolve()
+        if resolved == wt or wt in resolved.parents:
+            raise SpawnRefused("claude executable resolves inside the worktree")
+        return str(resolved)
+    raise SpawnRefused("claude.exe was not found in an absolute PATH entry")
 
 
 def _spawn(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
@@ -181,6 +188,9 @@ def _spawn(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prom
     for forbidden in (cwd.resolve(), Path(env["CLAUDE_CONFIG_DIR"]).resolve(), (Path.home() / ".claude").resolve()):
         if log == forbidden or forbidden in log.parents:
             raise SpawnRefused("log path must be outside the worktree and the worker config directory")
+    default_dir = (Path.home() / ".claude").resolve()
+    if cwd.resolve() == default_dir or default_dir in cwd.resolve().parents:
+        raise SpawnRefused("worktree may not be the default Claude config directory or inside it")
     try:
         with open(log, "ab") as out:
             return subprocess.Popen(argv, cwd=str(cwd), env=env, shell=False, stdin=subprocess.DEVNULL,  # noqa: S603

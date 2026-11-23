@@ -262,6 +262,9 @@ class SpawnerRound5Tests(unittest.TestCase):
         base = dict(os.environ)
         base.update({"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-dummy-value",
                      "ANTHROPIC_API_KEY": "sk-should-not-pass"})
+        resolver = mock.patch.object(ws, "_resolve_executable", return_value=sys.executable)
+        resolver.start()
+        self.addCleanup(resolver.stop)
         with mock.patch.object(ws, "CLAUDE_EXECUTABLE", sys.executable), \
                 mock.patch.object(ws.provider_env, "worker_claude_args",
                                   return_value=["-c", self.STUB, "--setting-sources", "project"]):
@@ -343,10 +346,25 @@ class SpawnerRound8Tests(unittest.TestCase):
             ws.build_worker_command(ROUTE, self.work, "c" + chr(0) + "fg", "x", [ROUTE], GOOD)
 
     def test_executable_inside_worktree_refused(self):
-        planted = self.work / "claude.exe"
-        planted.write_text("x", encoding="utf-8")
+        planted_dir = self.work / "bin"
+        planted_dir.mkdir()
+        (planted_dir / "claude.exe").write_text("x", encoding="utf-8")
+        with mock.patch.dict(os.environ, {"PATH": str(planted_dir)}):
+            with self.assertRaises(ws.SpawnRefused):
+                ws._resolve_executable("claude", self.work)
+
+    def test_relative_path_entries_are_ignored(self):
+        rel = self.tmp / "rel"
+        rel.mkdir()
+        (rel / "claude.exe").write_text("x", encoding="utf-8")
+        with mock.patch.dict(os.environ, {"PATH": "rel" + os.pathsep + "."}):
+            with self.assertRaises(ws.SpawnRefused):
+                ws._resolve_executable("claude", self.work)
+
+    def test_padded_model_refused(self):
+        r = ws.VerifiedRoute(model=" auto/coding", provider="gemini", evidence="e", cost_zero=True)
         with self.assertRaises(ws.SpawnRefused):
-            ws._resolve_executable(str(planted), self.work)
+            ws.build_worker_command(r, self.work, self.cfg, "x", [r], GOOD)
 
 
 if __name__ == "__main__":
