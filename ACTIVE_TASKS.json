@@ -246,6 +246,16 @@
         "orchestrator/dev_supervisor/provider_env.py",
         "orchestrator/tests/test_dev_provider_env.py"
       ]
+    },
+    "AGR-DEV-035-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The Main coordinator mission directs Main to build Supervisor goal enforcement. Under that mandate T-DEV-035 may create progress_guard.py and its test file. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-035"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/progress_guard.py",
+        "orchestrator/tests/test_dev_progress_guard.py"
+      ]
     }
   },
   "tasks": [
@@ -1983,6 +1993,39 @@
         "python -B -I -m unittest discover -s tests -p 'test_dev_worker_spawner.py' from orchestrator/"
       ],
       "integration_notes": "Merged as PR #127 (merge commit a3afbf0, head db15f31, diff hash 30c31adb634cb92c). Twelve review rounds; the last approved the final diff. Per-file validation on the head: 43 of 43 files, 3211 tests, no failures. Worker dispatch remains refused: Claude Code through OmniRoute is not verified end to end (tool-result turn returns 503 on the tested route). Open items: the public builder omits spawn-only checks; those checks lack spawn_worker tests; hard links are not handled; bare claude resolution is limited to claude.exe in absolute PATH entries."
+    },
+    {
+      "id": "T-DEV-035",
+      "title": "dev_supervisor: deterministic progress guard (idle continuation, non-progress, restart-loop limits)",
+      "description": "A pure, deterministic judge over observed signals (Main liveness, observed session status, observed progress marker, context pressure, eligible-work count). It decides NONE, CONTINUE, HOLD, REPLACE or ESCALATE with cooldowns, a non-progress counter and a replacement budget. State is a plain dict that persists across restarts. It does not start or message any process; the Supervisor loop wires it later.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-035-progress-guard",
+      "worktree": "../CreatorStudio-worktrees/t-dev-035-progress-guard",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-034"
+      ],
+      "lease": {
+        "acquired": "2026-11-23T20:00:00+00:00",
+        "expires": "2026-11-24T20:00:00+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-035-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/progress_guard.py",
+        "orchestrator/tests/test_dev_progress_guard.py"
+      ],
+      "acceptance_criteria": [
+        "CONTINUE only after observed idle for the minimum idle time with eligible work and outside the cooldown",
+        "no action while busy, while observations are missing, or while the progress marker is changing",
+        "ESCALATE after the non-progress limit and after the replacement budget is exhausted"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_progress_guard.py' from orchestrator/"
+      ],
+      "integration_notes": "Pure module, no process control. Wiring into SupervisorLoop is a separate task."
     }
   ]
 }
