@@ -189,8 +189,14 @@ def _spawn(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prom
         if log == forbidden or forbidden in log.parents:
             raise SpawnRefused("log path must be outside the worktree and the worker config directory")
     default_dir = (Path.home() / ".claude").resolve()
-    if cwd.resolve() == default_dir or default_dir in cwd.resolve().parents:
-        raise SpawnRefused("worktree may not be the default Claude config directory or inside it")
+    wt_resolved = cwd.resolve()
+    if wt_resolved == Path.cwd().resolve():
+        raise SpawnRefused("worktree may not be the supervisor's current directory")
+    if wt_resolved == default_dir or default_dir in wt_resolved.parents or wt_resolved in default_dir.parents             or wt_resolved == Path.home().resolve():
+        raise SpawnRefused("worktree may not be the home directory, the default Claude config directory, or overlap it")
+    project_settings = (wt_resolved / ".claude").resolve()
+    if project_settings == default_dir or default_dir in project_settings.parents:
+        raise SpawnRefused("worktree .claude resolves to the default Claude config directory")
     try:
         with open(log, "ab") as out:
             return subprocess.Popen(argv, cwd=str(cwd), env=env, shell=False, stdin=subprocess.DEVNULL,  # noqa: S603

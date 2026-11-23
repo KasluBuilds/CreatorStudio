@@ -367,5 +367,32 @@ class SpawnerRound8Tests(unittest.TestCase):
             ws.build_worker_command(r, self.work, self.cfg, "x", [r], GOOD)
 
 
+class SpawnerRound10Tests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.cfg = str(self.tmp / "cfg")
+
+    def test_current_directory_spellings_refused(self):
+        for spelling in (os.curdir + os.sep, "." + os.sep + "."):
+            with self.subTest(spelling=spelling), self.assertRaises(ws.SpawnRefused):
+                ws.build_worker_command(ROUTE, Path(spelling), self.cfg, "x", [ROUTE], GOOD)
+
+    def test_home_directory_as_worktree_refused(self):
+        reg = self.tmp / "routes.json"
+        reg.write_text(json.dumps({"routes": [{"model": "auto/coding", "provider": "gemini", "evidence": "e",
+                                               "cost_zero": True}]}), encoding="utf-8")
+        with mock.patch.object(ws.subprocess, "Popen") as popen:
+            with self.assertRaises(ws.SpawnRefused):
+                ws.spawn_worker(ROUTE, Path.home(), self.cfg, "x", reg, self.tmp / "log.txt", base_env=GOOD)
+        popen.assert_not_called()
+
+    def test_unknown_anthropic_variables_are_dropped(self):
+        _, env, _ = ws.build_worker_command(ROUTE, self.tmp, self.cfg, "x", [ROUTE],
+                                            dict(GOOD, ANTHROPIC_FOUNDRY_RESOURCE="x", ANTHROPIC_CUSTOM_HEADERS="y"))
+        self.assertNotIn("ANTHROPIC_FOUNDRY_RESOURCE", env)
+        self.assertNotIn("ANTHROPIC_CUSTOM_HEADERS", env)
+        self.assertEqual(env["ANTHROPIC_BASE_URL"], "http://localhost:20128")
+
+
 if __name__ == "__main__":
     unittest.main()
