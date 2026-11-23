@@ -117,8 +117,9 @@ class SpawnerRealProcessTests(unittest.TestCase):
         base = dict(os.environ)
         base.update({"ANTHROPIC_BASE_URL": "http://localhost:20128", "ANTHROPIC_AUTH_TOKEN": "tok-dummy-value",
                      "ANTHROPIC_API_KEY": "sk-should-not-pass", "CLAUDE_CODE_OAUTH_TOKEN": "pro-should-not-pass"})
-        proc = ws.spawn_worker(route, work, cfg, "reply ok", [route], base_env=base,
-                               executable=sys.executable, prefix=[str(stub)])
+        argv, env, cwd = ws.build_worker_command(route, work, cfg, "reply ok", [route], base,
+                                                 _executable=sys.executable, _prefix=[str(stub)])
+        proc = subprocess.Popen(argv, cwd=str(cwd), env=env, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = proc.communicate(timeout=60)
         self.assertEqual(proc.returncode, 0, err.decode(errors="replace")[-300:])
         seen = json.loads(out.decode().strip().splitlines()[-1])
@@ -132,6 +133,16 @@ class SpawnerRealProcessTests(unittest.TestCase):
         self.assertTrue(seen["has_token"])
         # the token value itself must not be echoed anywhere the child reports
         self.assertNotIn("tok-dummy-value", out.decode())
+
+    def test_refuses_when_verified_list_omitted(self):
+        with self.assertRaises(ws.SpawnRefused):
+            ws.build_worker_command(ROUTE, self.work, self.cfg, "x", None, GOOD)
+
+    def test_refuses_anthropic_route_even_if_listed_as_verified(self):
+        pro = ws.VerifiedRoute(model="sonnet", provider="anthropic", evidence="x", cost_zero=True)
+        with self.assertRaises(ws.SpawnRefused):
+            ws.build_worker_command(pro, Path(tempfile.mkdtemp()), str(Path(tempfile.mkdtemp()) / "c"), "x",
+                                    [pro], GOOD)
 
     def test_refusal_starts_no_process(self):
         calls = []

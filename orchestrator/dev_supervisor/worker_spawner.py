@@ -69,18 +69,21 @@ def _refuse_config_dir(config_dir: Optional[str]) -> str:
 
 
 def build_worker_command(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
-                         base_env: Optional[Mapping[str, str]] = None,
-                         verified: Optional[Sequence[VerifiedRoute]] = None,
-                         executable: str = CLAUDE_EXECUTABLE,
-                         prefix: Sequence[str] = ()) -> Tuple[List[str], Dict[str, str], Path]:
+                         verified: Sequence[VerifiedRoute], base_env: Optional[Mapping[str, str]] = None,
+                         *, _executable: str = CLAUDE_EXECUTABLE,
+                         _prefix: Sequence[str] = ()) -> Tuple[List[str], Dict[str, str], Path]:
     """Return (argv, env, cwd) for a worker, or raise SpawnRefused. Pure: starts nothing."""
+    if route.provider not in ALLOWED_PROVIDERS:
+        raise SpawnRefused("route provider is not a worker provider")
     if not route.cost_zero:
         raise SpawnRefused("route cost is not recorded as zero")
-    if verified is not None and not any(r.model == route.model and r.provider == route.provider and r.cost_zero
-                                        for r in verified):
+    if verified is None or not any(r.model == route.model and r.provider == route.provider and r.cost_zero
+                                   for r in verified):
         raise SpawnRefused("route is not in the verified registry")
-    if not prompt or not prompt.strip():
+    if not isinstance(prompt, str) or not prompt.strip():
         raise SpawnRefused("a worker prompt is required")
+    if not isinstance(worktree, (str, os.PathLike)):
+        raise SpawnRefused("a worktree path is required")
     cwd = Path(worktree)
     if not cwd.is_dir():
         raise SpawnRefused("worktree does not exist")
@@ -94,15 +97,13 @@ def build_worker_command(route: VerifiedRoute, worktree: Path, config_dir: Optio
         raise SpawnRefused("worker environment does not carry the worker config directory")
     if "ANTHROPIC_API_KEY" in env or "CLAUDE_CODE_OAUTH_TOKEN" in env:
         raise SpawnRefused("worker environment carries a direct credential")
-    argv = [executable, *prefix, *provider_env.worker_claude_args(), "-p", prompt, "--model", route.model]
+    argv = [_executable, *_prefix, *provider_env.worker_claude_args(), "-p", prompt, "--model", route.model]
     return argv, env, cwd
 
 
 def spawn_worker(route: VerifiedRoute, worktree: Path, config_dir: Optional[str], prompt: str,
                  verified: Sequence[VerifiedRoute], base_env: Optional[Mapping[str, str]] = None,
-                 popen: Any = subprocess.Popen, executable: str = CLAUDE_EXECUTABLE,
-                 prefix: Sequence[str] = ()) -> subprocess.Popen:
-    """Start the worker process. ``popen`` and ``executable`` are injectable for tests; production uses ``claude``."""
-    argv, env, cwd = build_worker_command(route, worktree, config_dir, prompt, base_env, verified,
-                                          executable=executable, prefix=prefix)
+                 popen: Any = subprocess.Popen) -> subprocess.Popen:
+    """Start the production worker: ``claude`` with the isolation arguments and the worker environment."""
+    argv, env, cwd = build_worker_command(route, worktree, config_dir, prompt, verified, base_env)
     return popen(argv, cwd=str(cwd), env=env, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # noqa: S603
