@@ -347,6 +347,16 @@
         "orchestrator/dev_supervisor/SESSION_POLICY.md",
         "orchestrator/dev_supervisor/CONTEXT_MANAGEMENT.md"
       ]
+    },
+    "AGR-DEV-042-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The second overnight mission (2026-11-24, Priorities 1 and 2) directs Main to assess and record the credential exposure, to coordinate its rotation and to verify an OmniRoute route. Under that mandate T-DEV-042 may add WORKER_GATEWAY.md and update WORKER_DISPATCH.md in dev_supervisor, documentation only. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-042"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md"
+      ]
     }
   },
   "tasks": [
@@ -2357,6 +2367,40 @@
         "integrate --preflight passes on the branch"
       ],
       "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 4. Evidence for the need: grep found no document that mentions verified_routes.json, --allocation-role or --preflight; three documents still describe the harness and two live probes as runnable. The page is a map of the code and the PR comments, not new evidence. Merged as PR #147 (merge commit 8884e1d, final head 8cdbff4, content diff hash da102ad5fe2ed042). Two independent accuracy reviews by fresh subagents, both APPROVE; the first checked every statement in WORKER_DISPATCH.md against the code, found none false and listed seven imprecisions, all fixed. Documentation only; CI validate green; merged through the integration tool with all eight gates PASS. Open wording follow-ups (not fixed): the OBSERVED label on the route check also carries details that exist only in the author session (authenticated, headless, one attempt per route) and should be read as REPORTED; the registry example auto/coding is a gateway combo, not a gemini route; needs_decision is set by open questions or blockers; an existing agreement may also gain a PR's own task ids."
+    },
+    {
+      "id": "T-DEV-042",
+      "title": "dev_supervisor: record the credential rotation and the worker-gateway findings; document the isolated worker gateway and the first verified route",
+      "description": "Second overnight mission, Priorities 1 and 2. The OmniRoute management key that backup.ps1 holds was printed into two earlier session transcripts; it has now been rotated. A bounded probe campaign found: the installed gateway (3.8.49) fails Claude Code tool turns on Gemini 3 routes (thought_signature), gateway 3.8.50 or later replays the signature, and a Claude Code Read-tool round trip passes on gemini/gemini-3.1-flash-lite through an isolated gateway 3.8.54 bound to loopback with only the Gemini connection. The gateway also serves inference without any credential and binds all interfaces by default (vendor advisory GHSA-wmgv-ph3p-rv57). This task records those facts, the rotation, the remaining exposure and the procedure, with evidence labels, and updates WORKER_DISPATCH.md. Documentation only.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-042-worker-gateway",
+      "worktree": "../CreatorStudio-worktrees/t-dev-042-worker-gateway",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-042-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md"
+      ],
+      "acceptance_criteria": [
+        "WORKER_GATEWAY.md records the rotation (what changed, what was verified, what stays exposed), the gateway findings and the route probe results, each with an evidence label, and names no token, key or credential fragment",
+        "it states the limits of the cost_zero claim and that no worker has run unless a later record says so",
+        "WORKER_DISPATCH.md no longer says the token rotation is open and points at WORKER_GATEWAY.md for the route state",
+        "no code, test, launcher or credential file changes"
+      ],
+      "test_requirements": [
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "a credential-pattern scan of the added lines finds nothing"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence is in the PR description and in the verified route registry entry that cites it.",
+      "lease": {
+        "acquired": "2026-11-24T06:28:37+00:00",
+        "expires": "2026-11-25T06:28:37+00:00"
+      }
     }
   ]
 }
