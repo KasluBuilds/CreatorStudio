@@ -41,6 +41,20 @@ class VerifiedRoute:
     provider: str
     evidence: str       # where the verification is recorded (test run, PR, observation id)
     cost_zero: bool     # recorded zero cost on the route
+    roles: Tuple[str, ...] = ()   # roles the recorded round-trip evidence covers (model_allocation.ROLES); () = none
+    capability: int = 0           # recorded rank 1 (weakest) to 5 (strongest); 0 = not recorded
+
+
+def _parse_roles(value: Any) -> Tuple[str, ...]:
+    """Optional list of role names; anything else means no role is covered (fail closed, never guessed)."""
+    if not isinstance(value, list):
+        return ()
+    return tuple(sorted({r.strip().lower() for r in value if isinstance(r, str) and r.strip()}))
+
+
+def _parse_capability(value: Any) -> int:
+    """Optional rank 1..5; a bool, a float, a string or anything out of range means not recorded (0)."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 5 else 0
 
 
 def load_verified_routes(path: Path) -> List[VerifiedRoute]:
@@ -60,7 +74,8 @@ def load_verified_routes(path: Path) -> List[VerifiedRoute]:
         model, provider, evidence = model.strip(), provider.strip(), evidence.strip()
         if not model or provider not in ALLOWED_PROVIDERS or not evidence or entry.get("cost_zero") is not True:
             continue   # only a route recorded as zero-cost is loaded
-        routes.append(VerifiedRoute(model, provider, evidence, True))
+        routes.append(VerifiedRoute(model, provider, evidence, True, _parse_roles(entry.get("roles")),
+                                    _parse_capability(entry.get("capability"))))
     return routes
 
 

@@ -660,6 +660,126 @@ class CliTests(Offline):
         code, out = env.cli("workers", "--json")
         self.assertEqual(json.loads(out)["workers"][0]["status"], "RUNNING")
 
+    def _allocation_registry(self, env, routes=None):
+        env.verified_route()
+        routes = routes or [
+            {"model": "auto/coding", "provider": "gemini", "evidence": "test:a", "cost_zero": True,
+             "roles": ["implementation", "research"], "capability": 2},
+            {"model": "auto/big", "provider": "gemini", "evidence": "test:b", "cost_zero": True,
+             "roles": ["implementation", "architecture", "review"], "capability": 5},
+            {"model": "auto/legacy", "provider": "groq", "evidence": "test:c", "cost_zero": True}]
+        (env.state / "verified_routes.json").write_text(json.dumps({"routes": routes}), encoding="utf-8")
+
+    def _alloc_args(self, env, *extra, yes=True):
+        a = ["assign", "--task", "T-X-1", "--role", "worker", "--branch", "lane/x", "--worktree", str(env.wt),
+             "--owner-stream", "claude:x", "--prompt-file", env.prompt_file(), *extra]
+        return a + (["--yes"] if yes else [])
+
+    def test_assign_with_an_allocation_role_chooses_the_cheapest_sufficient_route(self):
+        env = Env(self)
+        self._allocation_registry(env)
+        code, out = env.cli(*self._alloc_args(env, "--allocation-role", "implementation"))
+        self.assertEqual(code, 0, out)
+        (req,) = cli.pending_requests(env.store())
+        payload = req[1]["payload"]
+        self.assertEqual((payload["provider"], payload["model"]), ("gemini", "auto/coding"))
+        self.assertEqual(payload["allocation_role"], "implementation")
+        self.assertEqual(payload["allocation"]["capability"], 2)
+        code, out = env.cli(*self._alloc_args(env, "--allocation-role", "architecture", yes=False))
+        self.assertEqual(code, 0, out)
+        self.assertIn("auto/big", out)
+
+    def test_assign_with_an_allocation_role_refuses_a_model_or_provider_that_disagrees(self):
+        env = Env(self)
+        self._allocation_registry(env)
+        for extra in (["--model", "auto/big"], ["--provider", "groq"], ["--model", "auto/legacy", "--provider", "groq"]):
+            with self.subTest(extra=extra):
+                code, out = env.cli(*self._alloc_args(env, "--allocation-role", "implementation", *extra))
+                self.assertEqual(code, 1, out)
+                self.assertIn("differs from the allocation", out)
+        self.assertEqual(cli.pending_requests(env.store()), [])
+        code, out = env.cli(*self._alloc_args(env, "--allocation-role", "implementation", "--model", "auto/coding",
+                                              "--provider", "gemini"))
+        self.assertEqual(code, 0, out)                                 # an explicit pair that equals the allocation is fine
+
+    def test_assign_with_an_allocation_role_and_no_fitting_route_queues_nothing(self):
+        env = Env(self)
+        review3 = {"model": "auto/rev", "provider": "gemini", "evidence": "test:r", "cost_zero": True,
+                   "roles": ["review"], "capability": 3}
+        self._allocation_registry(env, [review3])
+        for role, extra in (("review", ["--author-capability", "4"]),         # nothing as capable as the work
+                            ("test_writing", []),                              # no route covers the role
+                            ("architecture", [])):
+            with self.subTest(role=role):
+                code, out = env.cli(*self._alloc_args(env, "--allocation-role", role, *extra))
+                self.assertEqual(code, 1, out)
+                self.assertIn("allocation refused", out)
+        self.assertEqual(cli.pending_requests(env.store()), [])
+        code, out = env.cli(*self._alloc_args(env, "--allocation-role", "review", "--author-capability", "3"))
+        self.assertEqual(code, 0, out)                                         # a route as capable as the work exists
+
+    def test_assign_with_an_allocation_role_and_no_registry_is_refused(self):
+        env = Env(self)
+        env.svc.env = dict(GATEWAY_ENV)
+        code, out = env.cli(*self._alloc_args(env, "--allocation-role", "implementation"))
+        self.assertEqual(code, 1, out)
+        self.assertIn("registry unavailable", out)
+        self.assertFalse(env.state.exists(), "a refused assignment must create no state")
+
+    def test_assign_without_a_role_still_requires_model_and_provider(self):
+        env = Env(self)
+        self._allocation_registry(env)
+        for extra in ([], ["--model", "auto/coding"], ["--provider", "gemini"]):
+            with self.subTest(extra=extra), self.assertRaises(SystemExit) as cm:
+                env.cli(*self._alloc_args(env, *extra))
+            self.assertEqual(cm.exception.code, 2)
+
+    def test_the_loop_records_the_recomputed_allocation_and_ignores_the_one_in_the_request(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        self._allocation_registry(env)
+        cli.enqueue(env.store(), "assign", {
+            "task_id": "T-X-9", "role": "worker", "branch": "lane/x9", "worktree": str(env.wt), "owner_stream": "s",
+            "model": "auto/coding", "provider": "gemini", "prompt_file": env.prompt_file(),
+            "allocation_role": "implementation",
+            "allocation": {"role": "architecture", "provider": "forged", "model": "forged", "capability": 5,
+                           "evidence": "forged", "reason": "forged"}})
+        code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        self.assertEqual(code, 0, out)
+        (w,) = WorkerRegistry(env.store()).list()
+        self.assertEqual((w.allocation["role"], w.allocation["provider"], w.allocation["model"], w.allocation["capability"]),
+                         ("implementation", "gemini", "auto/coding", 2))
+        self.assertNotIn("forged", json.dumps(w.allocation))
+        self.assertNotIn(GATEWAY_ENV["ANTHROPIC_AUTH_TOKEN"], json.dumps(w.to_dict()))
+        self.assertEqual(env.worker_launcher.specs[0].provider, "gemini")
+
+    def test_the_loop_refuses_a_request_whose_route_differs_from_the_allocation(self):
+        env = Env(self)
+        self._allocation_registry(env)
+        base = {"task_id": "T-X-9", "role": "worker", "branch": "lane/x9", "worktree": str(env.wt), "owner_stream": "s",
+                "prompt_file": env.prompt_file()}
+        for extra in ({"allocation_role": "implementation", "model": "auto/big", "provider": "gemini"},
+                      {"allocation_role": "test_writing", "model": "auto/coding", "provider": "gemini"},
+                      {"allocation_role": "no-such-role", "model": "auto/coding", "provider": "gemini"}):
+            with self.subTest(extra=extra):
+                cli.enqueue(env.store(), "assign", dict(base, **extra))
+                code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+                self.assertEqual(code, 0, out)
+        self.assertEqual(env.worker_launcher.specs, [])
+        code, out = env.cli("workers", "--json")
+        self.assertEqual(json.loads(out)["workers"], [])
+
+    def test_a_request_without_an_allocation_role_records_an_empty_allocation(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        self._allocation_registry(env)
+        cli.enqueue(env.store(), "assign", {
+            "task_id": "T-X-9", "role": "worker", "branch": "lane/x9", "worktree": str(env.wt), "owner_stream": "s",
+            "model": "auto/legacy", "provider": "groq", "prompt_file": env.prompt_file()})
+        env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        (w,) = WorkerRegistry(env.store()).list()
+        self.assertEqual(w.allocation, {})
+
     def test_handoff_dry_run_write_and_verify(self):
         env = Env(self)
         env.cli("start", "--yes", "--max-ticks", "1")

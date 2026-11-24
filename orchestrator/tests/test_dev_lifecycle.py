@@ -662,6 +662,36 @@ class TestWorkerLaunchSafety(Base):
                              owner_stream="o", model=model, prompt_file=str(self.prompt), provider=provider)
                 self.assertEqual(s.registry.list(), [], "a refused assignment must create no worker record")
 
+    def test_assign_records_a_credential_free_allocation_on_the_worker_and_in_the_event(self):
+        s = self.sup()
+        alloc = {"role": "implementation", "provider": "gemini", "model": "auto/coding", "capability": 2,
+                 "evidence": "test:synthetic", "reason": "lowest capability that fits"}
+        w = s.assign(task_id="T-SYN-001", role="lane", branch="lane/syn/L1", worktree=str(self.wt),
+                     owner_stream="claude:synthetic", model="auto/coding", provider="gemini",
+                     prompt_file=str(self.prompt), allocation=alloc)
+        self.assertEqual(w.allocation, alloc)
+        self.assertIsNot(w.allocation, alloc)                          # a copy: later changes to the argument do not leak
+        reread = s.registry.get(w.worker_id)
+        self.assertEqual(reread.allocation, alloc)
+        events = [e for e in self.store().read_events()[0] if e.get("kind") == "worker_assigned"]
+        self.assertEqual(events[-1]["data"].get("allocation_role"), "implementation")
+        self.assertNotIn("allocation", events[-1]["data"])             # the event names the role only, not the record
+
+    def test_assign_without_an_allocation_records_an_empty_one_and_old_records_still_load(self):
+        from dev_supervisor.workers import Worker
+        s = self.sup()
+        w = self.assign(s)
+        self.assertEqual(w.allocation, {})
+        d = w.to_dict()
+        d.pop("allocation")
+        self.assertEqual(Worker.from_dict(d).allocation, {})            # a record written before this field existed
+        for i, junk in enumerate(("x", 5, None, ["a"])):
+            with self.subTest(junk=junk):
+                w2 = s.assign(task_id=f"T-SYN-1{i}", role="lane", branch=f"lane/syn/J{i}", worktree=str(self.wt / f"j{i}"),
+                              owner_stream="claude:synthetic", model="auto/coding", provider="gemini",
+                              prompt_file=str(self.prompt), allocation=junk)
+                self.assertEqual(w2.allocation, {})                     # only a dict is recorded
+
     def test_the_launch_spec_carries_the_workers_recorded_provider(self):
         s = self.sup()
         w = self.assign(s)
