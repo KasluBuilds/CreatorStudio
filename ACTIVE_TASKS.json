@@ -2866,7 +2866,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-053-memory-guard",
       "worktree": "../CreatorStudio-worktrees/t-dev-053-memory-guard",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2892,10 +2892,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, from the memory investigation of the same day.",
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, from the memory investigation of the same day. Merged as PR #186 (independent review of diff 906f14ca28fa3543; one BLOCKING finding fixed).",
       "lease": {
         "acquired": "2026-11-24T16:15:07+00:00",
-        "expires": "2026-11-25T16:15:07+00:00"
+        "expires": "2026-11-25T16:15:07+00:00",
+        "released": "2026-11-24T16:40:45+00:00"
       }
     }
   ]
