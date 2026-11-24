@@ -11,6 +11,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dev_supervisor import dispatch_routing as dr  # noqa: E402
+from dev_supervisor import memory_guard  # noqa: E402
 from dev_supervisor import lifecycle, live_autonomy, provider_env  # noqa: E402
 from dev_supervisor.lifecycle import ClaudeCliLauncher, LaunchSpec, LifecycleError, build_claude_argv  # noqa: E402
 
@@ -30,6 +31,9 @@ def route(model="auto/coding", provider="gemini", cost_zero=True, evidence="test
 class Base(unittest.TestCase):
     def setUp(self):
         self.state = Path(tempfile.mkdtemp())
+        patcher = mock.patch.object(memory_guard, "free_memory_mb", return_value=8192)   # independent of this machine
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def decide(self, **kw):
         args = dict(provider="gemini", model="auto/coding", active_workers=0, state_dir=self.state,

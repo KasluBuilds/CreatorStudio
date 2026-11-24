@@ -7,7 +7,8 @@ check (never a URL, token or credential):
 - the (provider, model) pair is in the verified-route registry with a recorded zero cost (``worker_spawner``);
 - the local OmniRoute gateway environment is valid (``provider_env.worker_env``: no API key, no Pro login, no provider
   switch, a worker-owned config directory);
-- fewer than MAX_ACTIVE_WORKERS workers are assigned or live.
+- fewer than MAX_ACTIVE_WORKERS workers are assigned or live;
+- free physical memory is at least the memory-guard floor (T-DEV-053; an unreadable value refuses).
 
 The same checks run again at launch time inside the launcher's environment builder, so a worker that is somehow
 assigned still cannot start without a verified route and a safe environment. The registry lives at
@@ -22,10 +23,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 
-from . import provider_env, worker_spawner
+from . import memory_guard, provider_env, worker_spawner
 from .lifecycle import ClaudeCliLauncher, LaunchSpec, LifecycleError, forbidden_worker_env
 
 MAX_ACTIVE_WORKERS = 1
+_READ_MEMORY = object()      # sentinel: read the machine's free memory when the caller did not pass a reading
 REGISTRY_FILE = "verified_routes.json"
 WORKER_CONFIG_DIR = "worker-config"
 
@@ -78,12 +80,16 @@ def _check_route(provider: Any, model: Any, state_dir: PathLike) -> "tuple[Optio
 
 
 def decide_worker_dispatch(*, provider: Any, model: Any, active_workers: int, state_dir: PathLike,
-                           base_env: Optional[Mapping[str, str]] = None) -> Dispatch:
+                           base_env: Optional[Mapping[str, str]] = None, free_memory_mb: Any = _READ_MEMORY) -> Dispatch:
     """The single decision used at assignment time. Refuses without a verified route and a safe gateway environment."""
     if not isinstance(active_workers, int) or isinstance(active_workers, bool) or active_workers < 0:
         return _refuse("the number of active workers is not known: refusing to dispatch")
     if active_workers >= MAX_ACTIVE_WORKERS:
         return _refuse(f"concurrency cap: {active_workers} worker(s) active, the cap is {MAX_ACTIVE_WORKERS}")
+    free = memory_guard.free_memory_mb() if free_memory_mb is _READ_MEMORY else free_memory_mb
+    mem_ok, mem_why = memory_guard.check(free, memory_guard.min_free_mb())
+    if not mem_ok:
+        return _refuse(mem_why)
     route, why = _check_route(provider, model, state_dir)
     if route is None:
         return _refuse(why)
