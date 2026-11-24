@@ -64,6 +64,8 @@ Label note: a statement marked OBSERVED was seen directly; where a conclusion is
 
 ## 7. First dispatched worker run (T-DEV-043), 2026-11-24
 
+Superseded in part: section 8 records two later runs that completed their tasks alone; the 'NOT DEMONSTRATED' items below that those runs answered are marked there. The figure of 28.7 minutes is Claude Code's own run duration; the supervisor record gives 29.1.
+
 Labels: OBSERVED = read from the Supervisor event log, the worker's stream log or the worker gateway's call log on this machine.
 
 **What ran.** `assign --allocation-role implementation` resolved the registry's only route (`gemini/gemini-3.1-flash-lite`), the dispatch gate passed, and the Supervisor started worker `w-b88c568c18` in its own worktree with the isolated worker environment that the launcher builds and re-checks (the gate and the launcher refuse a login, an API key or a non-local gateway). The task was small: add `Allocation.independent` with tests, two owned files.
@@ -94,9 +96,9 @@ Labels: OBSERVED = read from the Supervisor event log, the worker's stream log o
 
 Labels as in section 7. Figures are from the supervisor's worker records and the worker gateway's call log.
 
-| Run | Task | Worker | Result | Wall time | Gateway calls (ok / all) |
+| Run | Task | Worker | Result | Wall time (supervisor record) | Gateway calls (ok / all) |
 |---|---|---|---|---|---|
-| 1 | T-DEV-043 | `w-b88c568c18` | FAILED on a provider 503 after correct partial work; Main finished it (PR #160) | 28.7 min | 7 / 48 |
+| 1 | T-DEV-043 | `w-b88c568c18` | FAILED on a provider 503 after correct partial work; Main finished it (PR #160) | 29.1 min | 7 / 48 |
 | 2 | T-DEV-047 | `w-195e048477` | EXITED: code, test, test run and commit all by the worker (PR #167) | 3.5 min | 12 / 19 (4 x 503, 3 x 429) |
 | 3 | T-DEV-049 | `w-51544909ee` | EXITED: a two-line test change, by the worker (PR #172) | 1.3 min | 9 / 9 |
 
@@ -104,17 +106,17 @@ The same route was unreliable in the first run and reliable in the third. The ca
 
 **The chain, as it ran for T-DEV-049, and who did each step.**
 1. Choose the task: Main, by hand (a review note on the previous task). `autonomy next` does not yet turn proposals into specs.
-2. Register it: the `claim` command (a tool) from a spec file; the claim pull request went through the eight gates like any other.
+2. Register it: the `claim` command (a tool) writes the registry record and the handoff from a spec file. Main created the branch, committed, pushed and opened the claim pull request, and merged it with `integrate --yes` (a tool that evaluates the eight gates and merges only when all pass).
 3. Dispatch: Main ran `assign --allocation-role implementation`; the Supervisor started the worker through the production gate.
 4. Implement, test, commit: the worker, in its own worktree, under the authority hook. It never pushes.
 5. Verify: Main ran the test file and a mutation of the code under test before publishing. This is Main's check, not a tool's.
 6. Publish: the `intake` command (a tool), dry run first, then `--yes`: it merged the base branch in, pushed and opened the pull request with the recorded provenance.
 7. Independent review: a fresh Claude subagent of the Main session, bound to the diff hash. Same account, different context; not a dispatched worker.
-8. Merge: `integrate --yes`, all eight gates PASS, serialized.
-9. Close out the task in the registry (a registry-only pull request on the task's own branch).
+8. Merge: Main ran `integrate --yes`; the tool evaluated all eight gates, found them PASS and merged, one pull request at a time.
+9. Close out the task in the registry: a registry-only pull request on the task's own branch, prepared and pushed by Main with a small script and merged like step 8.
 
 **Still manual or not demonstrated (be exact).**
-- Task selection and writing the spec; the worker prompt.
+- Task selection, writing the spec and the worker prompt; creating the branch and worktree; committing, pushing and opening the claim and close-out pull requests; running `integrate --yes`.
 - The verification in step 5, and spawning the reviewer in step 7.
 - A **dispatched independent reviewer**: no verified route reaches capability 3, the minimum for the review role.
 - **Restart of a failed worker**: `auto_restart` is off and the CLI has no restart command.
