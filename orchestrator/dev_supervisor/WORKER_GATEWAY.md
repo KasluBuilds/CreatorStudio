@@ -9,7 +9,7 @@ Companion pages: `WORKER_DISPATCH.md` (the dispatch gate and the registry file),
 | Question | Answer |
 |---|---|
 | Is a worker route verified? | Yes, one: provider `gemini`, model `gemini/gemini-3.1-flash-lite` (the gateway's model id, which is the string the registry and `--model` use), on the **worker gateway** below. The registry entry is written in the state directory, not in the repository; it is not part of this change. Two complete Claude Code round trips passed (OBSERVED, section 4). |
-| Has any worker run through the dispatch path? | Three times (OBSERVED, sections 7 and 8): the first run failed on a provider 503 and Main finished its task; the second and third each completed a small task alone, and the third was published with the intake command and merged through the gates. **Autonomous operation is not declared complete**: task selection, review spawning and restart of a failed worker are still manual, and no dispatched independent reviewer exists. |
+| Has any worker run through the dispatch path? | Three times (OBSERVED, sections 7 and 8): the first run failed on a provider 503 and Main finished its task; the second and third each completed a small task alone, and the third was published with the intake command and merged through the gates. **Autonomous operation is not declared complete**: task selection and review spawning are still manual, a failed worker restarts only on an explicit `restart` command (PR #179, never yet used on a real worker), and no dispatched independent reviewer exists. |
 | Is the exposed gateway key still valid? | No. It was rotated on 2026-11-24 (section 2). |
 | Is the main gateway safe from other machines? | **No, and unchanged.** It answers inference requests without any credential on all network interfaces (section 3). That needs the owner's decision. |
 | Can the main gateway run the verified route? | No. The installed version (3.8.49) fails Claude Code tool turns on Gemini 3 routes. Version 3.8.54 passed on `gemini-3.1-flash-lite` (INFERRED to be the release fix, because the release notes name it; the same model was not re-tested on 3.8.49). |
@@ -74,7 +74,7 @@ Labels: OBSERVED = read from the Supervisor event log, the worker's stream log o
 - The worker's command line carried the authority policy: its hook (policy `worker-routine-allowlist`) **denied one compound shell command** (`cd orchestrator && python ...`, "not one simple command"). Workers must issue single simple commands; from the repository root the test command `python -B -I -m unittest discover -s orchestrator/tests -p <file>` is one.
 - Wall time 28.7 minutes, 8 reported turns, tool calls: 2 Read, 3 Edit, 2 Bash (one denied).
 - The worker gateway answered **48 calls** in that window: 7 succeeded (HTTP 200), 25 returned 503 "high demand", 11 returned 429, 3 timed out at 110 s (504) and 2 were cancelled by the client (499). The free route is slow and unreliable.
-- Claude Code ended with `API Error: 503` after its own bounded retries (exit 1). The Supervisor recorded `worker_failed` (signature `exit:1`) with a restart-not-before time. `auto_restart` is off by default, so the worker stays FAILED until someone restarts it; there is no `restart` command in the CLI.
+- Claude Code ended with `API Error: 503` after its own bounded retries (exit 1). The Supervisor recorded `worker_failed` (signature `exit:1`) with a restart-not-before time. `auto_restart` is off by default, so the worker stays FAILED until someone restarts it. At the time of this run the CLI had no restart command; it was added afterwards (PR #179, below).
 
 **What the worker produced (kept as written).** The new field, its computation and the main new test, correct as reviewed (the worker's test needed two additions, below). It never ran the tests and so never noticed that one existing assertion pins the exact `to_dict()` keys.
 
@@ -88,7 +88,7 @@ Labels: OBSERVED = read from the Supervisor event log, the worker's stream log o
 
 **Next steps.**
 1. Re-dispatch one small task with the prompt telling the worker to use single simple commands and the root-level test command, and to commit before finishing; compare with this run.
-2. Decide whether the Supervisor needs a `restart` command or a bounded auto restart for a worker that ends on a provider error.
+2. Done afterwards: the `restart <worker-id> [--yes]` command (PR #179, dry run by default, same dispatch gate, the lifecycle restart budget and backoff, `auto_restart` still off). It has not yet been used on a real failed worker.
 3. Owner decisions in section 6 (main gateway exposure, upgrade, Kiro re-authorisation).
 4. A reviewer route of capability 3 or more must be verified before a dispatched reviewer is possible.
 
@@ -119,7 +119,7 @@ The same route was unreliable in the first run and reliable in the third. The ca
 - Task selection, writing the spec and the worker prompt; creating the branch and worktree; committing, pushing and opening the claim and close-out pull requests; running `integrate --yes`.
 - The verification in step 5, and spawning the reviewer in step 7.
 - A **dispatched independent reviewer**: no verified route reaches capability 3, the minimum for the review role.
-- **Restart of a failed worker**: `auto_restart` is off and the CLI has no restart command.
+- **Restart of a failed worker**: `python -B -m dev_supervisor restart <worker-id> [--yes]` exists (IMPLEMENTED, PR #179: refuses a worker that is active or BLOCKED, past its restart budget or inside its backoff, whose route no longer passes the dispatch gate, or whose prompt file or worktree is gone; the running loop applies the gate again). It was exercised only in tests with fake launchers. `auto_restart` stays off, so nothing restarts without that command.
 - **Unattended operation**: nothing starts the next task by itself, and the route's reliability is not established.
 - Only small, precisely specified tasks have been tried (2 files at most, a prompt that names the exact change). Nothing says a free capability-2 model can do open-ended work.
 
