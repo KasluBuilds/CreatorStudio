@@ -2464,7 +2464,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-044-preflight-handoff",
       "worktree": "../CreatorStudio-worktrees/t-dev-044-preflight-handoff",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2485,10 +2485,11 @@
         "affected suites: test_dev_review, test_dev_standing_autonomy",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: PR #149 (closed, replaced by #150) used a refused head-branch prefix and lacked the regenerated SESSION_HANDOFF.md; the preflight run on it before the push reported PREFLIGHT_PASS.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: PR #149 (closed, replaced by #150) used a refused head-branch prefix and lacked the regenerated SESSION_HANDOFF.md; the preflight run on it before the push reported PREFLIGHT_PASS. Completed 2026-11-24: merged as PR #155 (all eight gates PASS; independent review bound to diff c38ea4f74733ac62 after one round of changes). 141 tests in test_dev_integrate; 8 of 8 mutations caught.",
       "lease": {
         "acquired": "2026-11-24T06:47:19+00:00",
-        "expires": "2026-11-25T06:47:19+00:00"
+        "expires": "2026-11-25T06:47:19+00:00",
+        "released": "2026-11-24T07:02:26+00:00"
       }
     }
   ]
