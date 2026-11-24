@@ -2852,7 +2852,7 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Merged as PR #182 (independent review of diff 2fa92fd457dbb6a4). Merged as PR #182 (independent review of diff 2fa92fd457dbb6a4).",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Merged as PR #182 (independent review of diff 2fa92fd457dbb6a4).",
       "lease": {
         "acquired": "2026-11-24T09:02:04+00:00",
         "expires": "2026-11-25T09:02:04+00:00",
