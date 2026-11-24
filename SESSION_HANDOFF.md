@@ -89,7 +89,6 @@ Status record dated **2026-11-18**. Baseline commit **`93a9a829e073`** on `main`
 | T-RSV-002 Safe, validated DaVinci Resolve execution layer (M-RSV-02) | claude:repository-coordinator | `task/t-rsv-002` | ACTIVE | 2026-11-22T16:00:00+00:00 | orchestrator/resolve_executor/, orchestrator/tests/test_resolve_executor.py, AI_Creator_Studio_Documentation/RESOLVE_INTEGRATION.md, AI_Creator_Studio_Documentation/TECHNICAL_ARCHITECTURE.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 | T-EDT-001 Validated edit-plan schema and Editor planning workflow (M-EDT-01, offline) | claude:repository-coordinator | `task/t-edt-001-edit-plan` | ACTIVE | 2026-11-23T17:00:00+00:00 | orchestrator/edit_plan/, orchestrator/tests/test_edit_plan.py, AI_Creator_Studio_Documentation/EDITING_ENGINE.md |
 | T-DEV-056 dev_supervisor: preflight reads git status without taking optional locks | claude:main-coordinator | `task/t-dev-056-preflight-no-locks` | ACTIVE | 2026-11-25T17:27:15+00:00 | orchestrator/dev_supervisor/integrate.py, orchestrator/tests/test_dev_integrate.py |
-| T-DEV-057 dev_supervisor: cycle tracker for the task-to-merge chain | claude:main-coordinator | `task/t-dev-057-cycle-tracker` | ACTIVE | 2026-11-25T17:41:03+00:00 | orchestrator/dev_supervisor/cycle.py, orchestrator/tests/test_dev_cycle.py |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
