@@ -86,6 +86,8 @@ class CheckSpec(unittest.TestCase):
             "absolute worktree": (dict(worktree="/tmp/x"), "worktree must be a relative path"),
             "windows worktree": (dict(worktree="C:/x"), "worktree must be a relative path"),
             "parent inside worktree": (dict(worktree="../a/../b"), "worktree must be a relative path"),
+            "dot worktree": (dict(worktree="."), "worktree must be a relative path"),
+            "empty segment in worktree": (dict(worktree="../a//b"), "worktree must be a relative path"),
             "absolute owned path": (dict(owned_paths=["/etc/x"]), "owned_paths"),
             "parent-relative owned path": (dict(owned_paths=["orchestrator/../x.py"]), "owned_paths"),
             "backslash owned path": (dict(owned_paths=["orchestrator\\x.py"]), "owned_paths"),
@@ -211,6 +213,41 @@ class Claim(unittest.TestCase):
         self.assertIn("unexpected shape", C.claim(repo.dir, spec())[0][0])
 
 
+class ClaimWriteSafety(unittest.TestCase):
+    def test_a_failure_writing_the_handoff_changes_nothing_and_is_reported_not_raised(self):
+        repo = Repo(self)
+        (repo.dir / "SESSION_HANDOFF.md").unlink()
+        (repo.dir / "SESSION_HANDOFF.md").mkdir()          # a directory where the file should be: the write fails
+        before = (repo.dir / "ACTIVE_TASKS.json").read_bytes()
+        probs, task = C.claim(repo.dir, spec(), write=True, now=NOW)
+        self.assertIsNone(task)
+        self.assertIn("writing failed", probs[0])
+        self.assertIn("governance handoff --check", probs[0])
+        self.assertEqual((repo.dir / "ACTIVE_TASKS.json").read_bytes(), before)
+
+    def test_a_failure_writing_the_registry_restores_the_previous_handoff(self):
+        repo = Repo(self)
+        old = (repo.dir / "SESSION_HANDOFF.md").read_bytes()
+        real = Path.write_bytes
+
+        def fail_for_registry(self_, data):
+            if self_.name == "ACTIVE_TASKS.json":
+                raise PermissionError("synthetic")
+            return real(self_, data)
+
+        with mock.patch.object(Path, "write_bytes", fail_for_registry):
+            probs, task = C.claim(repo.dir, spec(), write=True, now=NOW)
+        self.assertIsNone(task)
+        self.assertIn("writing failed", probs[0])
+        self.assertEqual((repo.dir / "SESSION_HANDOFF.md").read_bytes(), old)
+
+    def test_a_malformed_id_does_not_also_report_the_agreements_own_id_as_foreign(self):
+        doc = json.loads((REPO / "ACTIVE_TASKS.json").read_text(encoding="utf-8"))
+        probs = C.check_spec(spec(id="demo-1"), doc)
+        self.assertTrue(any("must look like T-" in p for p in probs))
+        self.assertFalse(any("other task ids" in p for p in probs))
+
+
 class Cli(unittest.TestCase):
     def run_cli(self, repo, spec_text, *flags):
         f = repo.dir / "spec.json"
@@ -240,6 +277,22 @@ class Cli(unittest.TestCase):
         buf = io.StringIO()
         rc = C.main([str(f), "--repo", str(repo.dir / "orchestrator")], out=buf, now=NOW)
         self.assertEqual(rc, 0, buf.getvalue())
+
+    def test_the_default_repo_is_the_current_directory_even_when_it_is_orchestrator(self):
+        import os
+        repo = Repo(self)
+        (repo.dir / "orchestrator").mkdir()
+        f = repo.dir / "spec.json"
+        f.write_text(json.dumps(spec()), encoding="utf-8")
+        here = os.getcwd()
+        self.addCleanup(os.chdir, here)
+        os.chdir(repo.dir / "orchestrator")
+        buf = io.StringIO()
+        rc = C.main([str(f)], out=buf, now=NOW)            # no --repo: the documented way to run it
+        self.assertEqual(rc, 0, buf.getvalue())
+        os.chdir(repo.dir)
+        buf = io.StringIO()
+        self.assertEqual(C.main([str(f)], out=buf, now=NOW), 0, buf.getvalue())
 
     def test_output_never_echoes_a_credential_shaped_value(self):
         repo = Repo(self)

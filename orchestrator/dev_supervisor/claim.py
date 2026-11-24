@@ -97,14 +97,16 @@ def check_spec(spec: Any, doc: Dict[str, Any]) -> List[str]:
     elif any(t.get("branch") == spec["branch"] for t in tasks):
         probs.append(f"branch {spec['branch']} is already registered to another task")
     wt = spec["worktree"]
-    if "\\" in wt or wt.startswith("/") or re.match(r"^[A-Za-z]:", wt) or ".." in wt.split("/")[1:]:
+    segments = wt.split("/")
+    if ("\\" in wt or wt.startswith("/") or re.match(r"^[A-Za-z]:", wt) or ".." in segments[1:]
+            or any(s in ("", ".") for s in segments)):
         probs.append("worktree must be a relative path with forward slashes")
     for p in spec["owned_paths"]:
         msg = tasks_mod.path_problem(p)
         if msg:
             probs.append("owned_paths: " + msg)
     agreement = {"description": spec["agreement"], "task_ids": [spec["id"]], "paths": list(spec["owned_paths"])}
-    foreign = sorted(integrate._tids(agreement) - {spec["id"]})
+    foreign = sorted(integrate._tids(agreement) - {spec["id"]}) if TASK_ID.match(spec["id"]) else []
     if foreign:
         probs.append("the agreement text names other task ids (" + ", ".join(foreign) + "): the integration tool would call "
                      "the claim 'not this PR's own'; say 'an earlier task' instead")
@@ -159,8 +161,18 @@ def claim(root: Path, spec: Any, write: bool = False, now: Optional[_dt.datetime
     if write:
         text = json.dumps(new_doc, indent=2, ensure_ascii=False) + "\n"
         crlf = "\r\n" in raw
-        reg_path.write_bytes((text.replace("\n", "\r\n") if crlf else text).encode("utf-8"))
-        handoff_path.write_text(handoff_text, encoding="utf-8", newline="\n")
+        old_handoff = handoff_path.read_bytes() if handoff_path.is_file() else None
+        try:
+            handoff_path.write_text(handoff_text, encoding="utf-8", newline="\n")   # first: a failure here changes nothing
+            reg_path.write_bytes((text.replace("\n", "\r\n") if crlf else text).encode("utf-8"))
+        except OSError as e:
+            try:
+                if old_handoff is not None:
+                    handoff_path.write_bytes(old_handoff)
+            except OSError:
+                pass
+            return [f"writing failed ({type(e).__name__}); the handoff was restored where possible; "
+                    "verify with: python -B -m governance handoff --check"], None
     return [], task
 
 
@@ -176,9 +188,9 @@ def main(argv: Optional[Sequence[str]] = None, out: Optional[TextIO] = None, now
     except (OSError, ValueError) as e:
         print(f"refused: cannot read the spec: {type(e).__name__}", file=out)
         return 2
-    root = Path(a.repo)
+    root = Path(a.repo).resolve()
     if not (root / REGISTRY).exists() and (root.parent / REGISTRY).exists():
-        root = root.parent          # called from orchestrator/
+        root = root.parent          # called from orchestrator/ (the default --repo is the current directory)
     probs, task = claim(root, spec, write=a.write, now=now)
     if probs:
         print("refused:", file=out)
