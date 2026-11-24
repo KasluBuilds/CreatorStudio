@@ -367,6 +367,16 @@
         "orchestrator/dev_supervisor/model_allocation.py",
         "orchestrator/tests/test_dev_model_allocation.py"
       ]
+    },
+    "AGR-DEV-044-01": {
+      "description": "integrate.py is part of the dev_supervisor package owned by claude:repository-coordinator. The second overnight mission (2026-11-24, Priority 4) directs Main to identify and fix missing integration points in the task-to-merge loop. Under that mandate T-DEV-044 may edit integrate.py and its test file, only to extend the read-only preflight. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-044"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/integrate.py",
+        "orchestrator/tests/test_dev_integrate.py"
+      ]
     }
   },
   "tasks": [
@@ -2444,6 +2454,40 @@
       "lease": {
         "acquired": "2026-11-24T06:36:49+00:00",
         "expires": "2026-11-25T06:36:49+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-044",
+      "title": "dev_supervisor: preflight also checks the branch name and that SESSION_HANDOFF.md is current",
+      "description": "The T-DEV-042 claim PR failed twice for reasons the merge preflight did not report: the head branch used a prefix the pr_state gate refuses, and ACTIVE_TASKS.json changed without regenerating SESSION_HANDOFF.md (CI's handoff --check). Both are decidable offline. Extend the preflight with a branch-name check (the same prefix rule as the real pr_state gate) and a handoff-current check (the same check CI runs), reported as gates 1 and 2 of the preflight table, so the failures cost no push and no CI run.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-044-preflight-handoff",
+      "worktree": "../CreatorStudio-worktrees/t-dev-044-preflight-handoff",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-044-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/integrate.py",
+        "orchestrator/tests/test_dev_integrate.py"
+      ],
+      "acceptance_criteria": [
+        "preflight reports a branch_name gate that fails for a head branch outside the real gate's prefixes and passes for the allowed ones, using the same constant as the real pr_state gate",
+        "preflight reports a handoff_current gate that fails when the committed registry or status changed and SESSION_HANDOFF.md is stale, using the same check CI runs; an unreadable state is UNKNOWN, never PASS",
+        "the existing preflight gates, the real evaluation and exit codes are unchanged",
+        "the preflight stays read-only: no write, no lock, no network"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p test_dev_integrate.py from orchestrator/",
+        "affected suites: test_dev_review, test_dev_standing_autonomy",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: PR #149 (closed, replaced by #150) used a refused head-branch prefix and lacked the regenerated SESSION_HANDOFF.md; the preflight run on it before the push reported PREFLIGHT_PASS.",
+      "lease": {
+        "acquired": "2026-11-24T06:47:19+00:00",
+        "expires": "2026-11-25T06:47:19+00:00"
       }
     }
   ]
