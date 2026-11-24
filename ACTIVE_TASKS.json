@@ -2652,7 +2652,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-048-worker-intake",
       "worktree": "../CreatorStudio-worktrees/t-dev-048-worker-intake",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2673,10 +2673,11 @@
         "a test against a real temporary git repository",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: the hand-off of both worker runs of this mission (T-DEV-043 and T-DEV-047) was the same manual sequence.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: the hand-off of both worker runs of this mission (T-DEV-043 and T-DEV-047) was the same manual sequence. Completed 2026-11-24: merged as PR #169 (all eight gates PASS; independent review bound to diff c90f0d9b77abc6c3 after one round). 24 tests (three on real temporary repositories); 19 of 19 mutations caught. First used for real to publish worker w-51544909ee (PR #172): dry run, then --yes merged the base in, pushed and opened the pull request with the recorded provenance.",
       "lease": {
         "acquired": "2026-11-24T07:51:25+00:00",
-        "expires": "2026-11-25T07:51:25+00:00"
+        "expires": "2026-11-25T07:51:25+00:00",
+        "released": "2026-11-24T08:22:37+00:00"
       }
     },
     {
