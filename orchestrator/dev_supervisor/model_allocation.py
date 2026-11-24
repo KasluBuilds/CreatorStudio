@@ -10,8 +10,9 @@ Capability is a recorded rank from 1 (weakest) to 5 (strongest). It is a claim a
 here. Rules:
 
 * implementation, research, test_writing: the lowest capability that fits (cheapest sufficient route).
-* review: capability at least the author's, so a review is never weaker than the work; when another route exists at
-  that level, a route different from the author's is preferred.
+* review: capability at least the author's, so a review is never weaker than the work, and the route must differ from
+  the author's: without the author's route, or when the author's own route is the only one that fits, the allocation
+  is refused (T-DEV-054). This compares routes only; it does not prove a reviewer was independent in fact.
 * architecture: the highest capability available, because the hard work should not get the weakest route.
 """
 from __future__ import annotations
@@ -45,7 +46,7 @@ class Allocation:
     evidence: str
     reason: str
     independent: Optional[bool] = None
-    """True = a review route that is not the author's route; False = the author's own route; None = not a review, or the author's route was not given."""
+    """True = a review route that is not the author's route; None = not a review. A review whose route would be the author's, or whose author route is unknown, is refused instead of returned (T-DEV-054), so this is never False."""
 
     def to_dict(self) -> Dict[str, Any]:
         """Credential-free record for a worker record or an event."""

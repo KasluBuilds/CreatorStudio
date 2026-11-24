@@ -787,6 +787,21 @@ class CliTests(Offline):
         code, out = env.cli("workers", "--json")
         self.assertEqual(json.loads(out)["workers"], [])
 
+    def test_the_loop_refuses_a_review_that_is_not_independent_of_its_author(self):
+        """T-DEV-054: a review request without the author's route, or naming the author's own route, queues no worker."""
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        self._allocation_registry(env)
+        base = {"task_id": "T-X-9", "role": "worker", "branch": "lane/x9", "worktree": str(env.wt), "owner_stream": "s",
+                "prompt_file": env.prompt_file(), "model": "auto/big", "provider": "gemini", "allocation_role": "review"}
+        for extra in ({}, {"author_route": ["gemini", "auto/big"]}, {"author_route": "gemini/auto/coding"}):
+            with self.subTest(extra=extra):
+                cli.enqueue(env.store(), "assign", dict(base, **extra))
+                code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+                self.assertEqual(code, 0, out)
+        self.assertEqual(env.worker_launcher.specs, [])
+        self.assertEqual(WorkerRegistry(env.store()).list(), [])
+
     def test_forged_author_fields_in_a_request_never_crash_the_loop_or_change_the_route(self):
         env = Env(self)
         self._allocation_registry(env)
