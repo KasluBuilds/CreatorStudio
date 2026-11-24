@@ -900,7 +900,7 @@ class PreGit(FakeGit):
         if a[:2] == ["rev-parse", "--abbrev-ref"]:
             self.calls.append(a)
             return 0, self.branch.encode()
-        if a[:2] == ["status", "--porcelain"]:
+        if a[:3] == ["--no-optional-locks", "status", "--porcelain"]:
             self.calls.append(a)
             return self.status_rc, self.dirty.encode()
         return super().__call__(args)
@@ -935,7 +935,7 @@ class Preflight(unittest.TestCase):
         self.assertIn("HEAD", flat)
         self.assertFalse([c for c in git.calls if any(x == "origin/" + TASK_BRANCH or x.startswith("origin/" + TASK_BRANCH + ":")
                                                       for x in c)], "preflight must not read origin/<branch>")
-        self.assertLessEqual({c[0] for c in git.calls}, {"fetch", "rev-parse", "status", "merge-base", "diff", "show", "log"})
+        self.assertLessEqual({c[0] for c in git.calls}, {"fetch", "rev-parse", "status", "merge-base", "diff", "show", "log", "--no-optional-locks"})
 
     def test_the_real_evaluation_still_reads_the_remote_branch(self):
         git = FakeGit()
@@ -1120,7 +1120,11 @@ class PreflightBranchAndHandoff(unittest.TestCase):
         _, _, git = pre()
         shown = [c for c in git.calls if c[0] == "show" and c[1].startswith("HEAD:")]
         self.assertTrue({"HEAD:PROJECT_STATUS.json", "HEAD:ACTIVE_TASKS.json", "HEAD:SESSION_HANDOFF.md"} <= {c[1] for c in shown})
-        self.assertLessEqual({c[0] for c in git.calls}, {"fetch", "rev-parse", "status", "merge-base", "diff", "show", "log"})
+        self.assertLessEqual({c[0] for c in git.calls}, {"fetch", "rev-parse", "status", "merge-base", "diff", "show", "log", "--no-optional-locks"})
+
+    def test_preflight_uses_no_optional_locks(self):
+        _, _, git = pre()
+        self.assertTrue(any(c == ["--no-optional-locks", "status", "--porcelain"] for c in git.calls))
 
 
 class PreflightHandoffOnTheRealRepository(unittest.TestCase):
