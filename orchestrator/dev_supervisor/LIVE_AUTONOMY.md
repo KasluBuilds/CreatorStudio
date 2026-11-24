@@ -1,5 +1,10 @@
 # Live autonomy harness (T-DEV-026)
 
+> **Status update (2026-11-24, T-DEV-032): the harness no longer runs on the Claude login.** `run` needs
+> `CREATORSTUDIO_VERIFIED_ROUTES` to point at a verified zero-cost route registry that lists the model, and it refuses
+> every Claude model, including the `--model haiku` shown below. No route is verified yet, so it cannot be re-run. The
+> runs and tables below are **historical evidence** from 2026-11-19 and are kept unchanged. See `WORKER_DISPATCH.md`.
+
 `live_autonomy.py` runs a real headless Claude Code **Main** (model haiku) unattended in a throwaway LOCAL sandbox
 (bare origin, integration checkout, per-task worktrees, synthetic backlog L-001..L-006). Main works only through a
 `ctl` command surface (`next, claim, dispatch, wait, status, verify, review, integrate, recover`); a separate harness

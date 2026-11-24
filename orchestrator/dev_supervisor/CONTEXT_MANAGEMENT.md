@@ -131,5 +131,9 @@ python -B -I orchestrator/dev_supervisor/context_monitor.py live-compaction-prob
 python -B -I orchestrator/dev_supervisor/context_monitor.py live-compaction-probe --yes    # live proof, Main runs it
 ```
 
+> **Status update (2026-11-24, T-DEV-032):** `live-compaction-probe --yes` now refuses (exit 2) unless a process runner
+> is injected, because it would start a real Claude session on the Claude login. Any live result recorded in this
+> document is **historical** and is kept unchanged. See `WORKER_DISPATCH.md`.
+
 The probe starts a throwaway headless session (haiku model, temp folder, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=1`) for a few
 turns and reports whether a `compact_boundary` record appeared in the stream or the transcript. Unit tests never run it.
