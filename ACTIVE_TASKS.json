@@ -2235,11 +2235,12 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-039-autonomy-proposals",
       "worktree": "../CreatorStudio-worktrees/t-dev-039-autonomy-proposals",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "lease": {
         "acquired": "2026-11-24T00:42:28+00:00",
-        "expires": "2026-11-25T00:42:28+00:00"
+        "expires": "2026-11-25T00:42:28+00:00",
+        "released": "2026-11-24T01:20:43+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2260,7 +2261,7 @@
         "affected suites: test_dev_standing_autonomy, test_dev_live_autonomy, test_dev_acceptance",
         "full per-file validation on the exact head"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 4. Finding: the idle report 1 step IN_PROGRESS is correct (T-RSV-002 is another stream's active task); the gap is that nothing reads the milestone plan. Proposals are advice for Main, not registrations, and video-production milestones are not prioritised over infrastructure."
+      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 4. Finding: the idle report 1 step IN_PROGRESS is correct (T-RSV-002 is another stream's active task); the gap is that nothing reads the milestone plan. Proposals are advice for Main, not registrations, and video-production milestones are not prioritised over infrastructure. Merged as PR #137 (merge commit 404793c, final head 76189ac, content diff hash 46de7c027fbaad89, which is unchanged by the merge of main into the branch). Three independent review rounds by fresh subagents: APPROVE on d81a86d; REQUEST_CHANGES on 006faaf (a wrongly typed tasks field in ACTIVE_TASKS.json failed open); APPROVE on the final content. One intermediate commit (ea90a5b) accidentally carried a mutation left by an aborted mutation-check script; it was behaviourally equivalent, the suite passed, and 5fb6e07 restored the reviewed content (disclosed in the commit message and the review comment). Per-file validation on 5fb6e07: 3341 tests, no failures (OBSERVED locally); CI validate green on the merged head. The merge went through the integration tool (all eight gates PASS). On this repository next now proposes four milestones (M-RSR-02 without an open decision; M-DNA-03, M-INT-02, M-INT-03 need decisions). Open advisory notes: a milestone id directly after a JSON escape sequence in an open task's text is not matched; falsy junk such as 0 or false in depends_on or open_questions is treated as none; duplicate milestone ids collapse. Proposals are advice only: nothing is registered automatically."
     }
   ]
 }
