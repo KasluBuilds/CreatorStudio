@@ -499,6 +499,16 @@
         "orchestrator/dev_supervisor/specdraft.py",
         "orchestrator/tests/test_dev_specdraft.py"
       ]
+    },
+    "AGR-DEV-056-01": {
+      "description": "T-DEV-056 may change the single git status call in preflight in integrate.py and the fake-git handling in test_dev_integrate.py; it changes no gate logic, no other git call and no other file.",
+      "task_ids": [
+        "T-DEV-056"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/integrate.py",
+        "orchestrator/tests/test_dev_integrate.py"
+      ]
     }
   },
   "tasks": [
@@ -3004,6 +3014,41 @@
         "acquired": "2026-11-24T17:05:40+00:00",
         "expires": "2026-11-25T17:05:40+00:00",
         "released": "2026-11-24T17:22:38+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-056",
+      "title": "dev_supervisor: preflight reads git status without taking optional locks",
+      "description": "From WORKER_DISPATCH.md, Known limits: preflight runs `git status --porcelain`, which can take the index lock and race with a concurrent git command in the same checkout. Change that one call in integrate.preflight to `git --no-optional-locks status --porcelain` and update the offline tests that fake git so they accept the new argument order. Behaviour of the dirty-tree warning is unchanged.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-056-preflight-no-locks",
+      "worktree": "../CreatorStudio-worktrees/t-dev-056-preflight-no-locks",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-056-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/integrate.py",
+        "orchestrator/tests/test_dev_integrate.py"
+      ],
+      "acceptance_criteria": [
+        "integrate.preflight runs git with the arguments --no-optional-locks status --porcelain",
+        "a dirty tree is still reported as dirty and a failing status is still treated as dirty",
+        "test_dev_integrate.py passes and contains a test that fails if the --no-optional-locks argument is removed",
+        "no other file changes"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_integrate.py",
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, phase 6: backlog item taken from WORKER_DISPATCH.md Known limits, dispatched to a worker.",
+      "lease": {
+        "acquired": "2026-11-24T17:27:15+00:00",
+        "expires": "2026-11-25T17:27:15+00:00"
       }
     }
   ]
