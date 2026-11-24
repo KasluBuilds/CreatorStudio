@@ -519,6 +519,16 @@
         "orchestrator/dev_supervisor/cycle.py",
         "orchestrator/tests/test_dev_cycle.py"
       ]
+    },
+    "AGR-DEV-058-01": {
+      "description": "T-DEV-058 edits the two documentation pages only; no code, test or launcher changes.",
+      "task_ids": [
+        "T-DEV-058"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ]
     }
   },
   "tasks": [
@@ -3096,6 +3106,40 @@
         "acquired": "2026-11-24T17:41:03+00:00",
         "expires": "2026-11-25T17:41:03+00:00",
         "released": "2026-11-24T17:59:43+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-058",
+      "title": "dev_supervisor: record the memory guard, specdraft, cycle tracker and the first real restart",
+      "description": "Documentation only. Record in WORKER_DISPATCH.md and WORKER_GATEWAY.md what the second 2026-11-24 mission added and observed: the memory guard in the dispatch gate (T-DEV-053), the specdraft command (T-DEV-055), the cycle tracker (T-DEV-057), and the first real use of the restart command: the long-running Supervisor loop had been started before the restart op existed and answered 'unknown op restart', so it had to be restarted to load merged code; after that the restart worked and the worker started again, and both runs of T-DEV-056 ended on a provider 503. State what is still not demonstrated.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-058-mission-record",
+      "worktree": "../CreatorStudio-worktrees/t-dev-058-mission-record",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-058-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ],
+      "acceptance_criteria": [
+        "each new tool is listed with its status IMPLEMENTED, its PR and what it does not do",
+        "the stale-Supervisor finding and the first real restart are recorded as OBSERVED with their outcome",
+        "the two 503 failures of T-DEV-056 and the memory-floor refusal are recorded without claiming the task completed",
+        "the not-demonstrated list is still accurate; no credential or fragment appears"
+      ],
+      "test_requirements": [
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission.",
+      "lease": {
+        "acquired": "2026-11-24T18:04:04+00:00",
+        "expires": "2026-11-25T18:04:04+00:00"
       }
     }
   ]
