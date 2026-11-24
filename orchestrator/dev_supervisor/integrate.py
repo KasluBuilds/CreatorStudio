@@ -816,7 +816,7 @@ def preflight(git: Callable, base: str = "main", lukas_word: str = "") -> Tuple[
         if rc != 0 or not branch or branch == "HEAD":
             return unknown("detached HEAD: preflight needs a named branch")
         info["head"], info["branch"] = sha, branch
-        rc, out = git(["status", "--porcelain"])
+        rc, out = git(["--no-optional-locks", "status", "--porcelain"])
         info["dirty"] = not (rc == 0 and not out.strip())   # a failing status counts as dirty: warn, never assume clean
         ctx = _Ctx(pr={"headRefName": branch, "headRefOid": sha}, base=base, head_ref="HEAD")
         try:
