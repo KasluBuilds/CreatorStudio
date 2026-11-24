@@ -426,6 +426,16 @@
       "paths": [
         "orchestrator/tests/test_dev_claim.py"
       ]
+    },
+    "AGR-DEV-050-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The second overnight mission (2026-11-24) directs Main to record provider and model verification evidence, merged work, outstanding blockers and the exact next steps, and not to declare autonomous operation complete before the full live cycle is demonstrated. Under that mandate T-DEV-050 may update WORKER_DISPATCH.md and WORKER_GATEWAY.md in dev_supervisor, documentation only. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-050"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ]
     }
   },
   "tasks": [
@@ -2710,6 +2720,40 @@
         "acquired": "2026-11-24T08:13:30+00:00",
         "expires": "2026-11-25T08:13:30+00:00",
         "released": "2026-11-24T08:26:28+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-050",
+      "title": "dev_supervisor: record the second and third dispatched worker runs, the intake command and the first demonstrated worker-to-merge chain",
+      "description": "Documentation of what the later runs of the second overnight mission showed: worker 2 (T-DEV-047) and worker 3 (T-DEV-049) each completed a task alone on the verified free route and their branches reached main through the gates; worker 3 was published with the intake command. States exactly which steps were done by the worker, by tools and by Main, which steps are still manual (task selection, review spawning, restart of a failed worker), and what is NOT demonstrated (a dispatched independent reviewer, unattended selection, automatic restart, a reviewer route of capability 3 or more). Also records the final handoff: merged work, open items, the exact next steps. Documentation only.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-050-chain-record",
+      "worktree": "../CreatorStudio-worktrees/t-dev-050-chain-record",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-050-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ],
+      "acceptance_criteria": [
+        "the pages state with evidence labels what runs 2 and 3 showed (durations, gateway call counts, results) and that the chain worker-implements, intake-publishes, independent-review, gates, merge was demonstrated for small tasks",
+        "they list exactly which steps remain manual or undemonstrated and say that autonomous operation is not declared complete",
+        "they document the intake command as implemented, with its refusals and what it never does",
+        "no credential or fragment appears; no code, test or launcher changes"
+      ],
+      "test_requirements": [
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Evidence: the Supervisor event log, the worker stream logs, the worker gateway call log and the merged pull requests #167, #169, #172.",
+      "lease": {
+        "acquired": "2026-11-24T08:29:28+00:00",
+        "expires": "2026-11-25T08:29:28+00:00"
       }
     }
   ]
