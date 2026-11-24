@@ -12,9 +12,9 @@ Written 2026-11-24 for the overnight mission (tasks T-DEV-032, T-DEV-038, T-DEV-
 | `autonomy next` proposes eligible milestone work when nothing is actionable | IMPLEMENTED (PR #137) |
 | `integrate --preflight` checks the offline merge gates before pushing | IMPLEMENTED (PR #144) |
 | A worker running a real task through the OmniRoute gateway | **NOT DEMONSTRATED** |
-| Any route listed as verified | **NOT DEMONSTRATED**: `verified_routes.json` does not exist, so every dispatch is refused |
+| Any route listed as verified | OBSERVED for one route, on the isolated worker gateway only (`WORKER_GATEWAY.md`): `gemini` / `gemini/gemini-3.1-flash-lite`, two complete Claude Code round trips. The registry file lives in the state directory, not in the repository; without an entry every dispatch is refused |
 
-Last route check (OBSERVED, 2026-11-24, one attempt per route, not repeated): a headless Claude Code tool round trip through the gateway on `gemini/gemini-2.5-flash` and `gemini/gemini-2.5-flash-lite` reached the gateway and authenticated, then returned HTTP 429 "All credentials for model ... are cooling down" (free-tier capacity). It is recorded in the `integration_notes` of T-DEV-038 in `ACTIVE_TASKS.json`; there is no separate repository file for it. Earlier observations: `OMNIROUTE_BENCHMARK.md` (2026-11-17, text-only) records `not_found` then `rate_limited` for the 2.5 routes and Groq `auth_error`; the report that Gemini 3.x routes break Claude Code tool turns (`thought_signature`) comes from earlier Main sessions (REPORTED, not recorded in a repository file).
+Route state (OBSERVED, 2026-11-24): see `WORKER_GATEWAY.md` for the probe results, the corrected reading of the earlier 429 (the Gemini 2.5 routes are retired for this account; the 429 was the gateway cooldown after provider 404s, not exhausted quota), the isolated worker gateway and the credential rotation. Earlier observations: `OMNIROUTE_BENCHMARK.md` (2026-11-17, text-only) records `not_found` then `rate_limited` for the 2.5 routes and Groq `auth_error`; the report that Gemini 3.x routes break Claude Code tool turns (`thought_signature`) comes from earlier Main sessions (REPORTED, not recorded in a repository file).
 
 ## How a worker starts
 
@@ -74,11 +74,11 @@ No fitting route is a refusal with a reason: never a fallback, never a Claude mo
 
 ## Known limits and follow-ups
 
-- No route is verified. Until one is, dispatch is refused by design and independent review is done by fresh Claude subagents of the Main session, not by dispatched workers.
+- Only one route is verified, with the limits stated in `WORKER_GATEWAY.md` (one trivial tool round trip; `cost_zero` REPORTED, not proven). Independent review is still done by fresh Claude subagents of the Main session: that route is too weak (capability 2) to be an allocated reviewer.
 - `routing.py` (the `route` command, task-profile ranking that includes Claude routes) overlaps with role allocation and should be reconciled.
 - A review allocation has no machine-readable `independent` flag; self-review is disclosed only in the reason text.
 - Hand-built `VerifiedRoute` objects are not type-checked in `allocate` (the loader normalises them).
 - Skipping the gate branch in `process_requests` is stopped only by `Supervisor.assign`'s own validation (a mutant that no test catches on its own).
 - Proposals: a milestone id directly after a JSON escape sequence in an open task's text is not matched; falsy junk in `depends_on` is treated as none.
 - Preflight: no test covers `wave/` branches or `CHANGELOG.md`; `git status` could use `--no-optional-locks`.
-- The OmniRoute token in the gitignored `backup.ps1` was printed into two earlier session transcripts. Recommended: rotate it with a coordinated update of the gateway and `backup.ps1`. Not done, to avoid breaking the working gateway.
+- The OmniRoute key in the gitignored `backup.ps1` was printed into two earlier session transcripts. It was rotated on 2026-11-24 and the old value is dead (`WORKER_GATEWAY.md`, section 2). The main gateway still serves inference without a credential on all interfaces; that is the owner's decision (section 3 there).
