@@ -3390,7 +3390,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-064-second-worker-cycle",
       "worktree": "../CreatorStudio-worktrees/t-dev-064-second-worker-cycle",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3411,10 +3411,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the overnight worker mission.",
+      "integration_notes": "Claimed 2026-11-25 under the overnight worker mission. Merged as PR #220 (independent review of diff dbe341548be66056).",
       "lease": {
         "acquired": "2026-11-24T23:32:27+00:00",
-        "expires": "2026-11-25T23:32:27+00:00"
+        "expires": "2026-11-25T23:32:27+00:00",
+        "released": "2026-11-24T23:42:41+00:00"
       }
     }
   ]
