@@ -33,19 +33,20 @@ from . import provider_env, worker_spawner
 from .session_policy import PolicyInstallError
 
 try:
-    from .state_store import StateStore, StoreError, parse_iso, utc_iso
+    from .state_store import StateStore, StoreError, parse_iso, scrub, utc_iso
     from .workers import (DuplicateWorkerError, ResultRecord, ResultStatus, UnknownWorkerError, Worker,
                           WorkerRegistry, WorkerStatus)
 except ImportError:  # pragma: no cover - standalone import
-    from state_store import StateStore, StoreError, parse_iso, utc_iso  # type: ignore
+    from state_store import StateStore, StoreError, parse_iso, scrub, utc_iso  # type: ignore
     from workers import (DuplicateWorkerError, ResultRecord, ResultStatus, UnknownWorkerError, Worker,  # type: ignore
                          WorkerRegistry, WorkerStatus)
 
 __all__ = ["SupervisorPolicy", "LaunchSpec", "LaunchHandle", "ProcessLauncher", "ClaudeCliLauncher",
            "GitWorktreeChecker", "Supervisor", "RecoveryPlan", "LifecycleError", "BackoffActive",
            "WorkerBlocked", "NotOwnedError", "WorktreeCheckFailed", "pid_alive", "build_claude_argv",
-           "DuplicateWorkerError", "UnknownWorkerError"]
+           "DuplicateWorkerError", "UnknownWorkerError", "RETIRED_NOTE"]
 
+RETIRED_NOTE = "retired: "   # the note of a LOST worker that T-DEV-059 retired (it is then STOPPED)
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}$")
 # A plain id (claude-style) or one provider/model gateway route, e.g. "auto/coding"; never a path, never a leading dash.
 _MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\-\[\]]{0,99}(/[A-Za-z0-9][A-Za-z0-9._:\-]{0,99})?$")
@@ -616,6 +617,29 @@ class Supervisor:
             w.status = WorkerStatus.STALE
             self.registry.update(w)
             self._event("worker_stale", w, seconds_since_heartbeat=int(now - hb))
+
+    def retire(self, worker_id: str, reason: str) -> Worker:
+        """Take a LOST worker out of the concurrency count without restarting it (T-DEV-059).
+
+        Only a LOST worker whose recorded pid is not alive qualifies. It becomes STOPPED with a note that carries the
+        reason; ``restart_count``, failures, results and blockers are untouched, nothing is launched or signalled, and
+        a later ``restart`` still has its remaining budget. Retiring a worker that is already retired is a no-op."""
+        w = self.registry.get(worker_id)
+        if w.status == WorkerStatus.STOPPED and w.note.startswith(RETIRED_NOTE):
+            return w
+        if w.status != WorkerStatus.LOST:
+            raise LifecycleError(f"worker {worker_id} is {w.status}; only a LOST worker can be retired")
+        reason = scrub(str(reason or "")).strip()
+        if not reason:
+            raise LifecycleError("a reason is required")
+        if w.pid is not None and self.pid_probe(w.pid):
+            raise LifecycleError(f"worker {worker_id}: its recorded pid is alive; stop that process by hand first "
+                                 "(pids can be reused, so it is never signalled here)")
+        previous = scrub(w.note or "")[:160]
+        w.status, w.note = WorkerStatus.STOPPED, f"{RETIRED_NOTE}{reason[:160]}"
+        self.registry.update(w)
+        self._event("worker_retired", w, reason=reason[:160], restart_count=w.restart_count, previous_note=previous)
+        return w
 
     def _mark_lost(self, w: Worker, why: str) -> None:
         w.status, w.ended_at = WorkerStatus.LOST, utc_iso(self._now())

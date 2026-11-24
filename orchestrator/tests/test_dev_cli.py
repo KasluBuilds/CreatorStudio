@@ -1442,5 +1442,90 @@ class RestartCommandTests(Offline):
         self.assertEqual(env.worker_launcher.specs, [])
 
 
+
+# ------------------------------------------------------------------ T-DEV-059: retire command
+
+class RetireCommandTests(Offline):
+    def lost(self, env, worker_id="w-fail01", status="LOST", restart_count=0):
+        from dev_supervisor.workers import Worker, WorkerRegistry
+        w = Worker(worker_id=worker_id, role="worker", task_id="T-X-9", branch="lane/x9", worktree=str(env.wt),
+                   owner_stream="s", provider="gemini", model="auto/coding", status=status,
+                   restart_count=restart_count, prompt_file=env.prompt_file(), pid=None, note="pid not alive at recovery")
+        WorkerRegistry(env.store()).add(w)
+        return w
+
+    def queued(self, env):
+        return [r for _p, r in cli.pending_requests(env.store())]
+
+    def test_a_dry_run_queues_nothing_and_keeps_the_restart_count(self):
+        env = Env(self)
+        self.lost(env, restart_count=2)
+        code, out = env.cli("retire", "w-fail01", "--reason", "orphan")
+        self.assertEqual(code, 0, out)
+        self.assertIn("can be retired", out)
+        self.assertIn("restart count stays 2", out)
+        self.assertEqual(self.queued(env), [])
+
+    def test_yes_queues_one_request_with_the_worker_id_and_the_reason(self):
+        env = Env(self)
+        self.lost(env)
+        code, out = env.cli("retire", "w-fail01", "--reason", "orphan", "--yes")
+        self.assertEqual(code, 0, out)
+        (req,) = self.queued(env)
+        self.assertEqual((req["op"], req["payload"]), ("retire", {"worker_id": "w-fail01", "reason": "orphan"}))
+
+    def test_every_unmet_condition_is_refused_and_queues_nothing(self):
+        cases = {"unknown worker": None, "running": "RUNNING", "failed": "FAILED", "stopped, not retired": "STOPPED",
+                 "exited": "EXITED", "blocked": "BLOCKED"}
+        for name, status in cases.items():
+            with self.subTest(case=name):
+                env = Env(self)
+                if status is not None:
+                    self.lost(env, status=status)
+                code, out = env.cli("retire", "w-fail01", "--reason", "x", "--yes")
+                self.assertEqual(code, 1, out)
+                self.assertEqual(self.queued(env), [])
+
+    def test_a_live_pid_or_a_missing_reason_is_refused(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        w = self.lost(env)
+        w.pid = env.next_pid()                               # alive in the fake process table
+        WorkerRegistry(env.store()).update(w)
+        code, out = env.cli("retire", "w-fail01", "--reason", "x", "--yes")
+        self.assertEqual(code, 1, out)
+        self.assertIn("pid is alive", out)
+        env.alive.clear()
+        code, out = env.cli("retire", "w-fail01", "--reason", "   ", "--yes")
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.queued(env), [])
+        with self.assertRaises(SystemExit):                   # --reason is required by the parser
+            env.cli("retire", "w-fail01")
+
+    def test_the_loop_retires_the_worker_without_launching_or_spending_a_restart(self):
+        from dev_supervisor.workers import WorkerRegistry, WorkerStatus
+        env = Env(self)
+        self.lost(env, restart_count=2)
+        env.cli("retire", "w-fail01", "--reason", "orphan", "--yes")
+        code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        self.assertEqual(code, 0, out)
+        reg = WorkerRegistry(env.store())
+        w = reg.get("w-fail01")
+        self.assertEqual((w.status, w.restart_count), ("STOPPED", 2))
+        self.assertEqual(reg.list(WorkerStatus.ACTIVE + (WorkerStatus.LOST,)), [])
+        self.assertEqual(env.worker_launcher.specs, [])
+        self.assertEqual(self.queued(env), [])
+
+    def test_a_second_retire_after_the_first_is_a_no_op(self):
+        env = Env(self)
+        self.lost(env)
+        env.cli("retire", "w-fail01", "--reason", "orphan", "--yes")
+        env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        code, out = env.cli("retire", "w-fail01", "--reason", "again", "--yes")
+        self.assertEqual(code, 0, out)
+        self.assertIn("already retired", out)
+        self.assertEqual(self.queued(env), [])
+
+
 if __name__ == "__main__":
     unittest.main()
