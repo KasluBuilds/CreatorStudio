@@ -407,6 +407,16 @@
         "orchestrator/dev_supervisor/claim.py",
         "orchestrator/tests/test_dev_claim.py"
       ]
+    },
+    "AGR-DEV-048-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The second overnight mission (2026-11-24, Priority 4) directs Main to identify and fix the missing integration points between a worker finishing and a merge. Under that mandate T-DEV-048 may add intake.py and its test file in dev_supervisor, as a new module that reads worker records and runs git and gh through injected runners. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-048"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/intake.py",
+        "orchestrator/tests/test_dev_intake.py"
+      ]
     }
   },
   "tasks": [
@@ -2623,6 +2633,40 @@
       "lease": {
         "acquired": "2026-11-24T07:37:08+00:00",
         "expires": "2026-11-25T07:37:08+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-048",
+      "title": "dev_supervisor: intake command that turns a finished worker's branch into a reviewed-ready pull request",
+      "description": "After a worker exits, Main performs the same steps by hand every time: confirm the worker really finished and committed inside its owned paths, bring the branch up to date with main, run the merge preflight and read its exit code, push (workers are forbidden to), and open the pull request with the provenance disclosed. Add an intake module (python -B -m dev_supervisor.intake <worker-id> [--yes]) that does exactly these steps from the worker and task records, in a dry run by default, refuses on any unmet condition, builds the pull request body from recorded facts (worker id, task, route, run duration, exit state, what the worker did and did not do) without any credential, and prints the diff hash a reviewer must bind to. It never merges, never reviews and never edits files.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-048-worker-intake",
+      "worktree": "../CreatorStudio-worktrees/t-dev-048-worker-intake",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-048-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/intake.py",
+        "orchestrator/tests/test_dev_intake.py"
+      ],
+      "acceptance_criteria": [
+        "intake refuses, naming the unmet condition and doing nothing, when the worker is unknown, still running, FAILED without a commit, not on its registered branch or worktree, has uncommitted changes, changed a file outside its task's owned paths, or the preflight fails or is unknown",
+        "in the default dry run it only reads and prints the plan, the preflight table and the diff hash; with --yes it merges origin/main into the branch only when needed, pushes the registered branch and opens the pull request, and never force-pushes, merges, reviews or edits files",
+        "the pull request body states the worker id, task, route, run duration, exit state and that the change is unreviewed, and contains no credential; a worker that did not finish is disclosed as such",
+        "git and gh are only reached through injected runners; tests use fakes and also run once against a real temporary git repository"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_intake.py from the repository root",
+        "a test against a real temporary git repository",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: the hand-off of both worker runs of this mission (T-DEV-043 and T-DEV-047) was the same manual sequence.",
+      "lease": {
+        "acquired": "2026-11-24T07:51:25+00:00",
+        "expires": "2026-11-25T07:51:25+00:00"
       }
     }
   ]
