@@ -250,6 +250,7 @@ class ClaimWriteSafety(unittest.TestCase):
     def test_an_unreadable_existing_handoff_is_a_problem_not_an_exception(self):
         repo = Repo(self)
         before_active = (repo.dir / "ACTIVE_TASKS.json").read_bytes()
+        before_handoff = (repo.dir / "SESSION_HANDOFF.md").read_bytes()
 
         real_read = Path.read_bytes
 
@@ -264,6 +265,7 @@ class ClaimWriteSafety(unittest.TestCase):
         self.assertIsNone(task)
         self.assertIn("writing failed", probs[0])
         self.assertEqual((repo.dir / "ACTIVE_TASKS.json").read_bytes(), before_active)
+        self.assertEqual((repo.dir / "SESSION_HANDOFF.md").read_bytes(), before_handoff)
 
 
 class Cli(unittest.TestCase):
