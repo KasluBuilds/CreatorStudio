@@ -588,7 +588,7 @@ class CliTests(Offline):
     def test_assign_is_refused_without_a_gateway_environment(self):
         env = Env(self)
         env.verified_route()
-        env.svc.env = {"PATH": "p", "ANTHROPIC_API_KEY": "sk-should-not-matter"}
+        env.svc.env = {"PATH": "p", "ANTHROPIC_API_KEY": "dummy-not-a-real-key"}
         code, out = env.cli(*self._assign_args(env))
         self.assertEqual(code, 1, out)
         self.assertIn("worker environment is not safe", out)
