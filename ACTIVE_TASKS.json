@@ -2936,7 +2936,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-054-independent-review",
       "worktree": "../CreatorStudio-worktrees/t-dev-054-independent-review",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2962,10 +2962,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, phase 4 (independent review dispatch). Amended after T-DEV-053 closed: orchestrator/tests/test_dev_cli.py added to the owned paths (one existing test assigns a review without the author's route).",
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, phase 4 (independent review dispatch). Amended after T-DEV-053 closed: orchestrator/tests/test_dev_cli.py added to the owned paths (one existing test assigns a review without the author's route). Merged as PR #190 (independent review of diff 3b001d85434a565f; non-blocking notes adopted).",
       "lease": {
         "acquired": "2026-11-24T16:38:55+00:00",
-        "expires": "2026-11-25T16:38:55+00:00"
+        "expires": "2026-11-25T16:38:55+00:00",
+        "released": "2026-11-24T17:15:11+00:00"
       }
     },
     {
