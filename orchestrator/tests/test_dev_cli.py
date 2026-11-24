@@ -1333,6 +1333,34 @@ class RestartCommandTests(Offline):
         self.assertEqual((w.status, w.restart_count), ("FAILED", 0))
         self.assertEqual(env.worker_launcher.specs, [])
 
+    def test_a_restart_that_could_not_launch_is_refused_before_it_uses_a_budget_step(self):
+        env = Env(self)
+        env.verified_route()
+        w = self.failed(env)
+        Path(w.prompt_file).unlink()
+        code, out = env.cli("restart", "w-fail01", "--yes")
+        self.assertEqual(code, 1, out)
+        self.assertIn("prompt file no longer exists", out)
+        env = Env(self)
+        env.verified_route()
+        self.failed(env)
+        env.svc.worktree_checker = lambda wt, br: (False, "worktree is on branch 'main'")
+        code, out = env.cli("restart", "w-fail01", "--yes")
+        self.assertEqual(code, 1, out)
+        self.assertIn("worktree check", out)
+        self.assertEqual(self.queued(env), [])
+
+    def test_the_dry_run_shows_the_recorded_note_of_a_lost_worker(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        env.verified_route()
+        w = self.failed(env, status="LOST")
+        w.note = "supervisor stopped during launch; launch outcome unknown"
+        WorkerRegistry(env.store()).update(w)
+        code, out = env.cli("restart", "w-fail01")
+        self.assertEqual(code, 0, out)
+        self.assertIn("launch outcome unknown", out)
+
     def test_the_loop_restarts_a_lost_worker_although_a_lost_worker_counts_toward_the_cap(self):
         from dev_supervisor.workers import WorkerRegistry
         env = Env(self)

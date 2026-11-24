@@ -1283,13 +1283,21 @@ def cmd_restart(svc: Services, a: argparse.Namespace) -> int:
                                                    state_dir=cfg.state_directory(), base_env=svc.env)
     if not gate.allowed:
         problems.append(gate.reason)
+    # A restart that cannot launch would still use up one step of the restart budget: check what launching needs.
+    if not (w.prompt_file and os.path.isfile(w.prompt_file)):
+        problems.append("the worker's prompt file no longer exists")
+    ok, why = svc.worktree_checker(w.worktree, w.branch)
+    if not ok:
+        problems.append(f"worktree check: {why}")
     if problems:
         _print(svc, {"ok": False, "problems": problems}, a.json, "refused: " + "; ".join(problems))
         return EXIT_FAIL
     payload = {"worker_id": w.worker_id}
+    note = scrub(w.note)[:160] if w.note else ""
     if not a.yes:
         _print(svc, {"ok": True, "dry_run": True, "would_queue": payload, "restart_count": w.restart_count}, a.json,
-               f"worker {w.worker_id} ({w.status}) can be restarted (restart {w.restart_count + 1} of {budget}); rerun with --yes to queue it")
+               f"worker {w.worker_id} ({w.status}) can be restarted (restart {w.restart_count + 1} of {budget}); rerun with --yes to queue it"
+               + (f". Recorded note (check the worktree and session before restarting): {note}" if note else ""))
         return EXIT_OK
     store = svc.store()
     rid = enqueue(store, "restart", payload)
