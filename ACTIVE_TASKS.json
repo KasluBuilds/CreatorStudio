@@ -3257,7 +3257,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-061-start-lifecycle-tests",
       "worktree": "../CreatorStudio-worktrees/t-dev-061-start-lifecycle-tests",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3276,10 +3276,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the overnight preparation mission.",
+      "integration_notes": "Claimed 2026-11-24 under the overnight preparation mission. Merged as PR #207 (independent review of diff 76f81078056dc514).",
       "lease": {
         "acquired": "2026-11-24T21:24:21+00:00",
-        "expires": "2026-11-25T21:24:21+00:00"
+        "expires": "2026-11-25T21:24:21+00:00",
+        "released": "2026-11-24T21:36:11+00:00"
       }
     }
   ]
