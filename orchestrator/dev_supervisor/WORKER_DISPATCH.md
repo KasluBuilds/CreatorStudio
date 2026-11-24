@@ -90,6 +90,27 @@ A worker whose process vanished while no Supervisor was watching is marked LOST 
 
 What it refuses: any status except LOST (a RUNNING worker is refused, even with a dead pid: let the Supervisor mark it LOST first), a LOST worker whose recorded pid is alive (pids can be reused; stop that process by hand), a missing reason, an unknown worker. Retiring twice is a no-op. The retired worker is STOPPED, so `restart` can still use its remaining attempts later; retirement is not a ban. It does not touch the task registry or the task's claim.
 
+## Running the Supervisor from a normal PowerShell window (T-DEV-059, T-DEV-061)
+
+The Supervisor loop is a foreground command. It must run in an ordinary PowerShell window, not as a background command of a Claude Code session (Claude Code stops those under memory pressure, OBSERVED twice on 2026-11-24). It selects no task and starts no worker by itself: it only applies requests that someone queues with `assign`, `restart` or `retire`, and it watches the workers it started.
+
+1. Start (the two variables point worker processes at the isolated worker gateway; the token is a placeholder, not a credential, because that gateway does not check it on the messages endpoint, `WORKER_GATEWAY.md` section 10):
+
+   ```powershell
+   cd C:\Users\Korisnik\CreatorStudio\orchestrator
+   $env:ANTHROPIC_BASE_URL = 'http://127.0.0.1:20130'
+   $env:ANTHROPIC_AUTH_TOKEN = 'worker-gateway-placeholder'
+   python -B -m dev_supervisor start --yes --no-main
+   ```
+
+   Expected, as observed in a throwaway state directory with the real code (OBSERVED): `recovery: N item(s), 0 blocker(s); nothing relaunched`, then one line `tick K: main_alive=False requests=0 worker_changes=0` every 15 seconds. A RUNNING worker whose process is gone is marked LOST at that point, with its restart count unchanged. A second `start` while one is running is refused ("already running").
+2. Health, from a second window: `python -B -m dev_supervisor status`. Expect a `lock` line with `alive: True`, `supervisor heartbeat: FRESH` with a tick number that rises every 15 seconds (it is STALE after 45 seconds without a tick), and the worker counts.
+3. Free the worker slot of an orphan without spending a restart, from the second window, after the Supervisor has marked it LOST: `python -B -m dev_supervisor retire <worker-id> --reason "<why>"` (dry run), then the same with `--yes`. The loop applies it on its next tick; `status` then shows the worker as STOPPED. A worker still RUNNING is refused: let the Supervisor start first.
+4. Stop: Ctrl+C in the start window. It prints `interrupted; supervisor loop stopped (Main and workers keep running)` and releases the lock. Closing or killing the window instead leaves a stale lock, which the next `start` replaces. Both are covered by tests in `test_dev_cli.py` (`StartLifecycleTests`); neither was exercised against the real registry.
+5. Dispatch stays gated: the memory floor (1024 MB), one active worker, a verified route and the restart budget still apply to every queued request. The loop never restarts a worker on its own (`auto_restart` is off).
+
+Throwaway end-to-end run of the retire command (OBSERVED, real code, a temporary state directory, no worker launched): `retire` on a RUNNING orphan was refused; `start --max-ticks 1` marked it LOST (restart count 2 stayed 2); `retire --yes` queued one request; the next `start --max-ticks 1` applied it (status STOPPED, restart count 2, note `retired: e2e check`); a second `retire` answered "already retired" and queued nothing. The real registry has not been touched by it.
+
 ## Known limits and follow-ups
 
 - Only one route is verified, with the limits stated in `WORKER_GATEWAY.md` (one trivial tool round trip; `cost_zero` REPORTED, not proven). Independent review is still done by fresh Claude subagents of the Main session: that route is too weak (capability 2) to be an allocated reviewer.
