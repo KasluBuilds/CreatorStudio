@@ -9,7 +9,7 @@ Companion pages: `WORKER_DISPATCH.md` (the dispatch gate and the registry file),
 | Question | Answer |
 |---|---|
 | Is a worker route verified? | Yes, one: provider `gemini`, model `gemini/gemini-3.1-flash-lite` (the gateway's model id, which is the string the registry and `--model` use), on the **worker gateway** below. The registry entry is written in the state directory, not in the repository; it is not part of this change. Two complete Claude Code round trips passed (OBSERVED, section 4). |
-| Has any worker run through the dispatch path? | **NOT DEMONSTRATED** as of this page. A later record must say otherwise, with evidence. |
+| Has any worker run through the dispatch path? | Once (OBSERVED, section 7): it implemented a small task correctly but ended FAILED on a provider 503 before running its tests, and Main finished the task. **No complete worker-only task-to-merge cycle has been demonstrated.** |
 | Is the exposed gateway key still valid? | No. It was rotated on 2026-11-24 (section 2). |
 | Is the main gateway safe from other machines? | **No, and unchanged.** It answers inference requests without any credential on all network interfaces (section 3). That needs the owner's decision. |
 | Can the main gateway run the verified route? | No. The installed version (3.8.49) fails Claude Code tool turns on Gemini 3 routes. Version 3.8.54 passed on `gemini-3.1-flash-lite` (INFERRED to be the release fix, because the release notes name it; the same model was not re-tested on 3.8.49). |
@@ -61,3 +61,31 @@ Label note: a statement marked OBSERVED was seen directly; where a conclusion is
 1. Decide on the main gateway: bind loopback or require an API key (section 3). Both change behaviour for other tools.
 2. Upgrade the main gateway to 3.8.50 or later, or keep using the worker gateway for workers. Upgrading changes a working service; keep the database snapshot and the previous version to roll back.
 3. Re-authorise the Kiro connection (section 2).
+
+## 7. First dispatched worker run (T-DEV-043), 2026-11-24
+
+Labels: OBSERVED = read from the Supervisor event log, the worker's stream log or the worker gateway's call log on this machine.
+
+**What ran.** `assign --allocation-role implementation` resolved the registry's only route (`gemini/gemini-3.1-flash-lite`), the dispatch gate passed, and the Supervisor started worker `w-b88c568c18` in its own worktree with the isolated worker environment that the launcher builds and re-checks (the gate and the launcher refuse a login, an API key or a non-local gateway). The task was small: add `Allocation.independent` with tests, two owned files.
+
+**What happened (OBSERVED).**
+- The worker's command line carried the authority policy: its hook (policy `worker-routine-allowlist`) **denied one compound shell command** (`cd orchestrator && python ...`, "not one simple command"). Workers must issue single simple commands; from the repository root the test command `python -B -I -m unittest discover -s orchestrator/tests -p <file>` is one.
+- Wall time 28.7 minutes, 8 reported turns, tool calls: 2 Read, 3 Edit, 2 Bash (one denied).
+- The worker gateway answered **48 calls** in that window: 7 succeeded (HTTP 200), 25 returned 503 "high demand", 11 returned 429, 3 timed out at 110 s (504) and 2 were cancelled by the client (499). The free route is slow and unreliable.
+- Claude Code ended with `API Error: 503` after its own bounded retries (exit 1). The Supervisor recorded `worker_failed` (signature `exit:1`) with a restart-not-before time. `auto_restart` is off by default, so the worker stays FAILED until someone restarts it; there is no `restart` command in the CLI.
+
+**What the worker produced (kept as written).** The new field, its computation and the main new test, all correct in review. It never ran the tests and so never noticed that one existing assertion pins the exact `to_dict()` keys.
+
+**What Main did.** Updated that one assertion, ran four suites, and, after the first independent review found two uncaught mutations, added a test for them. Merged as PR #160 with all eight gates passing and an independent review bound to the diff hash. The PR body discloses this split.
+
+**What this does and does not show.**
+- OBSERVED: a worker can start through the production gate on a verified zero-cost route, work in its own worktree under the authoritative hook, and produce correct code. Failure was bounded (one run, no loop) and recorded.
+- NOT DEMONSTRATED: a worker finishing a task alone (tests, commit, handoff), a dispatched independent reviewer, an automatic restart, a complete select-register-dispatch-implement-review-merge-select cycle.
+- Reliability: with a 15 % success rate for gateway calls, a free Gemini route cannot yet carry a cycle unattended. No other verified route exists on the gateway today (`WORKER_GATEWAY.md` section 3).
+- Did role allocation reduce general-purpose usage? **Not measurable from one run.** By construction a dispatched worker spends no Claude login usage; independent review and Main's own work still do, so the saving is bounded by how much implementation the free route can carry.
+
+**Next steps.**
+1. Re-dispatch one small task with the prompt telling the worker to use single simple commands and the root-level test command, and to commit before finishing; compare with this run.
+2. Decide whether the Supervisor needs a `restart` command or a bounded auto restart for a worker that ends on a provider error.
+3. Owner decisions in section 6 (main gateway exposure, upgrade, Kiro re-authorisation).
+4. A reviewer route of capability 3 or more must be verified before a dispatched reviewer is possible.

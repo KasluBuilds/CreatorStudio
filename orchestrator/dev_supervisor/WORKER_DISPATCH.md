@@ -11,7 +11,10 @@ Written 2026-11-24 for the overnight mission (tasks T-DEV-032, T-DEV-038, T-DEV-
 | A worker record carries the route chosen by role (role, provider, model, capability, evidence id, reason) | IMPLEMENTED (PR #139) |
 | `autonomy next` proposes eligible milestone work when nothing is actionable | IMPLEMENTED (PR #137) |
 | `integrate --preflight` checks the offline merge gates before pushing | IMPLEMENTED (PR #144) |
-| A worker running a real task through the OmniRoute gateway | **NOT DEMONSTRATED** |
+| A worker running a real task through the OmniRoute gateway | OBSERVED once (`WORKER_GATEWAY.md`, section 7): correct partial work, ended FAILED on a provider 503; Main finished it. **A complete worker-only cycle is NOT DEMONSTRATED** |
+| `python -B -m dev_supervisor.claim spec.json [--write]` registers one task and regenerates the handoff, applying the claim-PR rules | IMPLEMENTED (PR #159); used to register T-DEV-046 |
+| `integrate --preflight` also checks the branch name (gate 1) and that `SESSION_HANDOFF.md` is current (gate 2) | IMPLEMENTED (PR #155) |
+| `Allocation.independent` records whether a review route differs from the author's (True / False / None) | IMPLEMENTED (PR #160); written by a dispatched worker, finished by Main |
 | Any route listed as verified | OBSERVED for one route, on the isolated worker gateway only (`WORKER_GATEWAY.md`): `gemini` / `gemini/gemini-3.1-flash-lite`, two complete Claude Code round trips. The registry file lives in the state directory, not in the repository; without an entry every dispatch is refused |
 
 Route state (OBSERVED, 2026-11-24): see `WORKER_GATEWAY.md` for the probe results, the corrected reading of the earlier 429 (the Gemini 2.5 routes are retired for this account; the 429 was the gateway cooldown after provider 404s, not exhausted quota), the isolated worker gateway and the credential rotation. Earlier observations: `OMNIROUTE_BENCHMARK.md` (2026-11-17, text-only) records `not_found` then `rate_limited` for the 2.5 routes and Groq `auth_error`; the report that Gemini 3.x routes break Claude Code tool turns (`thought_signature`) comes from earlier Main sessions (REPORTED, not recorded in a repository file).
@@ -64,7 +67,7 @@ No fitting route is a refusal with a reason: never a fallback, never a Claude mo
 ## Autonomy proposals and the merge preflight
 
 - `python -B -m dev_supervisor.autonomy next` lists registered work first. When nothing is actionable it also lists `PROPOSED` milestones from `PROJECT_STATUS.json`: not started, every dependency implemented, no open task mentions them; milestones with open questions are flagged as needing a decision. Proposals never register anything.
-- `python -B -m dev_supervisor.integrate --preflight [--repo ..]` evaluates scope, secrets, forbidden files and reserved paths on the committed HEAD against `origin/main`, with no pull request, and prints the content diff hash a review must bind to. Run it before pushing. It does not check CI, merge state or review. A registry-only PR may add its own new task, step and agreement records and update the records of the task whose registered branch it is on; nothing else.
+- `python -B -m dev_supervisor.integrate --preflight [--repo ..]` evaluates the branch name, handoff currency, scope, secrets, forbidden files and reserved paths on the committed HEAD against `origin/main`, with no pull request, and prints the content diff hash a review must bind to. Run it before pushing. It does not check CI, merge state or review. A registry-only PR may add its own new task, step and agreement records and update the records of the task whose registered branch it is on; nothing else.
 - Merge with `python -B -m dev_supervisor.integrate <PR> --yes` (it re-evaluates every gate under a lock and merges pinned to the evaluated head).
 
 ## What now refuses (and why old documents may disagree)
@@ -76,7 +79,7 @@ No fitting route is a refusal with a reason: never a fallback, never a Claude mo
 
 - Only one route is verified, with the limits stated in `WORKER_GATEWAY.md` (one trivial tool round trip; `cost_zero` REPORTED, not proven). Independent review is still done by fresh Claude subagents of the Main session: that route is too weak (capability 2) to be an allocated reviewer.
 - `routing.py` (the `route` command, task-profile ranking that includes Claude routes) overlaps with role allocation and should be reconciled.
-- A review allocation has no machine-readable `independent` flag; self-review is disclosed only in the reason text.
+- `Allocation.independent` exists (PR #160) but nothing yet refuses a review whose flag is False; the merge gate still relies on the reviewer id not being an author id. The flag is a claim about routes, not proof that the reviewer was independent.
 - Hand-built `VerifiedRoute` objects are not type-checked in `allocate` (the loader normalises them).
 - Skipping the gate branch in `process_requests` is stopped only by `Supervisor.assign`'s own validation (a mutant that no test catches on its own).
 - Proposals: a milestone id directly after a JSON escape sequence in an open task's text is not matched; falsy junk in `depends_on` is treated as none.
