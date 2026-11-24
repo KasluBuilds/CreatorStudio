@@ -1088,6 +1088,15 @@ class PreflightBranchAndHandoff(unittest.TestCase):
         self.assertEqual(g.status, I.FAIL)
         self.assertIn("governance handoff --write", g.detail)
 
+    def test_the_comparison_is_as_strict_as_ci_a_missing_trailing_newline_is_stale(self):
+        class NoFinalNewline(PreGit):
+            def __call__(self, args):
+                if list(args)[:2] == ["show", "HEAD:SESSION_HANDOFF.md"]:
+                    return 0, RENDERED.rstrip().encode()
+                return super().__call__(args)
+        gates, _, _ = pre(git=NoFinalNewline())
+        self.assertEqual(status(gates, "handoff_current"), I.FAIL)
+
     def test_an_unreadable_or_unrenderable_handoff_is_unknown_never_pass(self):
         from unittest import mock
         gates, _, _ = pre(handoff="missing")

@@ -784,7 +784,8 @@ def _gate_handoff_current(git: Callable) -> Gate:
         rendered = handoff_mod.render(json.loads(blobs["PROJECT_STATUS.json"]), json.loads(blobs["ACTIVE_TASKS.json"]))
     except Exception as e:
         return Gate(2, "handoff_current", UNKNOWN, _clean(f"cannot render the handoff: {type(e).__name__}"))
-    if blobs["SESSION_HANDOFF.md"].splitlines() != rendered.splitlines():
+    crlf, lf = chr(13) + chr(10), chr(10)    # the same normalisation as governance/cli.py _norm: only CRLF becomes LF
+    if blobs["SESSION_HANDOFF.md"].replace(crlf, lf) != rendered.replace(crlf, lf):
         return Gate(2, "handoff_current", FAIL, "SESSION_HANDOFF.md is stale; run: python -B -m governance handoff --write")
     return Gate(2, "handoff_current", PASS, "SESSION_HANDOFF.md matches the registry and status files")
 
