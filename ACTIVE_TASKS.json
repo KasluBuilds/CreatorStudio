@@ -446,6 +446,16 @@
         "orchestrator/dev_supervisor/cli.py",
         "orchestrator/tests/test_dev_cli.py"
       ]
+    },
+    "AGR-DEV-052-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The second overnight mission (2026-11-24) directs Main to keep its records truthful and to record outstanding blockers and next steps. Under that mandate T-DEV-052 may update WORKER_DISPATCH.md and WORKER_GATEWAY.md in dev_supervisor, documentation only. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-052"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ]
     }
   },
   "tasks": [
@@ -2800,6 +2810,39 @@
         "acquired": "2026-11-24T08:45:34+00:00",
         "expires": "2026-11-25T08:45:34+00:00",
         "released": "2026-11-24T08:57:59+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-052",
+      "title": "dev_supervisor: correct the run record now that a restart command exists",
+      "description": "The run record in WORKER_GATEWAY.md and WORKER_DISPATCH.md says the CLI has no restart command and lists automatic or explicit restart as not demonstrated. A restart command was added afterwards. Correct those statements without losing what was true at the time of the first run, and state that the command was exercised only with fake launchers. Documentation only.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-052-restart-record",
+      "worktree": "../CreatorStudio-worktrees/t-dev-052-restart-record",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-052-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ],
+      "acceptance_criteria": [
+        "no statement in the two pages says the CLI has no restart command except where it is explicitly dated to the time of the first run",
+        "the restart command is listed as implemented with what it refuses, and as exercised only with fake launchers",
+        "no credential or fragment appears; no code, test or launcher changes"
+      ],
+      "test_requirements": [
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command.",
+      "lease": {
+        "acquired": "2026-11-24T09:02:04+00:00",
+        "expires": "2026-11-25T09:02:04+00:00"
       }
     }
   ]
