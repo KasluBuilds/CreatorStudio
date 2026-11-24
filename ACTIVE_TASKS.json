@@ -542,6 +542,16 @@
         "orchestrator/tests/test_dev_lifecycle.py",
         "orchestrator/tests/test_dev_cli.py"
       ]
+    },
+    "AGR-DEV-060-01": {
+      "description": "T-DEV-060 edits the two documentation pages only; no code, test or launcher changes.",
+      "task_ids": [
+        "T-DEV-060"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ]
     }
   },
   "tasks": [
@@ -3195,6 +3205,40 @@
         "acquired": "2026-11-24T21:05:27+00:00",
         "expires": "2026-11-25T21:05:27+00:00",
         "released": "2026-11-24T21:15:11+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-060",
+      "title": "dev_supervisor: record the retire command, the evening route probe and the independent start procedure",
+      "description": "Documentation only. Record in WORKER_DISPATCH.md and WORKER_GATEWAY.md what the overnight-preparation mission added and observed: the retire command (T-DEV-059) and its end-to-end run against a throwaway state directory; one bounded Claude Code round trip through the worker gateway after hours of 503 and 429 answers (what succeeded, what the 429 bodies said, what that does and does not show); that the worker gateway accepts any placeholder token on the messages endpoint; and the exact procedure to start the Supervisor from a normal PowerShell window, check its health, retire an orphaned worker and stop it. State what is still not demonstrated.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-060-overnight-record",
+      "worktree": "../CreatorStudio-worktrees/t-dev-060-overnight-record",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-060-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ],
+      "acceptance_criteria": [
+        "the retire command and its throwaway end-to-end run are recorded with their real output and the limit that it never ran against the real registry",
+        "the route probe records the number of attempts, the 429 and 200 counts and the provider's own 429 wording, labelled OBSERVED, without claiming the route is reliable or that a worker can implement a task",
+        "the start, health-check, retire and stop procedure is complete and matches the code",
+        "the not-demonstrated list is still accurate; no credential or fragment appears"
+      ],
+      "test_requirements": [
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the overnight preparation mission.",
+      "lease": {
+        "acquired": "2026-11-24T21:20:17+00:00",
+        "expires": "2026-11-25T21:20:17+00:00"
       }
     }
   ]
