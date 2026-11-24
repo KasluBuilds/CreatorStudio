@@ -146,12 +146,13 @@ class TestAllocationChoice(unittest.TestCase):
             with self.subTest(author_capability=cap), self.assertRaises(AllocationRefused):
                 allocate("review", [r], author_capability=cap)
 
-    def test_the_allocation_record_has_six_fields_and_no_credential(self):
+    def test_the_allocation_record_has_seven_fields_and_no_credential(self):
         a = allocate("implementation", [route(evidence="T-DEV-038 live probe 2026-12-01", roles=ALL_ROLES)])
         self.assertIsInstance(a, Allocation)
         d = a.to_dict()
-        self.assertEqual(sorted(d), ["capability", "evidence", "model", "provider", "reason", "role"])
+        self.assertEqual(sorted(d), ["capability", "evidence", "independent", "model", "provider", "reason", "role"])
         self.assertEqual((d["role"], d["provider"], d["model"], d["capability"]), ("implementation", "gemini", "auto/a", 2))
+        self.assertIsNone(d["independent"])
         self.assertIn("lowest capability that fits", d["reason"])
         json.dumps(d)
 
@@ -163,6 +164,39 @@ class TestAllocationChoice(unittest.TestCase):
         self.assertEqual(ma.MIN_CAPABILITY, {"implementation": 2, "research": 2, "test_writing": 2, "review": 3,
                                              "architecture": 4})
         self.assertEqual(ma.ROLES, ("implementation", "research", "test_writing", "review", "architecture"))
+
+    def test_independent_flag_in_allocations(self):
+        # 1. review with two usable routes where the author route is the cheaper one
+        # capability 3 vs 4. Cheaper (cap 3) is author.
+        a = route("auto/cheaper", capability=3, roles=("review",))
+        b = route("auto/stronger", capability=4, roles=("review",))
+        # Author used cheaper one.
+        # allocate should prefer stronger one (independent=True).
+        got = allocate("review", [a, b], author_capability=3, author_route=("gemini", "auto/cheaper"))
+        self.assertEqual(got.model, "auto/stronger")
+        self.assertEqual(got.independent, True)
+
+        # 2. review where the author's route is the only route that fits
+        only = allocate("review", [a], author_route=("gemini", "auto/cheaper"))
+        self.assertEqual(only.model, "auto/cheaper")
+        self.assertEqual(only.independent, False)
+
+        # 3. review called without author_route
+        none = allocate("review", [a, b])
+        self.assertEqual(none.independent, None)
+
+        # 4. for each of the roles implementation, research, test_writing and architecture
+        for role in ("implementation", "research", "test_writing", "architecture"):
+            with self.subTest(role=role):
+                r = allocate(role, [route(roles=ALL_ROLES, capability=5)])
+                self.assertEqual(r.independent, None)
+
+        # 5. to_dict() contains the key "independent"
+        d = only.to_dict()
+        self.assertIn("independent", d)
+        self.assertEqual(d["independent"], False)
+        # Check no other new keys
+        self.assertEqual(sorted(d), ["capability", "evidence", "independent", "model", "provider", "reason", "role"])
 
 
 class TestRegistryFields(unittest.TestCase):

@@ -44,6 +44,8 @@ class Allocation:
     capability: int
     evidence: str
     reason: str
+    independent: Optional[bool] = None
+    """True = a review route that is not the author's route; False = the author's own route; None = not a review, or the author's route was not given."""
 
     def to_dict(self) -> Dict[str, Any]:
         """Credential-free record for a worker record or an event."""
@@ -110,8 +112,9 @@ def allocate(role: str, routes: Sequence[Any], *, author_capability: int = 0,
     why = f"{how} for role {role} (needs {need} or more, route has {best.capability}); {len(fits)} route(s) fit"
     if is_author(best):
         why += "; this is the author's own route and no other route fits"
+    independent = (not is_author(best)) if author is not None else None
     return Allocation(role=role, provider=best.provider, model=best.model, capability=best.capability,
-                      evidence=best.evidence.strip()[:MAX_EVIDENCE], reason=why)
+                      evidence=best.evidence.strip()[:MAX_EVIDENCE], reason=why, independent=independent)
 
 
 def allocate_from_registry(registry_file: Any, role: str, *, author_capability: int = 0,
