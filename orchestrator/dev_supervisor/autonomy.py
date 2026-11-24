@@ -323,6 +323,58 @@ def _worker_items(store: Optional[StateStore], warnings: List[str]) -> Tuple[Lis
     return items, blocked, running_tasks, running
 
 
+def _milestone_proposals(root: Path, warnings: List[str]) -> List[dict]:
+    """Read-only advice for Main: milestones of PROJECT_STATUS.json that could be registered as work (T-DEV-039).
+
+    Eligible: implementation NOT_STARTED, every dependency IMPLEMENTED, and no registered task that is not done
+    mentions the milestone id. A milestone with blockers or open questions is flagged ``needs_decision``: a human or
+    Main must resolve it before any task is registered. Nothing is registered or written. A missing file is silent (a
+    repository without a plan); an unreadable or malformed one is a warning and yields no proposals."""
+    path = root / "PROJECT_STATUS.json"
+    if not path.is_file():
+        return []
+    try:
+        doc = _load_json(path)
+        if not isinstance(doc.get("milestones"), list):
+            raise ValueError("milestones is not a list")
+        milestones = [m for m in doc["milestones"] if isinstance(m, dict) and isinstance(m.get("id"), str)]
+    except (OSError, ValueError, AttributeError):
+        warnings.append("PROJECT_STATUS.json unreadable or malformed: no milestone proposals")
+        return []
+
+    def state(m: dict) -> str:
+        impl = m.get("implementation")
+        return str(impl.get("state")) if isinstance(impl, dict) else "UNKNOWN"
+
+    by_id = {m["id"]: m for m in milestones}
+    open_work = ""
+    try:
+        reg = _load_json(root / "ACTIVE_TASKS.json")
+        open_work = json.dumps([t for t in reg.get("tasks", []) if isinstance(t, dict)
+                                and t.get("status") not in DONE_STATUSES])
+    except (OSError, ValueError, AttributeError):
+        pass  # the registry problem is already reported by _task_items
+    out: List[dict] = []
+    for m in milestones:
+        if state(m) != "NOT_STARTED":
+            continue
+        deps = m.get("depends_on") or []
+        if not isinstance(deps, list) or any(not isinstance(d, str) or d not in by_id or state(by_id[d]) != "IMPLEMENTED"
+                                             for d in deps):
+            continue
+        if re.search(r"(?<![A-Za-z0-9-])" + re.escape(m["id"]) + r"(?![A-Za-z0-9-])", open_work):
+            continue
+        questions = [str(q) for q in (m.get("open_questions") or [])] if isinstance(m.get("open_questions"), list) else []
+        blockers = [str(b) for b in (m.get("blockers") or [])] if isinstance(m.get("blockers"), list) else []
+        out.append({"kind": "propose_milestone", "id": f"propose:{m['id']}", "milestone_id": m["id"],
+                    "title": str(m.get("title", "")), "phase": str(m.get("phase", "")), "weight": m.get("weight"),
+                    "needs_decision": bool(questions or blockers), "open_questions": questions, "blockers": blockers,
+                    "evidence": "PROPOSED",
+                    "reason": f"{m['id']} is NOT_STARTED, its dependencies are implemented and no open task mentions it"})
+    out.sort(key=lambda p: p["needs_decision"])   # stable: document order inside each group
+    return out
+
+
 def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunner] = None,
                   owner: str = DEFAULT_OWNER) -> Dict[str, Any]:
     """The actionable picture for Main. Never raises; problems become ``warnings``."""
@@ -350,6 +402,11 @@ def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunn
     except Exception as e:  # noqa: BLE001
         warnings.append(f"wave items failed ({e.__class__.__name__})")
     items.sort(key=lambda i: (PRIORITY.get(i["kind"], 99), i["id"]))
+    try:
+        proposals = _milestone_proposals(root, warnings)
+    except Exception as e:  # noqa: BLE001 - tolerant by contract
+        proposals = []
+        warnings.append(f"milestone proposals failed ({e.__class__.__name__})")
     for i in items:
         i["priority"] = PRIORITY.get(i["kind"], 99)
         i["inspect"] = INSPECT_HINT.get(i["kind"], "python -B -m dev_supervisor.autonomy next")
@@ -366,6 +423,10 @@ def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunn
         elif blocked:
             parts.append(f"{len(blocked)} blocked item(s) need a human")
         idle = "; ".join(parts) or "no registered work: nothing is planned or waiting"
+        if proposals:
+            ready = [p["milestone_id"] for p in proposals if not p["needs_decision"]]
+            idle += (f"; {len(proposals)} milestone(s) could be proposed ({len(ready)} without an open decision"
+                     + (": " + ", ".join(ready[:5]) if ready else "") + ")")
     if store is not None and store.directory.is_dir():
         try:
             cands = authoritative_candidates(store)
@@ -376,9 +437,9 @@ def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunn
     ids = [i["id"] for i in items]
     return {"evidence": Label.OBSERVED.value, "counts": {"items": len(items), "blocked": len(blocked),
                                                           "running_workers": running, "warnings": len(warnings),
-                                                          "others_waiting": len(others)},
+                                                          "others_waiting": len(others), "proposals": len(proposals)},
             "fingerprint": fingerprint(ids), "items": items, "blocked": blocked, "idle_reason": idle,
-            "others_waiting_review": others, "warnings": warnings}
+            "others_waiting_review": others, "warnings": warnings, "proposals": proposals}
 
 
 # ------------------------------------------------------------------ state helpers
@@ -460,6 +521,11 @@ def cmd_next(a: argparse.Namespace, out: TextIO, env, clock, git) -> int:
         out.write(f"[{i['priority']:>2}] {i['kind']} {i['id']}\n     {i['reason']}\n     inspect: {i['inspect']}\n")
     for b in res["blocked"]:
         out.write(f"blocked {b['task_id']}: {b['blocker']}\n")
+    if not res["items"]:
+        for p in res["proposals"]:
+            flag = " (needs a decision: " + "; ".join(p["open_questions"] + p["blockers"])[:160] + ")" \
+                if p["needs_decision"] else ""
+            out.write(f"PROPOSED {p['milestone_id']} [{p['phase']}] {p['title']}{flag}\n")
     for o in res["others_waiting_review"]:
         out.write(f"info (not actionable) {o['task_id']}: {o['reason']}\n")
     for w in res["warnings"]:
