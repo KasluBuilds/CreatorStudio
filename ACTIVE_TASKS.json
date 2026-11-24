@@ -2519,7 +2519,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-045-claim-command",
       "worktree": "../CreatorStudio-worktrees/t-dev-045-claim-command",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2540,10 +2540,11 @@
         "a test that runs the written result through governance validation and handoff --check",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: the claim PRs for T-DEV-042 and T-DEV-043 failed or were rebuilt four times on rules that are decidable from the spec.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: the claim PRs for T-DEV-042 and T-DEV-043 failed or were rebuilt four times on rules that are decidable from the spec. Completed 2026-11-24: merged as PR #159 (all eight gates PASS; independent review bound to diff 4a0bad1ea9a5532d after one round of changes that fixed a real default --repo bug). 20 tests; 19 of 19 mutations caught. First used to register T-DEV-046.",
       "lease": {
         "acquired": "2026-11-24T07:06:24+00:00",
-        "expires": "2026-11-25T07:06:24+00:00"
+        "expires": "2026-11-25T07:06:24+00:00",
+        "released": "2026-11-24T07:33:46+00:00"
       }
     },
     {
