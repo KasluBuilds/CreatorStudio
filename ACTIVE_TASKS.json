@@ -580,6 +580,16 @@
       "paths": [
         "orchestrator/tests/test_dev_integrate.py"
       ]
+    },
+    "AGR-DEV-064-01": {
+      "description": "T-DEV-064 edits the two documentation pages only; no code, test or launcher changes.",
+      "task_ids": [
+        "T-DEV-064"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ]
     }
   },
   "tasks": [
@@ -3371,6 +3381,40 @@
         "acquired": "2026-11-24T23:12:55+00:00",
         "expires": "2026-11-25T23:12:55+00:00",
         "released": "2026-11-24T23:28:03+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-064",
+      "title": "dev_supervisor: record the second worker-produced change and the state left for the next Main",
+      "description": "Documentation only. Record in WORKER_GATEWAY.md and WORKER_DISPATCH.md the second worker run (T-DEV-063: worker, times, turns, tool use, gateway counts, what the authority hook blocked, the diff, review, merge and close-out), what it adds to and does not add to the first (still Main-driven, still one small task each, same route), and the state left for the next Main session: Supervisor running in the owner's window, no active worker, retired worker, restart counts, open decisions and the remaining acceptance criteria.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-064-second-worker-cycle",
+      "worktree": "../CreatorStudio-worktrees/t-dev-064-second-worker-cycle",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-064-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ],
+      "acceptance_criteria": [
+        "the second worker run and its merge are recorded as OBSERVED with times and counts, Main steps separate from worker steps",
+        "the page does not call the system autonomous and lists what is still not demonstrated",
+        "the hand-off state for the next Main session is complete and matches the registry",
+        "no credential or fragment appears; labels follow the page convention"
+      ],
+      "test_requirements": [
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the overnight worker mission.",
+      "lease": {
+        "acquired": "2026-11-24T23:32:27+00:00",
+        "expires": "2026-11-25T23:32:27+00:00"
       }
     }
   ]
