@@ -120,9 +120,51 @@ class StageTests(unittest.TestCase):
         self.assertEqual(r["stage"], "needs_fix")
         self.assertIn("scope", " ".join(e["text"] for e in r["evidence"]))
 
-    def test_unknown_gates_need_a_fix_not_a_merge(self):
-        gates = with_gates(secrets=("UNKNOWN", "cannot read"))
-        self.assertEqual(Env(reg=registry(), prs=OPEN7, gates=gates).track()["stage"], "needs_fix")
+    def test_an_unreadable_gate_is_unknown_never_a_fix_or_a_merge(self):
+        for name in ("secrets", "scope", "pr_state", "reserved", "forbidden_files", "review"):
+            with self.subTest(gate=name):
+                gates = with_gates(**{name: ("UNKNOWN", "cannot read")})
+                self.assertEqual(Env(reg=registry(), prs=OPEN7, gates=gates).track()["stage"], "unknown")
+
+    def test_every_gate_unreadable_is_unknown(self):
+        gates = [g(i, n, "UNKNOWN", "cannot read PR") for i, n in enumerate(cycle.EXPECTED_GATES, 1)]
+        self.assertEqual(Env(reg=registry(), prs=OPEN7, gates=gates).track()["stage"], "unknown")
+
+    def test_ci_side_unknowns_and_uppercase_pending_mean_not_yet(self):
+        for overrides in ({"merge_state": ("UNKNOWN", "mergeStateStatus not computed yet")},
+                          {"checks": ("UNKNOWN", "no statusCheckRollup")},
+                          {"checks": ("FAIL", "validate is PENDING"), "merge_state": ("FAIL", "BLOCKED")},
+                          {"checks": ("FAIL", "required check 'validate' not reported on head abc"),
+                           "merge_state": ("UNKNOWN", "x")}):
+            with self.subTest(overrides=overrides):
+                gates = with_gates(**overrides)
+                self.assertEqual(Env(reg=registry(), prs=OPEN7, gates=gates).track()["stage"], "waiting_ci")
+
+    def test_blocked_with_green_ci_or_red_ci_with_blocked_needs_a_fix(self):
+        for overrides in ({"merge_state": ("FAIL", "BLOCKED")},
+                          {"checks": ("FAIL", "validate FAILURE on head abc"), "merge_state": ("FAIL", "BLOCKED")}):
+            with self.subTest(overrides=overrides):
+                gates = with_gates(**overrides)
+                self.assertEqual(Env(reg=registry(), prs=OPEN7, gates=gates).track()["stage"], "needs_fix")
+
+    def test_a_short_or_odd_gate_list_is_never_ready(self):
+        for gates in ([g(1, "pr_state")], ALL_PASS[:7], ALL_PASS + [g(9, "extra")],
+                      [g(i, "pr_state") for i in range(1, 9)], []):
+            with self.subTest(n=len(gates)):
+                self.assertEqual(Env(reg=registry(), prs=OPEN7, gates=gates).track()["stage"], "unknown")
+
+    def test_closed_prs_and_a_cut_list_are_noted(self):
+        r = Env(reg=registry(), prs=[{"number": 3, "state": "CLOSED"}]).track()
+        self.assertEqual(r["stage"], "awaiting_work")
+        self.assertIn("closed without merge: #3", " ".join(e["text"] for e in r["evidence"]))
+        many = [{"number": i, "state": "CLOSED"} for i in range(1, 21)]
+        self.assertIn("cut at 20", " ".join(e["text"] for e in Env(reg=registry(), prs=many).track()["evidence"]))
+
+    def test_a_base_ref_that_looks_like_an_option_is_refused(self):
+        env = Env(reg=registry())
+        r = cycle.track("T-X-001", env.gh, env.git, base="--output=x", evaluate=env.evaluate)
+        self.assertEqual(r["stage"], "unknown")
+        self.assertEqual(env.calls, [])
 
     def test_merged_pr_on_an_active_task_awaits_closeout(self):
         r = Env(reg=registry(), prs=[{"number": 5, "state": "MERGED"}]).track()

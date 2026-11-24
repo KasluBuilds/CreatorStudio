@@ -12,8 +12,8 @@ Stages, in chain order::
     awaiting_work        registered, no pushed branch and no pull request      -> implement or dispatch a worker
     branch_pushed        branch on origin, no pull request                     -> open the pull request (intake)
     in_review            open pull request, the review gate is the missing one -> independent review of the diff hash
-    waiting_ci           open pull request, only CI / merge state outstanding  -> wait; update the branch if it is behind
-    needs_fix            open pull request, a gate other than review/CI fails  -> fix the named gates
+    waiting_ci           open pull request, CI pending or merge state not yet computed -> wait
+    needs_fix            open pull request, a gate fails (incl. red CI, a branch behind main) -> fix the named gates
     ready_to_merge       open pull request, every gate PASS                    -> integrate --yes
     awaiting_closeout    a pull request merged, task still ACTIVE              -> registry-only close-out on the task branch
     done                 task COMPLETED or RELEASED
@@ -38,6 +38,7 @@ STAGES = ("unregistered", "awaiting_work", "branch_pushed", "in_review", "waitin
 DONE_STATUSES = ("COMPLETED", "RELEASED")
 WORK_STATUSES = ("PLANNED", "ACTIVE", "UNDER_REVIEW")
 _CI_GATES = {"checks", "merge_state"}
+EXPECTED_GATES = ("pr_state", "checks", "merge_state", "scope", "review", "secrets", "forbidden_files", "reserved")
 
 
 def _ev(text: str) -> Dict[str, str]:
@@ -61,21 +62,39 @@ def _json_list(text: str) -> Optional[List[Any]]:
 
 
 def classify(gates: Sequence[Any]) -> Tuple[str, str]:
-    """(stage, description) for an open pull request from its gate results."""
-    bad = [g for g in gates if g.status != integrate.PASS]
-    if not gates:
-        return "unknown", "no gate result"
+    """(stage, description) for an open pull request from its gate results.
+
+    ``ready_to_merge`` needs exactly the eight integrate gates, all PASS. A gate that could not be read (UNKNOWN) is
+    never a failure and never a pass: on the CI side (checks, merge_state) it means "not yet", elsewhere the stage is
+    ``unknown``."""
+    by_name = {g.name: g for g in gates}
+    if len(gates) != len(EXPECTED_GATES) or set(by_name) != set(EXPECTED_GATES):
+        return "unknown", "the gate list is incomplete or has unexpected gates"
+    bad = {n: g for n, g in by_name.items() if g.status != integrate.PASS}
     if not bad:
         return "ready_to_merge", "all gates PASS"
-    names = {g.name for g in bad}
-    if names - _CI_GATES - {"review"}:
-        return "needs_fix", "failing gates: " + ", ".join(sorted(names - _CI_GATES - {"review"}))
-    if "review" in names:
-        return "in_review", "the review gate is not satisfied" + (" (CI also outstanding)" if names & _CI_GATES else "")
-    checks = next((g for g in bad if g.name == "checks"), None)
-    if checks is not None and ("pending" in checks.detail or "not reported" in checks.detail):
-        return "waiting_ci", "CI has not finished on the head commit"
-    return "needs_fix", "failing gates: " + ", ".join(sorted(names)) + " (a behind branch shows as merge_state)"
+    other = {n: g for n, g in bad.items() if n not in _CI_GATES and n != "review"}
+    fails = sorted(n for n, g in other.items() if g.status == integrate.FAIL)
+    if fails:
+        return "needs_fix", "failing gates: " + ", ".join(fails)
+    unreadable = sorted(n for n, g in other.items() if g.status != integrate.FAIL)
+    if unreadable:
+        return "unknown", "gates that could not be read: " + ", ".join(unreadable)
+    review = bad.get("review")
+    if review is not None:
+        if review.status == integrate.FAIL:
+            return "in_review", "the review gate is not satisfied" + (" (CI also outstanding)" if set(bad) & _CI_GATES else "")
+        return "unknown", "the review gate could not be read"
+    checks, merge = bad.get("checks"), bad.get("merge_state")
+    pending = checks is not None and (checks.status == integrate.UNKNOWN or any(
+        w in checks.detail.lower() for w in ("pending", "not reported")))
+    if checks is not None and not pending:
+        return "needs_fix", "CI is not green: " + checks.detail
+    if merge is not None and merge.status == integrate.UNKNOWN:
+        return "waiting_ci", "the merge state is not computed yet"
+    if merge is not None and not pending:
+        return "needs_fix", "merge state " + (merge.detail or "not clean") + " (a behind branch needs main merged in)"
+    return "waiting_ci", "CI has not finished on the head commit"
 
 
 def track(task_id: str, gh: Callable, git: Callable, *, base: str = "origin/main", pr_base: str = "main",
@@ -89,6 +108,8 @@ def track(task_id: str, gh: Callable, git: Callable, *, base: str = "origin/main
 
 def _track(task_id: str, gh: Callable, git: Callable, base: str, pr_base: str, evaluate: Callable,
            free_memory: Callable) -> Dict[str, Any]:
+    if not isinstance(base, str) or not base or base.startswith("-"):
+        return _unknown(task_id, "the base ref is empty or starts with a dash")
     rc, raw = git(["show", f"{base}:ACTIVE_TASKS.json"])
     if rc != 0:
         return _unknown(task_id, f"cannot read ACTIVE_TASKS.json at {base}")
@@ -114,6 +135,11 @@ def _track(task_id: str, gh: Callable, git: Callable, base: str, pr_base: str, e
         return _unknown(task_id, "gh pr list failed or returned an unreadable answer", ev)
     prs = [p for p in prs if isinstance(p, dict) and isinstance(p.get("number"), int)]
     ev.append(_ev(f"pull requests from {branch}: " + (", ".join(f"#{p['number']} {p.get('state')}" for p in prs) or "none")))
+    if len(prs) >= 20:
+        ev.append(_ev("the pull request list was cut at 20; older ones are not shown"))
+    closed = [p for p in prs if p.get("state") == "CLOSED"]
+    if closed:
+        ev.append(_ev("closed without merge: " + ", ".join(f"#{p['number']}" for p in closed)))
     opened = [p for p in prs if p.get("state") == "OPEN"]
     if opened:
         n = max(p["number"] for p in opened)
@@ -123,7 +149,7 @@ def _track(task_id: str, gh: Callable, git: Callable, base: str, pr_base: str, e
         ev.append(_ev(why))
         nxt = {
             "in_review": f"independent review of PR #{n} diff {info.get('diff_sha') or '?'}: fresh read-only reviewer, post the dev-review marker",
-            "waiting_ci": f"wait for CI on PR #{n}; if the branch is behind main, merge origin/main into it",
+            "waiting_ci": f"wait for CI / the merge state of PR #{n}, then run the tracker again",
             "needs_fix": f"fix the failing gates on PR #{n}, then re-run integrate (dry run)",
             "ready_to_merge": f"python -B -m dev_supervisor.integrate {n} --yes",
             "unknown": "gate results were not readable",
