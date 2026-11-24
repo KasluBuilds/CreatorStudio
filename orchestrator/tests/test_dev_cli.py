@@ -40,6 +40,16 @@ def _boom(*a, **k):
 
 # ------------------------------------------------------------------ fakes
 
+def setUpModule():
+    """The dispatch gate reads free memory; these tests must not depend on how busy this machine is (T-DEV-053)."""
+    from unittest import mock
+
+    from dev_supervisor import memory_guard
+    p = mock.patch.object(memory_guard, "free_memory_mb", return_value=8192)
+    p.start()
+    unittest.addModuleCleanup(p.stop)
+
+
 class FakeHandle:
     def __init__(self, pid):
         self.pid = pid
