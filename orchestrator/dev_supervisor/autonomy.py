@@ -349,7 +349,8 @@ def _milestone_proposals(root: Path, warnings: List[str]) -> List[dict]:
     by_id = {m["id"]: m for m in milestones}
     try:
         reg = _load_json(root / "ACTIVE_TASKS.json")
-        if not isinstance(reg, dict) or not isinstance(reg.get("tasks"), list)                 or False:
+        if not (isinstance(reg, dict) and isinstance(reg.get("tasks"), list)
+                and all(isinstance(t, dict) for t in reg["tasks"])):
             raise ValueError("the registry must be an object with a list of task objects")
         open_work = json.dumps([t for t in reg["tasks"] if t.get("status") not in DONE_STATUSES])
     except (OSError, ValueError, AttributeError, TypeError):
