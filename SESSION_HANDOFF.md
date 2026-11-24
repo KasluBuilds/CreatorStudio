@@ -90,6 +90,7 @@ Status record dated **2026-11-18**. Baseline commit **`93a9a829e073`** on `main`
 | T-EDT-001 Validated edit-plan schema and Editor planning workflow (M-EDT-01, offline) | claude:repository-coordinator | `task/t-edt-001-edit-plan` | ACTIVE | 2026-11-23T17:00:00+00:00 | orchestrator/edit_plan/, orchestrator/tests/test_edit_plan.py, AI_Creator_Studio_Documentation/EDITING_ENGINE.md |
 | T-DEV-043 dev_supervisor: machine-readable independent flag on review allocations (first task run by a dispatched worker) | claude:main-coordinator | `task/t-dev-043-review-independence` | ACTIVE | 2026-11-25T06:36:49+00:00 | orchestrator/dev_supervisor/model_allocation.py, orchestrator/tests/test_dev_model_allocation.py |
 | T-DEV-046 dev_supervisor: record the first dispatched worker run, its failure mode and the new loop tools | claude:main-coordinator | `task/t-dev-046-worker-run-record` | ACTIVE | 2026-11-25T07:21:32+00:00 | orchestrator/dev_supervisor/WORKER_DISPATCH.md, orchestrator/dev_supervisor/WORKER_GATEWAY.md |
+| T-DEV-047 dev_supervisor: claim command reports an unreadable existing handoff instead of raising (second dispatched worker task) | claude:main-coordinator | `task/t-dev-047-claim-handoff-read` | ACTIVE | 2026-11-25T07:37:08+00:00 | orchestrator/dev_supervisor/claim.py, orchestrator/tests/test_dev_claim.py |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
