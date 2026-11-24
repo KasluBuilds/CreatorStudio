@@ -401,7 +401,7 @@ class Supervisor:
     # -------------------------------------------------- assign / spawn
 
     def assign(self, *, task_id: str, role: str, branch: str, worktree: str, owner_stream: str, model: str,
-               prompt_file: str, provider: str) -> Worker:
+               prompt_file: str, provider: str, allocation: Optional[Dict[str, Any]] = None) -> Worker:
         for label, v in (("task_id", task_id), ("role", role), ("owner_stream", owner_stream),
                          ("provider", provider)):
             if not _ID.match(v or ""):
@@ -426,9 +426,11 @@ class Supervisor:
             raise WorktreeCheckFailed(f"worktree/branch check failed: {reason}")
         w = Worker(worker_id=self.registry.new_id(), role=role, task_id=task_id, branch=branch,
                    worktree=worktree, owner_stream=owner_stream, provider=provider, model=model,
-                   prompt_file=os.path.abspath(prompt_file), assigned_at=utc_iso(self._now()))
+                   prompt_file=os.path.abspath(prompt_file), assigned_at=utc_iso(self._now()),
+                   allocation=dict(allocation) if isinstance(allocation, dict) else {})
         self.registry.add(w)
-        self._event("worker_assigned", w, branch=branch, model=model, provider=provider)
+        self._event("worker_assigned", w, branch=branch, model=model, provider=provider,
+                    **({"allocation_role": w.allocation.get("role")} if w.allocation else {}))
         return w
 
     def build_spec(self, w: Worker) -> LaunchSpec:

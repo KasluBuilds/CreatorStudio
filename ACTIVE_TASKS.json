@@ -2201,13 +2201,14 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-038-model-allocation",
       "worktree": "../CreatorStudio-worktrees/t-dev-038-model-allocation",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-032"
       ],
       "lease": {
         "acquired": "2026-11-24T00:42:28+00:00",
-        "expires": "2026-11-25T00:42:28+00:00"
+        "expires": "2026-11-25T00:42:28+00:00",
+        "released": "2026-11-24T01:53:11+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2236,7 +2237,7 @@
         "affected suites: test_dev_worker_spawner, test_dev_lifecycle, test_dev_cli, test_dev_dispatch_routing",
         "full per-file validation on the exact head"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 3. NOT demonstrated: no route is verified and verified_routes.json does not exist, so no allocation can succeed in production yet; tests use fake registries. A route enters the registry only with recorded evidence of a full Claude Code prompt, tool-result and final-response round trip; this task does not create that evidence. Ownership amendment 2026-11-24: workers.py added for an optional allocation field on the Worker record; its tests live in test_dev_lifecycle.py, already owned."
+      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 3. NOT demonstrated: no route is verified and verified_routes.json does not exist, so no allocation can succeed in production yet; tests use fake registries. A route enters the registry only with recorded evidence of a full Claude Code prompt, tool-result and final-response round trip; this task does not create that evidence. Ownership amendment 2026-11-24: workers.py added for an optional allocation field on the Worker record; its tests live in test_dev_lifecycle.py, already owned. Merged as PR #139 (merge commit 27086cd, final head 3bd54e6, content diff hash 3a8493ea662dec27). Review history (REPORTED by fresh subagents): REQUEST_CHANGES on 73ea17d (for review the sort key put capability before the author's own route, so a cheaper author route beat a different more capable one and the recorded reason falsely said it was the only fit); APPROVE on 2b96d58 after the fix; APPROVE on the final content after CI's secret scan failed on two credential-shaped test fixtures, now built by concatenation. Evidence (OBSERVED by the author session): per-file validation on fffe7ec 3376 tests, no failures; mutation checks 13 of 14 caught; CI validate green on the merged head; merged through the integration tool with all eight gates PASS. Policy: implementation, research and test_writing take the lowest capability that fits (minimum 2); review needs at least 3 and at least the author's capability and prefers a different route; architecture takes the highest (minimum 4); duplicates in the registry merge to the weakest claim. Open follow-ups (not blocking): no machine-readable independent flag on a review allocation (self-review is disclosed in the reason text only); hand-built VerifiedRoute objects are not type-checked in allocate (the loader normalises them); the mutant that skips the gate branch in process_requests is stopped only by Supervisor.assign's own validation; a refused allocation with no --model prints a redundant second problem; dev_supervisor/routing.py (task-profile ranking, includes Claude routes, used by the route command) overlaps with this role allocation and should be reconciled; LIVE_AUTONOMY.md still says the harness runs on haiku, which the dispatch gate now refuses. NOT demonstrated: no route is verified and verified_routes.json does not exist, so no allocation can succeed in production; a bounded Claude Code tool round-trip probe on gemini-2.5-flash and gemini-2.5-flash-lite on 2026-11-24 returned HTTP 429 (all credentials cooling down)."
     },
     {
       "id": "T-DEV-039",

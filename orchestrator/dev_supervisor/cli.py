@@ -47,7 +47,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
 from . import autonomy, compaction, config as config_mod, context_monitor, guard_loop, handoff, main_host, replacement, routing, telemetry
-from . import authority, dispatch_routing, github_log, omniroute, provider_env, resolve_discovery, session_policy
+from . import authority, dispatch_routing, github_log, model_allocation, omniroute, provider_env, resolve_discovery, session_policy
 from .config import Config, ConfigError
 from .evidence import Evidence, unavailable
 from .launch import (MAIN_ROLE, InteractiveMainLauncher, LaunchError, MainProfile, NewConsoleTerminal,
@@ -486,23 +486,45 @@ class SupervisorLoop:
         """Workers that are assigned or live: the concurrency cap counts these (T-DEV-032)."""
         return len(WorkerRegistry(self.store).list(WorkerStatus.ACTIVE + (WorkerStatus.LOST,)))
 
+    def _request_allocation(self, p: Dict[str, Any]):
+        """(Allocation or None, error or None). A request that names an allocation role is re-allocated from the
+        registry here; the request's own record is never trusted, and a route that differs from the request is refused."""
+        role = p.get("allocation_role")
+        if role is None:
+            return None, None
+        route = p.get("author_route")
+        try:
+            alloc = model_allocation.allocate_from_registry(
+                dispatch_routing.registry_path(self.cfg.state_directory()), role,
+                author_capability=p.get("author_capability") or 0,
+                author_route=tuple(route) if isinstance(route, list) and len(route) == 2 else None)
+        except model_allocation.AllocationRefused as exc:
+            return None, "allocation refused: " + str(exc)[:200]
+        if (alloc.provider, alloc.model) != (p.get("provider"), p.get("model")):
+            return None, "the requested provider and model differ from the allocation for the requested role"
+        return alloc, None
+
     def process_requests(self) -> List[Dict[str, Any]]:
         results = []
         for path, req in pending_requests(self.store):
             op, p = req.get("op"), req.get("payload") or {}
             try:
                 if op == "assign":
+                    alloc, alloc_error = self._request_allocation(p)
                     gate = dispatch_routing.decide_worker_dispatch(
                         provider=p.get("provider"), model=p.get("model"),
                         active_workers=self._active_worker_count(), state_dir=self.cfg.state_directory(),
                         base_env=self.svc.env)
-                    if not gate.allowed:
+                    if alloc_error is not None:
+                        outcome = {"ok": False, "error": "dispatch refused: " + alloc_error}
+                    elif not gate.allowed:
                         # Refused before any worker record exists: nothing is created, launched or charged.
                         outcome = {"ok": False, "error": "dispatch refused: " + gate.reason}
                     else:
                         w = self.sup.assign(task_id=p["task_id"], role=p["role"], branch=p["branch"],
                                             worktree=p["worktree"], owner_stream=p["owner_stream"], model=gate.model,
-                                            prompt_file=p["prompt_file"], provider=gate.provider)
+                                            prompt_file=p["prompt_file"], provider=gate.provider,
+                                            allocation=alloc.to_dict() if alloc is not None else None)
                         w = self.sup.spawn(w.worker_id)
                         outcome = {"ok": w.status == WorkerStatus.RUNNING, "worker_id": w.worker_id,
                                    "status": w.status, "provider": gate.provider, "route": gate.route}
@@ -1153,7 +1175,23 @@ def cmd_workers(svc: Services, a: argparse.Namespace) -> int:
 def cmd_assign(svc: Services, a: argparse.Namespace) -> int:
     cfg = svc.config
     model, provider = a.model, a.provider
+    arole = a.allocation_role
+    if arole is None and (not model or not provider):     # the contract without allocation: no defaults, ever
+        sys.stderr.write("assign: --model and --provider are required unless --allocation-role is given\n")
+        raise SystemExit(2)
     problems = []
+    alloc = None
+    if arole is not None:
+        try:
+            alloc = model_allocation.allocate_from_registry(
+                dispatch_routing.registry_path(cfg.state_directory()), arole,
+                author_capability=a.author_capability, author_route=tuple(a.author_route) if a.author_route else None)
+        except model_allocation.AllocationRefused as exc:
+            problems.append("allocation refused: " + str(exc))
+        else:
+            if (model and model != alloc.model) or (provider and provider != alloc.provider):
+                problems.append("the given model or provider differs from the allocation for role " + arole)
+            model, provider = alloc.model, alloc.provider
     try:
         active = len(WorkerRegistry(svc.store(create=False)).list(WorkerStatus.ACTIVE + (WorkerStatus.LOST,)))
     except StoreError as e:
@@ -1169,7 +1207,12 @@ def cmd_assign(svc: Services, a: argparse.Namespace) -> int:
                "provider": dispatch.provider if dispatch is not None else None,
                "route": dispatch.route if dispatch is not None else None,
                "route_model": dispatch.model if dispatch is not None else None,
-               "routing_reason": dispatch.reason if dispatch is not None else None}
+               "routing_reason": dispatch.reason if dispatch is not None else None,
+               "allocation_role": arole, "allocation": alloc.to_dict() if alloc is not None else None}
+    if arole is not None and a.author_route:
+        payload["author_route"] = list(a.author_route)
+    if arole is not None and a.author_capability:
+        payload["author_capability"] = a.author_capability
     try:
         build_claude_argv(model, str(uuid.uuid4()), executable=cfg.claude_executable,
                           permission_mode=cfg.worker_permission_mode)
@@ -1513,8 +1556,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--worktree", required=True)
     p.add_argument("--owner-stream", required=True)
     p.add_argument("--prompt-file", required=True)
-    p.add_argument("--model", required=True, help="a verified gateway route id; there is no default (never a Claude model)")
-    p.add_argument("--provider", required=True, help="the verified route's provider; there is no default (never anthropic)")
+    p.add_argument("--model", default=None, help="a verified gateway route id; there is no default (never a Claude model)")
+    p.add_argument("--provider", default=None, help="the verified route's provider; there is no default (never anthropic)")
+    p.add_argument("--allocation-role", default=None, choices=model_allocation.ROLES,
+                   help="choose the route for this role from the verified registry (model and provider are then optional "
+                        "and, if given, must equal the allocation)")
+    p.add_argument("--author-capability", type=int, default=0,
+                   help="review role only: capability of the route that did the work; the reviewer is at least as capable")
+    p.add_argument("--author-route", nargs=2, metavar=("PROVIDER", "MODEL"), default=None,
+                   help="review role only: the author's route; a different route is preferred when one fits equally")
     p.add_argument("--yes", action="store_true")
     p = add("handoff", "build/write/verify a handoff")
     p.add_argument("--input", help="facts JSON (keys: " + ", ".join(FACT_KEYS) + ")")
