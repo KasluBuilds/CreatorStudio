@@ -552,6 +552,15 @@
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
         "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
       ]
+    },
+    "AGR-DEV-061-01": {
+      "description": "T-DEV-061 adds tests to the command-line test module only; no production code, documentation or launcher changes.",
+      "task_ids": [
+        "T-DEV-061"
+      ],
+      "paths": [
+        "orchestrator/tests/test_dev_cli.py"
+      ]
     }
   },
   "tasks": [
@@ -3239,6 +3248,38 @@
       "lease": {
         "acquired": "2026-11-24T21:20:17+00:00",
         "expires": "2026-11-25T21:20:17+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-061",
+      "title": "dev_supervisor: tests for foreground start, Ctrl+C, stale lock and orphan recovery",
+      "description": "Tests only. The Supervisor will be started by the owner in a normal PowerShell window and left running. Pin the behaviour that relies on: Ctrl+C stops the loop cleanly and releases the lock; a hard-killed loop leaves a stale lock that the next start replaces; at start a RUNNING worker whose process is gone becomes LOST with its restart count unchanged and nothing relaunched, also across repeated starts; a worker whose process is alive is never marked LOST; the heartbeat advances one tick per pass; a refused second loop applies nothing and a queued retire is applied by the next loop that starts.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-061-start-lifecycle-tests",
+      "worktree": "../CreatorStudio-worktrees/t-dev-061-start-lifecycle-tests",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-061-01"
+      ],
+      "owned_paths": [
+        "orchestrator/tests/test_dev_cli.py"
+      ],
+      "acceptance_criteria": [
+        "each behaviour in the description has a test that fails when the behaviour is removed (checked by a mutation of the production code, reported)",
+        "no production file changes and no existing test changes"
+      ],
+      "test_requirements": [
+        "python -B -m unittest tests.test_dev_cli from orchestrator/",
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the overnight preparation mission.",
+      "lease": {
+        "acquired": "2026-11-24T21:24:21+00:00",
+        "expires": "2026-11-25T21:24:21+00:00"
       }
     }
   ]
