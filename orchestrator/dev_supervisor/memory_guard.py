@@ -68,10 +68,12 @@ def min_free_mb(environ: Optional[Mapping[str, str]] = None) -> int:
     """The floor in MB: the environment value when valid, else the default."""
     env = os.environ if environ is None else environ
     raw = env.get(ENV_MIN_FREE_MB)
-    if isinstance(raw, str) and raw.strip().isdigit():
-        value = int(raw.strip())
-        if 0 <= value <= _MAX_FLOOR_MB:
-            return value
+    if isinstance(raw, str):
+        text = raw.strip()
+        if text.isascii() and text.isdigit():       # isdigit() alone accepts characters int() rejects
+            value = int(text)
+            if 0 <= value <= _MAX_FLOOR_MB:
+                return value
     return DEFAULT_MIN_FREE_MB
 
 

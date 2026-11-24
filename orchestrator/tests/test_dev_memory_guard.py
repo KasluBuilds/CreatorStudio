@@ -14,7 +14,7 @@ from test_dev_dispatch_routing import GATEWAY, route, write_registry  # noqa: E4
 class FloorTests(unittest.TestCase):
     def test_default_when_unset_or_invalid(self):
         self.assertEqual(mg.min_free_mb({}), mg.DEFAULT_MIN_FREE_MB)
-        for bad in ("", "abc", "-5", "1.5", "99999999999", " "):
+        for bad in ("", "abc", "-5", "1.5", "99999999999", " ", "²", "٣", "1_0"):
             self.assertEqual(mg.min_free_mb({mg.ENV_MIN_FREE_MB: bad}), mg.DEFAULT_MIN_FREE_MB, bad)
 
     def test_valid_values(self):
@@ -87,9 +87,13 @@ class GateTests(unittest.TestCase):
             self.assertTrue(self.decide().allowed)
 
     def test_concurrency_cap_still_applies_first(self):
-        d = self.decide(active_workers=1, free_memory_mb=9000)
+        d = self.decide(active_workers=1, free_memory_mb=100)      # both fail: the cap is reported first
         self.assertFalse(d.allowed)
         self.assertIn("concurrency cap", d.reason)
+
+    def test_memory_is_checked_before_the_route(self):
+        d = self.decide(provider="nobody", free_memory_mb=100)
+        self.assertIn("memory guard", d.reason)
 
 
 if __name__ == "__main__":
