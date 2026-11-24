@@ -2460,7 +2460,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-043-review-independence",
       "worktree": "../CreatorStudio-worktrees/t-dev-043-review-independence",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2481,10 +2481,11 @@
         "python -B -I -m unittest discover -s tests -p test_dev_cli.py from orchestrator/",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Implemented by a dispatched worker on a verified zero-cost route when the dispatch record shows it; otherwise by Main, disclosed in the PR.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Implemented by a dispatched worker on a verified zero-cost route when the dispatch record shows it; otherwise by Main, disclosed in the PR. Completed 2026-11-24: merged as PR #160 (all eight gates PASS; independent review bound to diff 5da46b0e002c61cf after one round). Implemented by dispatched worker w-b88c568c18 on gemini/gemini-3.1-flash-lite (the field, its computation and the main test); the worker run ended FAILED on a provider 503 before running its tests; Main updated one existing test, ran the suites and added two tests. Run record: WORKER_GATEWAY.md section 7.",
       "lease": {
         "acquired": "2026-11-24T06:36:49+00:00",
-        "expires": "2026-11-25T06:36:49+00:00"
+        "expires": "2026-11-25T06:36:49+00:00",
+        "released": "2026-11-24T07:40:43+00:00"
       }
     },
     {
