@@ -499,6 +499,162 @@ class TestNextCli(Base):
         self.assertEqual(rc, 2)
 
 
+def ms(mid, state="NOT_STARTED", deps=(), questions=(), blockers=(), phase="Phase 9", weight=3):
+    return {"id": mid, "title": "Title of " + mid, "phase": phase, "weight": weight, "depends_on": list(deps),
+            "implementation": {"state": state, "summary": "s"}, "open_questions": list(questions),
+            "blockers": list(blockers)}
+
+
+class TestMilestoneProposals(Base):
+    """T-DEV-039: read-only proposals from PROJECT_STATUS.json when nothing is registered."""
+
+    def write_status(self, milestones):
+        (self.repo / "PROJECT_STATUS.json").write_text(json.dumps({"milestones": milestones}), encoding="utf-8")
+
+    def props(self, res=None):
+        return [p["milestone_id"] for p in (res or self.items())["proposals"]]
+
+    def test_an_eligible_milestone_is_proposed_and_the_idle_reason_names_it(self):
+        self.write_registry([])
+        self.write_status([ms("M-A", "IMPLEMENTED"), ms("M-B", deps=["M-A"])])
+        res = self.items()
+        self.assertEqual(self.props(res), ["M-B"])
+        self.assertEqual(res["proposals"][0]["evidence"], "PROPOSED")
+        self.assertFalse(res["proposals"][0]["needs_decision"])
+        self.assertEqual(res["items"], [])
+        self.assertIn("1 milestone(s) could be proposed", res["idle_reason"])
+        self.assertIn("M-B", res["idle_reason"])
+        self.assertEqual(res["counts"]["proposals"], 1)
+
+    def test_ineligible_milestones_are_not_proposed(self):
+        self.write_registry([])
+        self.write_status([
+            ms("M-DONE", "IMPLEMENTED"), ms("M-WIP", "IN_PROGRESS"), ms("M-BLOCKED", "BLOCKED"),
+            ms("M-UNMET", deps=["M-WIP"]), ms("M-UNKNOWN", deps=["M-NOPE"]), ms("M-OK", deps=["M-DONE"])])
+        self.assertEqual(self.props(), ["M-OK"])
+
+    def test_a_malformed_dependency_list_is_ineligible_not_an_error(self):
+        self.write_registry([])
+        bad = ms("M-BAD")
+        bad["depends_on"] = "M-A"
+        self.write_status([bad, ms("M-GOOD")])
+        self.assertEqual(self.props(), ["M-GOOD"])
+
+    def test_an_open_task_that_mentions_the_milestone_suppresses_it_but_a_done_task_does_not(self):
+        t_open = task("T-OPEN", "ACTIVE")
+        t_open["title"] = "Work for M-X"
+        t_done = task("T-DONE", "COMPLETED")
+        t_done["title"] = "Finished M-Y"
+        self.write_registry([t_open, t_done])
+        self.write_status([ms("M-X"), ms("M-Y")])
+        self.assertEqual(self.props(), ["M-Y"])
+
+    def test_a_longer_id_in_a_task_does_not_suppress_a_shorter_milestone(self):
+        t = task("T-OPEN", "ACTIVE")
+        t["title"] = "Work for M-INT-020"
+        self.write_registry([t])
+        self.write_status([ms("M-INT-02")])
+        self.assertEqual(self.props(), ["M-INT-02"])
+
+    def test_an_id_embedded_in_a_longer_id_before_it_does_not_suppress_either(self):
+        t = task("T-OPEN", "ACTIVE")
+        t["title"] = "Work for T-M-X"
+        self.write_registry([t])
+        self.write_status([ms("M-X")])
+        self.assertEqual(self.props(), ["M-X"])
+
+    def test_an_unreadable_or_malformed_registry_proposes_nothing_and_warns(self):
+        self.write_status([ms("M-A")])
+        wrong = ("{", "[]", "null", "{}", '{"tasks": null}', '{"tasks": 5}', '{"tasks": "abc"}',
+                 '{"tasks": {"T-1": {"status": "ACTIVE", "title": "M-A"}}}', '{"tasks": [1, "M-A"]}',
+                 '{"tasks": [{"id": "T-1", "status": "ACTIVE", "title": "M-A"}, "junk"]}')
+        for text in (None,) + wrong:
+            with self.subTest(registry=text):
+                if text is None:
+                    (self.repo / "ACTIVE_TASKS.json").unlink(missing_ok=True)
+                else:
+                    (self.repo / "ACTIVE_TASKS.json").write_text(text, encoding="utf-8")
+                res = self.items()
+                self.assertEqual(res["proposals"], [], "a registry that cannot be checked must propose nothing")
+                self.assertTrue(any("ACTIVE_TASKS.json" in w and "proposals" in w for w in res["warnings"]),
+                                res["warnings"])
+        (self.repo / "ACTIVE_TASKS.json").write_text('{"tasks": []}', encoding="utf-8")
+        self.assertEqual(self.props(), ["M-A"])                              # an empty list is a valid registry
+
+    def test_malformed_question_or_blocker_fields_lean_towards_needs_decision(self):
+        self.write_registry([])
+        a, b, c = ms("M-A"), ms("M-B"), ms("M-C")
+        a["open_questions"] = "Q open"
+        b["blockers"] = {"x": 1}
+        c["open_questions"] = None            # absent or null means none
+        self.write_status([a, b, c])
+        res = self.items()
+        self.assertEqual({p["milestone_id"]: p["needs_decision"] for p in res["proposals"]},
+                         {"M-A": True, "M-B": True, "M-C": False})
+        self.assertEqual(self.props(res)[0], "M-C")
+
+    def test_milestones_with_questions_or_blockers_are_flagged_and_listed_after_ready_ones(self):
+        self.write_registry([])
+        self.write_status([ms("M-Q", questions=["Q1 is open"]), ms("M-R"), ms("M-B", blockers=["no engine"])])
+        res = self.items()
+        self.assertEqual(self.props(res), ["M-R", "M-Q", "M-B"])
+        self.assertEqual([p["needs_decision"] for p in res["proposals"]], [False, True, True])
+        self.assertEqual(res["proposals"][1]["open_questions"], ["Q1 is open"])
+        self.assertIn("(1 without an open decision: M-R)", res["idle_reason"])
+
+    def test_a_missing_status_file_is_silent_and_leaves_the_idle_reason_unchanged(self):
+        self.write_registry([])
+        res = self.items()
+        self.assertEqual(res["proposals"], [])
+        self.assertEqual([w for w in res["warnings"] if "PROJECT_STATUS" in w or "proposals" in w], [])
+        self.assertEqual(res["idle_reason"], "no registered work: nothing is planned or waiting")
+
+    def test_malformed_status_files_warn_and_propose_nothing(self):
+        self.write_registry([])
+        for text in ("{", "[]", '{"milestones": {"a": 1}}', '{"milestones": 5}', "null"):
+            with self.subTest(text=text):
+                (self.repo / "PROJECT_STATUS.json").write_text(text, encoding="utf-8")
+                res = self.items()
+                self.assertEqual(res["proposals"], [])
+                self.assertTrue(any("PROJECT_STATUS.json" in w for w in res["warnings"]), res["warnings"])
+
+    def test_junk_entries_inside_the_milestone_list_are_skipped(self):
+        self.write_registry([])
+        self.write_status(["junk", 5, None, {"id": 3}, {"title": "no id"}, ms("M-OK")])
+        self.assertEqual(self.props(), ["M-OK"])
+
+    def test_proposals_do_not_change_items_or_the_fingerprint(self):
+        self.write_registry([task("T-1", paths=["x/"])])
+        without = self.items()
+        self.write_status([ms("M-A")])
+        with_status = self.items()
+        self.assertEqual(without["fingerprint"], with_status["fingerprint"])
+        self.assertEqual(self.kinds(without), self.kinds(with_status))
+        self.assertEqual(self.props(with_status), ["M-A"])
+        self.assertNotIn("could be proposed", with_status["idle_reason"] or "")
+
+    def test_text_output_lists_proposals_only_when_nothing_else_is_actionable(self):
+        self.write_registry([])
+        self.write_status([ms("M-A", questions=["Q9 open"])])
+        rc, out = self.run_cli(["next"])
+        self.assertEqual(rc, 0)
+        self.assertIn("PROPOSED M-A [Phase 9] Title of M-A (needs a decision: Q9 open)", out)
+        self.write_registry([task("T-1", paths=["x/"])])
+        rc, out = self.run_cli(["next"])
+        self.assertNotIn("PROPOSED", out)
+        rc, out = self.run_cli(["next", "--json"])
+        self.assertEqual(json.loads(out)["proposals"][0]["milestone_id"], "M-A")
+
+    def test_next_with_proposals_writes_nothing_and_creates_no_state(self):
+        self.write_registry([])
+        self.write_status([ms("M-A")])
+        before = {p.name: p.read_bytes() for p in self.repo.iterdir()}
+        self.run_cli(["next"])
+        self.run_cli(["next", "--json"])
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.repo.iterdir()})
+        self.assertFalse(self.state.exists())
+
+
 class TestStopHook(Base):
     def setUp(self):
         super().setUp()
