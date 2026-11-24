@@ -456,6 +456,19 @@
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
         "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
       ]
+    },
+    "AGR-DEV-053-01": {
+      "description": "T-DEV-053 may add orchestrator/dev_supervisor/memory_guard.py, call it from decide_worker_dispatch in dispatch_routing.py, and add or adjust tests; it changes no other behavior of the dispatch gate and does not touch cli.py, lifecycle.py or any launcher.",
+      "task_ids": [
+        "T-DEV-053"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/memory_guard.py",
+        "orchestrator/dev_supervisor/dispatch_routing.py",
+        "orchestrator/tests/test_dev_memory_guard.py",
+        "orchestrator/tests/test_dev_dispatch_routing.py",
+        "orchestrator/tests/test_dev_cli.py"
+      ]
     }
   },
   "tasks": [
@@ -2843,6 +2856,45 @@
       "lease": {
         "acquired": "2026-11-24T09:02:04+00:00",
         "expires": "2026-11-25T09:02:04+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-053",
+      "title": "dev_supervisor: memory guard for worker dispatch",
+      "description": "The first overnight run lost a background job because the machine ran critically low on memory (13.8 GB RAM, about 0.7 GB free, the largest consumers were interactive applications, not the supervisor stack). Add a project-level memory guard: a stdlib-only reader of free physical memory (Windows GlobalMemoryStatusEx, injectable for tests; unknown reading fails closed) and a refusal in the single worker dispatch gate when free memory is below a configurable floor (default 1024 MB, env CREATORSTUDIO_MIN_FREE_MB). The concurrency cap stays at 1. No process is killed and no system setting changes.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-053-memory-guard",
+      "worktree": "../CreatorStudio-worktrees/t-dev-053-memory-guard",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-053-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/memory_guard.py",
+        "orchestrator/dev_supervisor/dispatch_routing.py",
+        "orchestrator/tests/test_dev_memory_guard.py",
+        "orchestrator/tests/test_dev_dispatch_routing.py",
+        "orchestrator/tests/test_dev_cli.py"
+      ],
+      "acceptance_criteria": [
+        "decide_worker_dispatch refuses with a reason naming the free and required MB when free memory is below the floor",
+        "an unreadable memory value refuses (fail closed) and never raises",
+        "the floor is configurable by CREATORSTUDIO_MIN_FREE_MB and an invalid value falls back to the default with the refusal still safe",
+        "existing dispatch behavior and tests are otherwise unchanged and independent of the machine's real free memory",
+        "no process is killed, no system setting or credential is touched"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest tests.test_dev_memory_guard tests.test_dev_dispatch_routing tests.test_dev_cli from orchestrator/",
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, from the memory investigation of the same day.",
+      "lease": {
+        "acquired": "2026-11-24T16:15:07+00:00",
+        "expires": "2026-11-25T16:15:07+00:00"
       }
     }
   ]
