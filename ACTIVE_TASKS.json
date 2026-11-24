@@ -478,7 +478,15 @@
       "paths": [
         "orchestrator/dev_supervisor/model_allocation.py",
         "orchestrator/tests/test_dev_model_allocation.py",
-        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md"
+      ]
+    },
+    "AGR-DEV-054-02": {
+      "description": "T-DEV-054 may update the one existing test in test_dev_cli.py that assigns a review allocation without the author's route (now refused); it changes no other test in that file, which T-DEV-053 owned until it closed.",
+      "task_ids": [
+        "T-DEV-054"
+      ],
+      "paths": [
         "orchestrator/tests/test_dev_cli.py"
       ]
     }
@@ -2922,7 +2930,8 @@
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
-        "AGR-DEV-054-01"
+        "AGR-DEV-054-01",
+        "AGR-DEV-054-02"
       ],
       "owned_paths": [
         "orchestrator/dev_supervisor/model_allocation.py",
