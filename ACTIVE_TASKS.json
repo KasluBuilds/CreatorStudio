@@ -2687,7 +2687,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-049-handoff-untouched-test",
       "worktree": "../CreatorStudio-worktrees/t-dev-049-handoff-untouched-test",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2705,10 +2705,11 @@
         "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_claim.py from the repository root",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Intended for a dispatched worker and for publication through the intake command.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Intended for a dispatched worker and for publication through the intake command. Completed 2026-11-24: merged as PR #172 (all eight gates PASS; independent review bound to diff ade1dc8a9407af1d, no findings). Implemented entirely by dispatched worker w-51544909ee on gemini/gemini-3.1-flash-lite in 75 s (9 of 9 gateway calls succeeded); published with the intake command (dry run, then --yes). Main verified the tests and a mutation before publishing.",
       "lease": {
         "acquired": "2026-11-24T08:13:30+00:00",
-        "expires": "2026-11-25T08:13:30+00:00"
+        "expires": "2026-11-25T08:13:30+00:00",
+        "released": "2026-11-24T08:26:28+00:00"
       }
     }
   ]
