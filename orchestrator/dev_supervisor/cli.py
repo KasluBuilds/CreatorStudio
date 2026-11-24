@@ -482,9 +482,11 @@ class SupervisorLoop:
 
     # -------------------------------------------------- requests
 
-    def _active_worker_count(self) -> int:
-        """Workers that are assigned or live: the concurrency cap counts these (T-DEV-032)."""
-        return len(WorkerRegistry(self.store).list(WorkerStatus.ACTIVE + (WorkerStatus.LOST,)))
+    def _active_worker_count(self, exclude: Optional[str] = None) -> int:
+        """Workers that are assigned or live: the concurrency cap counts these (T-DEV-032). ``exclude`` leaves out the
+        worker being restarted, which is itself counted while it is LOST."""
+        return len([w for w in WorkerRegistry(self.store).list(WorkerStatus.ACTIVE + (WorkerStatus.LOST,))
+                    if w.worker_id != exclude])
 
     def _request_allocation(self, p: Dict[str, Any]):
         """(Allocation or None, error or None). A request that names an allocation role is re-allocated from the
@@ -532,6 +534,19 @@ class SupervisorLoop:
                                   "worker spawned" if outcome["ok"] else "worker launch failed",
                                   evidence=(f"worker {w.worker_id}", f"status {w.status}", f"model {w.model}",
                                             f"provider {gate.provider}", f"route {gate.route}"))
+                elif op == "restart":
+                    # The same single gate as an assignment, applied again to the worker's recorded route; then the
+                    # lifecycle restart, which enforces the restart budget, the backoff and the one-worker rule.
+                    old = self.sup.registry.get(p["worker_id"])
+                    gate = dispatch_routing.decide_worker_dispatch(
+                        provider=old.provider, model=old.model, active_workers=self._active_worker_count(exclude=old.worker_id),
+                        state_dir=self.cfg.state_directory(), base_env=self.svc.env)
+                    if not gate.allowed:
+                        outcome = {"ok": False, "error": "restart refused: " + gate.reason}
+                    else:
+                        w = self.sup.restart(old.worker_id)
+                        outcome = {"ok": w.status == WorkerStatus.RUNNING, "worker_id": w.worker_id, "status": w.status,
+                                   "restart_count": w.restart_count}
                 elif op == "replace":
                     res = self.replace_main(p["handoff_id"])
                     outcome = {"ok": res.get("status") in (replacement.ReplacementStatus.REPLACED,
@@ -1240,6 +1255,52 @@ def cmd_assign(svc: Services, a: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_restart(svc: Services, a: argparse.Namespace) -> int:
+    """Queue a restart of a FAILED, LOST or STOPPED worker (a dry run unless --yes). The running loop applies the dispatch
+    gate again and then ``Supervisor.restart``, which enforces the restart budget and the backoff. Nothing restarts on
+    its own: ``auto_restart`` stays off."""
+    cfg = svc.config
+    try:
+        registry = WorkerRegistry(svc.store(create=False))
+        w = registry.get(a.worker_id)
+        others = [x for x in registry.list(WorkerStatus.ACTIVE + (WorkerStatus.LOST,)) if x.worker_id != w.worker_id]
+    except StoreError as e:
+        _print(svc, {"ok": False, "problems": [f"cannot read worker {a.worker_id} ({e.__class__.__name__})"]}, a.json,
+               f"refused: cannot read worker {a.worker_id} ({e.__class__.__name__})")
+        return EXIT_FAIL
+    problems: List[str] = []
+    if w.status == WorkerStatus.BLOCKED:
+        problems.append("the worker is BLOCKED: it needs a human decision, not a restart")
+    elif w.status not in (WorkerStatus.FAILED, WorkerStatus.LOST, WorkerStatus.STOPPED):
+        problems.append(f"the worker is {w.status}: only a FAILED, LOST or STOPPED worker can be restarted")
+    budget = SupervisorPolicy().max_restarts
+    if w.restart_count >= budget:
+        problems.append(f"the restart budget is exhausted ({w.restart_count}/{budget})")
+    not_before = parse_iso(w.next_restart_not_before)
+    if not_before is not None and svc.clock() < not_before:
+        problems.append(f"the backoff has not elapsed: restart not before {w.next_restart_not_before}")
+    gate = dispatch_routing.decide_worker_dispatch(provider=w.provider, model=w.model, active_workers=len(others),
+                                                   state_dir=cfg.state_directory(), base_env=svc.env)
+    if not gate.allowed:
+        problems.append(gate.reason)
+    if problems:
+        _print(svc, {"ok": False, "problems": problems}, a.json, "refused: " + "; ".join(problems))
+        return EXIT_FAIL
+    payload = {"worker_id": w.worker_id}
+    if not a.yes:
+        _print(svc, {"ok": True, "dry_run": True, "would_queue": payload, "restart_count": w.restart_count}, a.json,
+               f"worker {w.worker_id} ({w.status}) can be restarted (restart {w.restart_count + 1} of {budget}); rerun with --yes to queue it")
+        return EXIT_OK
+    store = svc.store()
+    rid = enqueue(store, "restart", payload)
+    holder = lock_holder(store, svc.pid_alive)
+    running = bool(holder and holder["alive"])
+    _print(svc, {"ok": True, "queued": rid, "loop_running": running}, a.json,
+           f"queued {rid}; " + ("the running supervisor loop will restart it" if running
+                                else "it will be restarted when the supervisor loop runs (start --yes)"))
+    return EXIT_OK
+
+
 def _load_facts(path: str) -> Dict[str, Any]:
     try:
         facts = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -1566,6 +1627,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--author-route", nargs=2, metavar=("PROVIDER", "MODEL"), default=None,
                    help="review role only: the author's route; a different route is preferred when one fits equally")
     p.add_argument("--yes", action="store_true")
+    p = add("restart", "validate (and with --yes queue) the restart of a FAILED, LOST or STOPPED worker")
+    p.add_argument("worker_id")
+    p.add_argument("--yes", action="store_true")
     p = add("handoff", "build/write/verify a handoff")
     p.add_argument("--input", help="facts JSON (keys: " + ", ".join(FACT_KEYS) + ")")
     p.add_argument("--verify", metavar="HANDOFF_ID")
@@ -1597,7 +1661,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 COMMANDS: Dict[str, Callable[[Services, argparse.Namespace], int]] = {
-    "start": cmd_start, "main-host": cmd_main_host, "status": cmd_status, "workers": cmd_workers, "assign": cmd_assign, "handoff": cmd_handoff,
+    "start": cmd_start, "main-host": cmd_main_host, "status": cmd_status, "workers": cmd_workers, "assign": cmd_assign, "restart": cmd_restart, "handoff": cmd_handoff,
     "compact-check": cmd_compact_check, "replace": cmd_replace, "report": cmd_report, "snapshot": cmd_snapshot,
     "route": cmd_route, "doctor": cmd_doctor, "config": cmd_config,
 }
