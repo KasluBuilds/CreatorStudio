@@ -1937,13 +1937,14 @@
       "owner": "claude:repository-coordinator",
       "branch": "task/t-dev-032-worker-routing",
       "worktree": "../CreatorStudio-worktrees/t-dev-032-worker-routing",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [
         "T-DEV-031"
       ],
       "lease": {
         "acquired": "2026-11-23T00:30:00+00:00",
-        "expires": "2026-11-24T00:30:00+00:00"
+        "expires": "2026-11-24T00:30:00+00:00",
+        "released": "2026-11-24T00:39:05+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -1979,7 +1980,7 @@
         "focused: python -B -m unittest discover -s tests -p test_dev_dispatch_routing.py from orchestrator/",
         "full suite before merge"
       ],
-      "integration_notes": "Claim for the overnight-readiness routing change requested by Lukas 2026-11-23. Live OmniRoute-backed Claude Code worker is NOT TESTED; the gate stays closed until a live probe verifies it. Ownership amendment 2026-11-23: test_dev_cli.py added, because three existing worker-spawn tests assumed Anthropic dispatch and must be updated to exercise the gate. Ownership amendment 2026-11-23 (second): test_dev_context_management.py added, because two existing tests dispatch workers through assign and must exercise the gate."
+      "integration_notes": "Merged as PR #124 (merge commit 1e32728, head 7952b2d, final diff hash 08a1935abbce57e2). Five independent review rounds by fresh subagents: three REQUEST_CHANGES on earlier heads (live probes, spec.env override, harness entry points, model-only launch gate, narrow credential rule, weak launch audit), then APPROVE on 3ba3379 (hash 3fa68f1dccc8d62d) and APPROVE on 7952b2d (one-line delta: a dummy test value that CI's secret scan matched). Per-file validation on the exact head: 3326 tests, no failures; CI validate green. Gate: dispatch needs a verified zero-cost route for the exact (provider, model) pair in verified_routes.json under the state directory; the launcher refuses a missing or unverified route, a Claude model, provider anthropic, and any credential or CLAUDE_CODE_ variable in the worker environment; worker_env drops the CLAUDE_CODE_ namespace. A launch-path audit test fails on a new Popen, launcher or child_env use. NOT demonstrated: no worker has run through the gateway end to end; no route is verified and verified_routes.json does not exist, so dispatch is refused. Open notes: CLAUDE_CODE_GIT_BASH_PATH is dropped with the namespace and may be needed on Windows; the audit is per module; cli.py calls state_directory() without svc.env; Supervisor.restart/recover do not re-apply the cap of one (no production caller); the live_autonomy harness checks the model, not the pair; a refused assign records no GitHub event. Main launch paths (launch.py, main_host.py, replacement.py) are unchanged and still use the Claude login by design."
     },
     {
       "id": "T-DEV-033",
