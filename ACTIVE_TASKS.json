@@ -2281,11 +2281,12 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-040-integrate-preflight",
       "worktree": "../CreatorStudio-worktrees/t-dev-040-integrate-preflight",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "lease": {
         "acquired": "2026-11-24T01:45:03+00:00",
-        "expires": "2026-11-25T01:45:03+00:00"
+        "expires": "2026-11-25T01:45:03+00:00",
+        "released": "2026-11-24T02:21:52+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2307,7 +2308,7 @@
         "affected suites: test_dev_review, test_dev_standing_autonomy",
         "full per-file validation on the exact head"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 4. Evidence for the need: in this mission a credential-shaped test dummy failed CI's secret scan twice (T-DEV-032, T-DEV-038) and a registry close-out on a new branch was refused by the scope gate (T-DEV-039); each cost a push, a CI run and a re-review. Preflight does not replace the gates and does not check CI, merge state or review, which need the pull request."
+      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 4. Evidence for the need: in this mission a credential-shaped test dummy failed CI's secret scan twice (T-DEV-032, T-DEV-038) and a registry close-out on a new branch was refused by the scope gate (T-DEV-039); each cost a push, a CI run and a re-review. Preflight does not replace the gates and does not check CI, merge state or review, which need the pull request. Merged as PR #144 (merge commit e0484a7, final head 734acf7, content diff hash c4c9179d249fd05b). Two independent reviews by fresh subagents, both APPROVE (the first with two notes that were fixed: accurate 'writes nothing' wording and a failing git status counting as dirty). Evidence (OBSERVED by the author session): per-file validation on the exact head 3390 tests, no failures; nine mutation checks plus one more after the fixes, all caught; CI validate green; merged through the integration tool with all eight gates PASS. Open follow-ups (not blocking): no preflight test uses a wave/ branch or CHANGELOG.md; git status could use --no-optional-locks; a dirty tree prints the warning above the result line but still reports PREFLIGHT_PASS; the variable head in _collect_git is unused. Preflight does not check CI, merge state or review."
     }
   ]
 }
