@@ -34,6 +34,10 @@
 - NOT TESTED live: `--setting-sources project,local` combined with `--settings`, and the derived file in a real
   session. See `STANDING_AUTONOMY.md`.
 
+> **Status update (2026-11-24, T-DEV-032):** `session_policy live-probe --yes` now refuses (exit 2) unless a process
+> runner is injected, because it would start a real Claude session on the Claude login. The OBSERVED live results below
+> are **historical** (2026-11-19) and are kept unchanged. See `WORKER_DISPATCH.md`.
+
 ## Evidence (labels follow the project convention)
 - UNIT_ISOLATED: 16 offline tests; two of them run the real hook command in a local python subprocess.
 - OBSERVED live (2026-11-19, claude 2.1.316, model haiku, throwaway git repo without a remote):
