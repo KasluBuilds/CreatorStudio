@@ -482,7 +482,7 @@
       ]
     },
     "AGR-DEV-054-02": {
-      "description": "T-DEV-054 may update the one existing test in test_dev_cli.py that assigns a review allocation without the author's route (now refused); it changes no other test in that file, which T-DEV-053 owned until it closed.",
+      "description": "T-DEV-054 may update the one existing test in test_dev_cli.py that assigns a review allocation without the author's route (now refused); it changes no other test in that file.",
       "task_ids": [
         "T-DEV-054"
       ],
