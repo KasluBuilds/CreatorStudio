@@ -3075,7 +3075,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-056-preflight-no-locks",
       "worktree": "../CreatorStudio-worktrees/t-dev-056-preflight-no-locks",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3097,10 +3097,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, phase 6: backlog item taken from WORKER_DISPATCH.md Known limits, dispatched to a worker.",
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, phase 6: backlog item taken from WORKER_DISPATCH.md Known limits, dispatched to a worker. Merged as PR #211 (independent review of diff d545a537b1f69f44).",
       "lease": {
         "acquired": "2026-11-24T17:27:15+00:00",
-        "expires": "2026-11-25T17:27:15+00:00"
+        "expires": "2026-11-25T17:27:15+00:00",
+        "released": "2026-11-24T23:03:39+00:00"
       }
     },
     {
