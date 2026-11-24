@@ -198,6 +198,21 @@ class TestAllocationChoice(unittest.TestCase):
         # Check no other new keys
         self.assertEqual(sorted(d), ["capability", "evidence", "independent", "model", "provider", "reason", "role"])
 
+    def test_independent_is_none_unless_a_review_got_a_well_formed_author_route(self):
+        a = route("auto/cheaper", capability=3, roles=("review", "implementation"))
+        b = route("auto/stronger", capability=4, roles=("review",))
+        # the author route is ignored for every role except review
+        for role in ("implementation", "research", "test_writing", "architecture"):
+            with self.subTest(role=role):
+                r = allocate(role, [route(roles=ALL_ROLES, capability=5)], author_route=("gemini", "auto/a"))
+                self.assertIsNone(r.independent)
+        # a malformed author route counts as not given
+        for bad in (("gemini",), "gemini/auto/cheaper", None, ["gemini", 5]):
+            with self.subTest(author_route=bad):
+                self.assertIsNone(allocate("review", [a, b], author_capability=3, author_route=bad).independent)
+        # an author route that is not in the registry: every route differs from it
+        self.assertIs(allocate("review", [a, b], author_capability=3, author_route=("gemini", "auto/unknown")).independent, True)
+
 
 class TestRegistryFields(unittest.TestCase):
     def setUp(self):
