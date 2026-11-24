@@ -480,6 +480,15 @@
         "orchestrator/tests/test_dev_model_allocation.py",
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md"
       ]
+    },
+    "AGR-DEV-054-02": {
+      "description": "T-DEV-054 may update the one existing test in test_dev_cli.py that assigns a review allocation without the author's route (now refused); it changes no other test in that file.",
+      "task_ids": [
+        "T-DEV-054"
+      ],
+      "paths": [
+        "orchestrator/tests/test_dev_cli.py"
+      ]
     }
   },
   "tasks": [
@@ -2921,12 +2930,14 @@
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
-        "AGR-DEV-054-01"
+        "AGR-DEV-054-01",
+        "AGR-DEV-054-02"
       ],
       "owned_paths": [
         "orchestrator/dev_supervisor/model_allocation.py",
         "orchestrator/tests/test_dev_model_allocation.py",
-        "orchestrator/dev_supervisor/WORKER_DISPATCH.md"
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/tests/test_dev_cli.py"
       ],
       "acceptance_criteria": [
         "allocate('review', ...) raises AllocationRefused when the only route that fits is the author's own, with a reason that says so",
@@ -2941,7 +2952,7 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, phase 4 (independent review dispatch).",
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, phase 4 (independent review dispatch). Amended after T-DEV-053 closed: orchestrator/tests/test_dev_cli.py added to the owned paths (one existing test assigns a review without the author's route).",
       "lease": {
         "acquired": "2026-11-24T16:38:55+00:00",
         "expires": "2026-11-25T16:38:55+00:00"
