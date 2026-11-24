@@ -766,7 +766,8 @@ PREFLIGHT_GATES = ((4, "scope"), (6, "secrets"), (7, "forbidden_files"), (8, "re
 def preflight(git: Callable, base: str = "main", lukas_word: str = "") -> Tuple[List[Gate], Dict[str, Any]]:
     """The offline gates (scope, secrets, forbidden files, reserved paths) on the LOCAL branch against origin/<base>.
 
-    Needs no pull request, no gh, no lock; writes nothing. It uses the same gate functions as a real evaluation, on the
+    Needs no pull request, no gh, no lock, and changes neither the working tree nor any branch (like a dry run it runs
+    ``git fetch``, which only updates remote-tracking refs). It uses the same gate functions as a real evaluation, on the
     committed HEAD (uncommitted changes are reported in ``info['dirty']`` and are NOT evaluated). A PASS here means those
     four gates would pass on the pushed head. CI, merge state and review need the pull request and are not checked.
     Never raises: a failure to read git state turns every gate into UNKNOWN."""
@@ -786,7 +787,7 @@ def preflight(git: Callable, base: str = "main", lukas_word: str = "") -> Tuple[
             return unknown("detached HEAD: preflight needs a named branch")
         info["head"], info["branch"] = sha, branch
         rc, out = git(["status", "--porcelain"])
-        info["dirty"] = bool(rc == 0 and out.strip())
+        info["dirty"] = not (rc == 0 and not out.strip())   # a failing status counts as dirty: warn, never assume clean
         ctx = _Ctx(pr={"headRefName": branch, "headRefOid": sha}, base=base, head_ref="HEAD")
         try:
             _collect_git(git, ctx.pr, base, ctx)
@@ -946,7 +947,8 @@ def main(argv: Optional[Sequence[str]] = None, *, gh: Optional[Callable] = None,
     ap.add_argument("pr", type=int, nargs="?", help="pull request number (not used with --preflight)")
     ap.add_argument("--preflight", action="store_true",
                     help="evaluate only the offline gates (scope, secrets, forbidden files, reserved) on the local "
-                         "branch against origin/<base>; no pull request, no gh, writes nothing")
+                         "branch against origin/<base>; no pull request, no gh, no merge; changes no branch or file "
+                         "(the fetch only updates remote-tracking refs)")
     ap.add_argument("--yes", action="store_true", help="merge when every gate passes (default: dry run)")
     ap.add_argument("--repo", default=".", help="repository root (default: current directory)")
     ap.add_argument("--base", default="main")

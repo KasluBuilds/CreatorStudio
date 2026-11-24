@@ -882,9 +882,9 @@ class Cli(unittest.TestCase):
 class PreGit(FakeGit):
     """FakeGit that also answers the extra reads preflight makes: the branch name and the working-tree status."""
 
-    def __init__(self, branch=TASK_BRANCH, dirty="", boom=None, **kw):
+    def __init__(self, branch=TASK_BRANCH, dirty="", boom=None, status_rc=0, **kw):
         super().__init__(**kw)
-        self.branch, self.dirty, self.boom = branch, dirty, boom
+        self.branch, self.dirty, self.boom, self.status_rc = branch, dirty, boom, status_rc
 
     def __call__(self, args):
         a = list(args)
@@ -895,7 +895,7 @@ class PreGit(FakeGit):
             return 0, self.branch.encode()
         if a[:2] == ["status", "--porcelain"]:
             self.calls.append(a)
-            return 0, self.dirty.encode()
+            return self.status_rc, self.dirty.encode()
         return super().__call__(args)
 
 
@@ -983,6 +983,15 @@ class Preflight(unittest.TestCase):
         buf = io.StringIO()
         rc = I.main(["--preflight"], git=PreGit(dirty=" M x"), out=buf)
         self.assertEqual(rc, 0)
+        self.assertIn("uncommitted changes are NOT evaluated", buf.getvalue())
+
+    def test_a_failing_git_status_counts_as_dirty_so_the_warning_is_never_dropped(self):
+        _, info, _ = pre(status_rc=1)
+        self.assertTrue(info["dirty"])
+        _, clean, _ = pre()
+        self.assertFalse(clean["dirty"])
+        buf = io.StringIO()
+        I.main(["--preflight"], git=PreGit(status_rc=128), out=buf)
         self.assertIn("uncommitted changes are NOT evaluated", buf.getvalue())
 
     def test_the_cli_prints_the_table_the_hash_and_the_limits(self):
