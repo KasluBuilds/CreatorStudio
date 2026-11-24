@@ -726,7 +726,15 @@ class CliTests(Offline):
                 self.assertIn("allocation refused", out)
         self.assertEqual(cli.pending_requests(env.store()), [])
         code, out = env.cli(*self._alloc_args(env, "--allocation-role", "review", "--author-capability", "3"))
+        self.assertEqual(code, 1, out)                                         # T-DEV-054: a review needs the author's route
+        self.assertIn("needs the author's route", out)
+        code, out = env.cli(*self._alloc_args(env, "--allocation-role", "review", "--author-capability", "3",
+                                              "--author-route", "gemini", "auto/author"))
         self.assertEqual(code, 0, out)                                         # a route as capable as the work exists
+        code, out = env.cli(*self._alloc_args(env, "--allocation-role", "review", "--author-capability", "3",
+                                              "--author-route", "gemini", "auto/rev"))
+        self.assertEqual(code, 1, out)                                         # the only fitting route is the author's own
+        self.assertIn("author's own", out)
 
     def test_assign_with_an_allocation_role_and_no_registry_is_refused(self):
         env = Env(self)
@@ -778,6 +786,21 @@ class CliTests(Offline):
         self.assertEqual(env.worker_launcher.specs, [])
         code, out = env.cli("workers", "--json")
         self.assertEqual(json.loads(out)["workers"], [])
+
+    def test_the_loop_refuses_a_review_that_is_not_independent_of_its_author(self):
+        """T-DEV-054: a review request without the author's route, or naming the author's own route, queues no worker."""
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        self._allocation_registry(env)
+        base = {"task_id": "T-X-9", "role": "worker", "branch": "lane/x9", "worktree": str(env.wt), "owner_stream": "s",
+                "prompt_file": env.prompt_file(), "model": "auto/big", "provider": "gemini", "allocation_role": "review"}
+        for extra in ({}, {"author_route": ["gemini", "auto/big"]}, {"author_route": "gemini/auto/coding"}):
+            with self.subTest(extra=extra):
+                cli.enqueue(env.store(), "assign", dict(base, **extra))
+                code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+                self.assertEqual(code, 0, out)
+        self.assertEqual(env.worker_launcher.specs, [])
+        self.assertEqual(WorkerRegistry(env.store()).list(), [])
 
     def test_forged_author_fields_in_a_request_never_crash_the_loop_or_change_the_route(self):
         env = Env(self)

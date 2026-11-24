@@ -10,8 +10,9 @@ Capability is a recorded rank from 1 (weakest) to 5 (strongest). It is a claim a
 here. Rules:
 
 * implementation, research, test_writing: the lowest capability that fits (cheapest sufficient route).
-* review: capability at least the author's, so a review is never weaker than the work; when another route exists at
-  that level, a route different from the author's is preferred.
+* review: capability at least the author's, so a review is never weaker than the work, and the route must differ from
+  the author's: without the author's route, or when the author's own route is the only one that fits, the allocation
+  is refused (T-DEV-054). This compares routes only; it does not prove a reviewer was independent in fact.
 * architecture: the highest capability available, because the hard work should not get the weakest route.
 """
 from __future__ import annotations
@@ -45,7 +46,7 @@ class Allocation:
     evidence: str
     reason: str
     independent: Optional[bool] = None
-    """True = a review route that is not the author's route; False = the author's own route; None = not a review, or the author's route was not given."""
+    """True = a review route that is not the author's route; None = not a review. A review whose route would be the author's, or whose author route is unknown, is refused instead of returned (T-DEV-054), so this is never False."""
 
     def to_dict(self) -> Dict[str, Any]:
         """Credential-free record for a worker record or an event."""
@@ -98,6 +99,8 @@ def allocate(role: str, routes: Sequence[Any], *, author_capability: int = 0,
     if not fits:
         raise AllocationRefused(f"no verified zero-cost route is recorded for role {role} at capability {need} or more")
     author = _norm_route(author_route) if role == "review" else None
+    if role == "review" and author is None:        # T-DEV-054: without the author's route independence cannot be shown
+        raise AllocationRefused("a review needs the author's route (provider, model) to show the reviewer is independent")
 
     def is_author(r: worker_spawner.VerifiedRoute) -> bool:
         return author is not None and _norm_route((r.provider, r.model)) == author
@@ -107,11 +110,11 @@ def allocate(role: str, routes: Sequence[Any], *, author_capability: int = 0,
         # Review: a route other than the author's always comes first; capability only orders routes within each group.
         return (1 if is_author(r) else 0, rank, r.provider, r.model)
 
+    if role == "review" and all(is_author(r) for r in fits):    # T-DEV-054: the author's own route is never a reviewer
+        raise AllocationRefused("no independent review route: the only route that fits is the author's own")
     best = sorted(fits, key=key)[0]
     how = "highest capability available" if role in HIGHEST_FIRST else "lowest capability that fits"
     why = f"{how} for role {role} (needs {need} or more, route has {best.capability}); {len(fits)} route(s) fit"
-    if is_author(best):
-        why += "; this is the author's own route and no other route fits"
     independent = (not is_author(best)) if author is not None else None
     return Allocation(role=role, provider=best.provider, model=best.model, capability=best.capability,
                       evidence=best.evidence.strip()[:MAX_EVIDENCE], reason=why, independent=independent)

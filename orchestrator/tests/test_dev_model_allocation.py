@@ -42,20 +42,21 @@ class TestAllocationChoice(unittest.TestCase):
     def test_review_is_at_least_as_capable_as_the_author(self):
         routes = [route("auto/r3", capability=3, roles=("review",)), route("auto/r4", capability=4, roles=("review",)),
                   route("auto/r5", capability=5, roles=("review",))]
-        self.assertEqual(allocate("review", routes).model, "auto/r3")                       # minimum 3
-        self.assertEqual(allocate("review", routes, author_capability=4).model, "auto/r4")
-        self.assertEqual(allocate("review", routes, author_capability=5).model, "auto/r5")
+        other = ("gemini", "auto/author")                                                  # not in the registry (T-DEV-054)
+        self.assertEqual(allocate("review", routes, author_route=other).model, "auto/r3")   # minimum 3
+        self.assertEqual(allocate("review", routes, author_capability=4, author_route=other).model, "auto/r4")
+        self.assertEqual(allocate("review", routes, author_capability=5, author_route=other).model, "auto/r5")
         with self.assertRaises(AllocationRefused):
-            allocate("review", routes[:2], author_capability=5)                           # nothing as capable as the work
+            allocate("review", routes[:2], author_capability=5, author_route=other)      # nothing as capable as the work
 
     def test_review_prefers_a_different_route_than_the_author_at_equal_capability(self):
         a = route("auto/a", capability=3, roles=("review",))
         b = route("auto/b", capability=3, roles=("review",))
         self.assertEqual(allocate("review", [a, b], author_route=("gemini", "auto/a")).model, "auto/b")
         self.assertEqual(allocate("review", [a, b], author_route=("gemini", "auto/b")).model, "auto/a")
-        only = allocate("review", [a], author_route=("gemini", "auto/a"))
-        self.assertEqual(only.model, "auto/a")
-        self.assertIn("the author's own route and no other route fits", only.reason)
+        with self.assertRaises(AllocationRefused) as ctx:                                   # T-DEV-054: never the author's own
+            allocate("review", [a], author_route=("gemini", "auto/a"))
+        self.assertIn("only route that fits is the author's own", str(ctx.exception))
 
     def test_a_different_route_beats_the_authors_even_when_the_authors_is_cheaper(self):
         """Independence comes first for review; capability only orders routes inside each group."""
@@ -71,11 +72,13 @@ class TestAllocationChoice(unittest.TestCase):
         b = route("auto/b", capability=3, roles=("review",))
         self.assertEqual(allocate("review", [a, b], author_route=(" GEMINI ", "auto/CODING")).model, "auto/b")
 
-    def test_a_malformed_author_route_is_ignored_not_trusted(self):
+    def test_a_malformed_or_missing_author_route_refuses_a_review(self):
+        """T-DEV-054: independence cannot be shown without the author's route, so a review is refused (never trusted)."""
         a = route("auto/a", capability=3, roles=("review",))
         for bad in (None, "gemini/auto/a", ("gemini",), ("gemini", 5), [1, 2], 7, ("a", "b", "c")):
-            with self.subTest(author_route=bad):
-                self.assertEqual(allocate("review", [a], author_route=bad).model, "auto/a")
+            with self.subTest(author_route=bad), self.assertRaises(AllocationRefused) as ctx:
+                allocate("review", [a], author_route=bad)
+            self.assertIn("needs the author's route", str(ctx.exception))
 
     def test_more_credential_shapes_in_evidence_or_model_make_a_route_unusable(self):
         for evidence in ("gsk_" + "a" * 24, "AIza" + "B" * 35, "xoxb-" + "1" * 12, "Bearer " + "x" * 30):
@@ -165,6 +168,20 @@ class TestAllocationChoice(unittest.TestCase):
                                              "architecture": 4})
         self.assertEqual(ma.ROLES, ("implementation", "research", "test_writing", "review", "architecture"))
 
+    def test_no_allocation_is_ever_returned_with_independent_false(self):
+        """T-DEV-054: whatever the registry order, author route or capability, independent is True, None or a refusal."""
+        import itertools as it
+        routes = [route("auto/x", capability=3, roles=("review",)), route("auto/y", capability=4, roles=("review",))]
+        for perm in it.permutations(routes):
+            for author in (("gemini", "auto/x"), ("gemini", "auto/y"), ("gemini", "auto/z"), ("GEMINI ", " AUTO/X")):
+                for cap in (0, 3, 4):
+                    try:
+                        got = allocate("review", list(perm), author_capability=cap, author_route=author)
+                    except AllocationRefused:
+                        continue
+                    self.assertIs(got.independent, True, (author, cap))
+                    self.assertNotEqual((got.provider, got.model), tuple(x.strip().casefold() for x in author))
+
     def test_independent_flag_in_allocations(self):
         # 1. review with two usable routes where the author route is the cheaper one
         # capability 3 vs 4. Cheaper (cap 3) is author.
@@ -176,14 +193,13 @@ class TestAllocationChoice(unittest.TestCase):
         self.assertEqual(got.model, "auto/stronger")
         self.assertEqual(got.independent, True)
 
-        # 2. review where the author's route is the only route that fits
-        only = allocate("review", [a], author_route=("gemini", "auto/cheaper"))
-        self.assertEqual(only.model, "auto/cheaper")
-        self.assertEqual(only.independent, False)
+        # 2. review where the author's route is the only route that fits: refused, never returned as independent False
+        with self.assertRaises(AllocationRefused):
+            allocate("review", [a], author_route=("gemini", "auto/cheaper"))
 
-        # 3. review called without author_route
-        none = allocate("review", [a, b])
-        self.assertEqual(none.independent, None)
+        # 3. review called without author_route: refused
+        with self.assertRaises(AllocationRefused):
+            allocate("review", [a, b])
 
         # 4. for each of the roles implementation, research, test_writing and architecture
         for role in ("implementation", "research", "test_writing", "architecture"):
@@ -192,13 +208,13 @@ class TestAllocationChoice(unittest.TestCase):
                 self.assertEqual(r.independent, None)
 
         # 5. to_dict() contains the key "independent"
-        d = only.to_dict()
+        d = got.to_dict()
         self.assertIn("independent", d)
-        self.assertEqual(d["independent"], False)
+        self.assertEqual(d["independent"], True)
         # Check no other new keys
         self.assertEqual(sorted(d), ["capability", "evidence", "independent", "model", "provider", "reason", "role"])
 
-    def test_independent_is_none_unless_a_review_got_a_well_formed_author_route(self):
+    def test_independent_is_none_for_other_roles_and_true_for_a_review(self):
         a = route("auto/cheaper", capability=3, roles=("review", "implementation"))
         b = route("auto/stronger", capability=4, roles=("review",))
         # the author route is ignored for every role except review
@@ -206,10 +222,10 @@ class TestAllocationChoice(unittest.TestCase):
             with self.subTest(role=role):
                 r = allocate(role, [route(roles=ALL_ROLES, capability=5)], author_route=("gemini", "auto/a"))
                 self.assertIsNone(r.independent)
-        # a malformed author route counts as not given
+        # a malformed author route counts as not given, and a review without it is refused
         for bad in (("gemini",), "gemini/auto/cheaper", None, ["gemini", 5]):
-            with self.subTest(author_route=bad):
-                self.assertIsNone(allocate("review", [a, b], author_capability=3, author_route=bad).independent)
+            with self.subTest(author_route=bad), self.assertRaises(AllocationRefused):
+                allocate("review", [a, b], author_capability=3, author_route=bad)
         # an author route that is not in the registry: every route differs from it
         self.assertIs(allocate("review", [a, b], author_capability=3, author_route=("gemini", "auto/unknown")).independent, True)
 
