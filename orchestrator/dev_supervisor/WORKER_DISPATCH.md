@@ -12,7 +12,7 @@ Written 2026-11-24 for the overnight mission (tasks T-DEV-032, T-DEV-038, T-DEV-
 | `autonomy next` proposes eligible milestone work when nothing is actionable | IMPLEMENTED (PR #137) |
 | `integrate --preflight` checks the offline merge gates before pushing | IMPLEMENTED (PR #144) |
 | A worker running a real task through the OmniRoute gateway | **NOT DEMONSTRATED** |
-| Any route listed as verified | OBSERVED for one route, on the isolated worker gateway only (`WORKER_GATEWAY.md`): `gemini` / `gemini-3.1-flash-lite`, two complete Claude Code round trips. The registry file lives in the state directory, not in the repository; without an entry every dispatch is refused |
+| Any route listed as verified | OBSERVED for one route, on the isolated worker gateway only (`WORKER_GATEWAY.md`): `gemini` / `gemini/gemini-3.1-flash-lite`, two complete Claude Code round trips. The registry file lives in the state directory, not in the repository; without an entry every dispatch is refused |
 
 Route state (OBSERVED, 2026-11-24): see `WORKER_GATEWAY.md` for the probe results, the corrected reading of the earlier 429 (the Gemini 2.5 routes are retired for this account; the 429 was the gateway cooldown after provider 404s, not exhausted quota), the isolated worker gateway and the credential rotation. Earlier observations: `OMNIROUTE_BENCHMARK.md` (2026-11-17, text-only) records `not_found` then `rate_limited` for the 2.5 routes and Groq `auth_error`; the report that Gemini 3.x routes break Claude Code tool turns (`thought_signature`) comes from earlier Main sessions (REPORTED, not recorded in a repository file).
 
