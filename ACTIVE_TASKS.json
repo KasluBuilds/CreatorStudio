@@ -2329,11 +2329,12 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-041-dispatch-docs",
       "worktree": "../CreatorStudio-worktrees/t-dev-041-dispatch-docs",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "lease": {
         "acquired": "2026-11-24T02:26:05+00:00",
-        "expires": "2026-11-25T02:26:05+00:00"
+        "expires": "2026-11-25T02:26:05+00:00",
+        "released": "2026-11-24T02:37:35+00:00"
       },
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2355,7 +2356,7 @@
         "python -B -m governance validate from orchestrator/",
         "integrate --preflight passes on the branch"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 4. Evidence for the need: grep found no document that mentions verified_routes.json, --allocation-role or --preflight; three documents still describe the harness and two live probes as runnable. The page is a map of the code and the PR comments, not new evidence."
+      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 4. Evidence for the need: grep found no document that mentions verified_routes.json, --allocation-role or --preflight; three documents still describe the harness and two live probes as runnable. The page is a map of the code and the PR comments, not new evidence. Merged as PR #147 (merge commit 8884e1d, final head 8cdbff4, content diff hash da102ad5fe2ed042). Two independent accuracy reviews by fresh subagents, both APPROVE; the first checked every statement in WORKER_DISPATCH.md against the code, found none false and listed seven imprecisions, all fixed. Documentation only; CI validate green; merged through the integration tool with all eight gates PASS. Open wording follow-ups (not fixed): the OBSERVED label on the route check also carries details that exist only in the author session (authenticated, headless, one attempt per route) and should be read as REPORTED; the registry example auto/coding is a gateway combo, not a gemini route; needs_decision is set by open questions or blockers; an existing agreement may also gain a PR's own task ids."
     }
   ]
 }
