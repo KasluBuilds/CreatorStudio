@@ -74,14 +74,14 @@ Labels: OBSERVED = read from the Supervisor event log, the worker's stream log o
 - The worker gateway answered **48 calls** in that window: 7 succeeded (HTTP 200), 25 returned 503 "high demand", 11 returned 429, 3 timed out at 110 s (504) and 2 were cancelled by the client (499). The free route is slow and unreliable.
 - Claude Code ended with `API Error: 503` after its own bounded retries (exit 1). The Supervisor recorded `worker_failed` (signature `exit:1`) with a restart-not-before time. `auto_restart` is off by default, so the worker stays FAILED until someone restarts it; there is no `restart` command in the CLI.
 
-**What the worker produced (kept as written).** The new field, its computation and the main new test, all correct in review. It never ran the tests and so never noticed that one existing assertion pins the exact `to_dict()` keys.
+**What the worker produced (kept as written).** The new field, its computation and the main new test, correct as reviewed (the worker's test needed two additions, below). It never ran the tests and so never noticed that one existing assertion pins the exact `to_dict()` keys.
 
-**What Main did.** Updated that one assertion, ran four suites, and, after the first independent review found two uncaught mutations, added a test for them. Merged as PR #160 with all eight gates passing and an independent review bound to the diff hash. The PR body discloses this split.
+**What Main did.** Updated one existing test (renamed, its pinned key list extended), ran four suites, and, after the first independent review found two uncaught mutations, added a test for them. Merged as PR #160 with all eight gates passing and an independent review bound to the diff hash. The PR body discloses this split.
 
 **What this does and does not show.**
 - OBSERVED: a worker can start through the production gate on a verified zero-cost route, work in its own worktree under the authoritative hook, and produce correct code. Failure was bounded (one run, no loop) and recorded.
 - NOT DEMONSTRATED: a worker finishing a task alone (tests, commit, handoff), a dispatched independent reviewer, an automatic restart, a complete select-register-dispatch-implement-review-merge-select cycle.
-- Reliability: with a 15 % success rate for gateway calls, a free Gemini route cannot yet carry a cycle unattended. No other verified route exists on the gateway today (`WORKER_GATEWAY.md` section 3).
+- Reliability: with 7 of 48 gateway calls succeeding (a raw call ratio that counts Claude Code retries and client cancellations, not a per-task rate), a free Gemini route cannot yet carry a cycle unattended. No other verified route exists on the gateway today (`WORKER_GATEWAY.md` section 3).
 - Did role allocation reduce general-purpose usage? **Not measurable from one run.** By construction a dispatched worker spends no Claude login usage; independent review and Main's own work still do, so the saving is bounded by how much implementation the free route can carry.
 
 **Next steps.**
