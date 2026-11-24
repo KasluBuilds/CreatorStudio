@@ -469,6 +469,17 @@
         "orchestrator/tests/test_dev_dispatch_routing.py",
         "orchestrator/tests/test_dev_cli.py"
       ]
+    },
+    "AGR-DEV-054-01": {
+      "description": "T-DEV-054 may change allocate() in model_allocation.py for the review role, update its tests, and edit the Known limits text of WORKER_DISPATCH.md; it changes no other role, no merge gate and no launcher.",
+      "task_ids": [
+        "T-DEV-054"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/model_allocation.py",
+        "orchestrator/tests/test_dev_model_allocation.py",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md"
+      ]
     }
   },
   "tasks": [
@@ -2896,6 +2907,43 @@
       "lease": {
         "acquired": "2026-11-24T16:15:07+00:00",
         "expires": "2026-11-25T16:15:07+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-054",
+      "title": "dev_supervisor: refuse a review allocation that is not independent",
+      "description": "WORKER_DISPATCH.md, Known limits: Allocation.independent exists (PR #160) but nothing refuses a review whose flag is False; the merge gate relies on the reviewer id not being an author id. Make allocate() for the review role raise AllocationRefused when the only fitting route is the author's own route, and when the author's route is not given (independence cannot be established). Non-review roles are unchanged. Also record in WORKER_DISPATCH.md that the registry holds no capability-3 review route, so no OmniRoute reviewer can currently be allocated.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-054-independent-review",
+      "worktree": "../CreatorStudio-worktrees/t-dev-054-independent-review",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-054-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/model_allocation.py",
+        "orchestrator/tests/test_dev_model_allocation.py",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md"
+      ],
+      "acceptance_criteria": [
+        "allocate('review', ...) raises AllocationRefused when the only route that fits is the author's own, with a reason that says so",
+        "allocate('review', ...) without an author route raises AllocationRefused",
+        "when another fitting route exists it is chosen and independent is True; non-review roles behave as before",
+        "no allocation is ever returned with independent False",
+        "WORKER_DISPATCH.md states what is enforced and that no capability-3 review route is recorded"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p test_dev_model_allocation.py (and test_dev_cli.py, read-only run) from orchestrator/",
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, phase 4 (independent review dispatch).",
+      "lease": {
+        "acquired": "2026-11-24T16:38:55+00:00",
+        "expires": "2026-11-25T16:38:55+00:00"
       }
     }
   ]
