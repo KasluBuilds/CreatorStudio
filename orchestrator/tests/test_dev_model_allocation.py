@@ -128,8 +128,8 @@ class TestAllocationChoice(unittest.TestCase):
                route("auto/z", "anthropic", roles=ALL_ROLES, capability=5), route("auto/z", "openai", roles=ALL_ROLES, capability=5),
                route("auto/p", roles=ALL_ROLES, capability=5, cost_zero=False),
                route("auto/q", roles=ALL_ROLES, capability=5, evidence=""), route("auto/q", roles=ALL_ROLES, capability=5, evidence="  "),
-               route("auto/k", roles=ALL_ROLES, capability=5, evidence="key sk-abcdefghijklmnopqrstuvwxyz"),
-               route("auto/g", roles=ALL_ROLES, capability=5, evidence="token ghp_abcdefghijklmnopqrstuv"),
+               route("auto/k", roles=ALL_ROLES, capability=5, evidence="key sk" + "-" + "a" * 26),
+               route("auto/g", roles=ALL_ROLES, capability=5, evidence="token gh" + "p_" + "b" * 22),
                "not a route", None, {"model": "auto/a"}, 5]
         for r in bad:
             with self.subTest(route=r), self.assertRaises(AllocationRefused):
