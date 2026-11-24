@@ -509,6 +509,16 @@
         "orchestrator/dev_supervisor/integrate.py",
         "orchestrator/tests/test_dev_integrate.py"
       ]
+    },
+    "AGR-DEV-057-01": {
+      "description": "T-DEV-057 adds the module cycle.py and its test file only; it reads the registry and GitHub through injected runners, reuses integrate.evaluate unchanged, and writes nothing.",
+      "task_ids": [
+        "T-DEV-057"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/cycle.py",
+        "orchestrator/tests/test_dev_cycle.py"
+      ]
     }
   },
   "tasks": [
@@ -3049,6 +3059,42 @@
       "lease": {
         "acquired": "2026-11-24T17:27:15+00:00",
         "expires": "2026-11-25T17:27:15+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-057",
+      "title": "dev_supervisor: cycle tracker for the task-to-merge chain",
+      "description": "Phase 5/6 of the autonomy mission: the chain claim, dispatch, implement, publish, review, merge, close-out is driven by Main's judgment about where a task stands. Add a read-only command that, for one task id, reads ACTIVE_TASKS.json on main and the task's pull requests and reports the stage (unregistered, awaiting_work, branch_pushed, in_review, ready_to_merge, needs_fix, awaiting_closeout, done) with the evidence it read and the exact next action. It writes nothing and merges nothing; it reuses the integrate gates for an open pull request.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-057-cycle-tracker",
+      "worktree": "../CreatorStudio-worktrees/t-dev-057-cycle-tracker",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-057-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/cycle.py",
+        "orchestrator/tests/test_dev_cycle.py"
+      ],
+      "acceptance_criteria": [
+        "for each stage a test shows the evidence and the next action, using fake gh and git runners",
+        "an open pull request maps to in_review when only the review gate is missing, to ready_to_merge when every gate passes, to needs_fix when a gate fails, and to waiting on CI when the checks gate is pending",
+        "a merged pull request on a task still ACTIVE in the registry is awaiting_closeout; a COMPLETED task is done",
+        "an unknown task id, an unreadable registry or a failing gh call is reported as unknown with the reason, never as a guess",
+        "the command writes no file, merges nothing and never raises on bad data"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p test_dev_cycle.py from orchestrator/",
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, phases 5 and 6 (record every stage with its evidence).",
+      "lease": {
+        "acquired": "2026-11-24T17:41:03+00:00",
+        "expires": "2026-11-25T17:41:03+00:00"
       }
     }
   ]
