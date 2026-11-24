@@ -1527,5 +1527,104 @@ class RetireCommandTests(Offline):
         self.assertEqual(self.queued(env), [])
 
 
+
+# ------------------------------------------------------------------ T-DEV-061: start, stop and recovery from a normal window
+
+class StartLifecycleTests(Offline):
+    """What the owner relies on when the Supervisor runs alone in a foreground window (no Main, no Claude Code parent)."""
+
+    def orphan(self, env, restart_count=2, pid=4194001, status="RUNNING"):
+        from dev_supervisor.workers import Worker, WorkerRegistry
+        w = Worker(worker_id="w-orphan01", role="worker", task_id="T-X-9", branch="lane/x9", worktree=str(env.wt),
+                   owner_stream="s", provider="gemini", model="auto/coding", status=status, pid=pid,
+                   restart_count=restart_count, prompt_file=env.prompt_file())
+        WorkerRegistry(env.store()).add(w)
+        return w
+
+    def worker(self, env):
+        from dev_supervisor.workers import WorkerRegistry
+        return WorkerRegistry(env.store()).get("w-orphan01")
+
+    def test_ctrl_c_stops_the_loop_cleanly_and_releases_the_lock(self):
+        env = Env(self)
+
+        def interrupt(_s):
+            raise KeyboardInterrupt
+        env.svc.sleep = interrupt
+        code, out = env.cli("start", "--yes", "--no-main")
+        self.assertEqual(code, 0, out)
+        self.assertIn("interrupted; supervisor loop stopped", out)
+        self.assertFalse((env.state / "supervisor.lock").exists())
+        env.svc.sleep = lambda s: None
+        code, out = env.cli("start", "--yes", "--no-main", "--max-ticks", "1")     # the next start is not blocked
+        self.assertEqual(code, 0, out)
+
+    def test_a_hard_killed_loop_leaves_a_stale_lock_that_the_next_start_replaces(self):
+        env = Env(self)
+        env.state.mkdir(parents=True)
+        (env.state / "supervisor.lock").write_text(json.dumps({"pid": 777777, "owner": "dev_supervisor"}), encoding="utf-8")
+        self.assertNotIn(777777, env.alive)                                         # that process is gone
+        code, out = env.cli("start", "--yes", "--no-main", "--max-ticks", "1")
+        self.assertEqual(code, 0, out)
+        self.assertIn("recovery:", out)
+        self.assertFalse((env.state / "supervisor.lock").exists())
+
+    def test_an_orphaned_running_worker_becomes_lost_and_nothing_is_relaunched_or_spent(self):
+        env = Env(self)
+        self.orphan(env, restart_count=2)
+        code, out = env.cli("start", "--yes", "--no-main", "--max-ticks", "1")
+        self.assertEqual(code, 0, out)
+        self.assertIn("nothing relaunched", out)
+        w = self.worker(env)
+        self.assertEqual((w.status, w.restart_count), ("LOST", 2))
+        self.assertEqual(env.worker_launcher.specs, [])
+
+    def test_restarting_the_loop_again_neither_relaunches_nor_changes_the_lost_worker(self):
+        env = Env(self)
+        self.orphan(env, restart_count=2)
+        env.cli("start", "--yes", "--no-main", "--max-ticks", "1")
+        first = self.worker(env).to_dict()
+        for _ in range(2):
+            code, out = env.cli("start", "--yes", "--no-main", "--max-ticks", "2")
+            self.assertEqual(code, 0, out)
+        self.assertEqual(self.worker(env).to_dict(), first)
+        self.assertEqual(env.worker_launcher.specs, [])
+
+    def test_a_worker_whose_process_is_alive_is_observed_and_never_marked_lost(self):
+        env = Env(self)
+        pid = env.next_pid()                                                        # alive in the fake process table
+        self.orphan(env, pid=pid)
+        code, out = env.cli("start", "--yes", "--no-main", "--max-ticks", "1")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.worker(env).status, "RUNNING")
+        self.assertEqual(env.worker_launcher.specs, [])
+
+    def test_the_heartbeat_advances_one_tick_per_loop_pass(self):
+        env = Env(self)
+        env.cli("start", "--yes", "--no-main", "--max-ticks", "3")
+        hb = json.loads((env.state / "supervisor_heartbeat.json").read_text(encoding="utf-8"))
+        self.assertEqual(hb["tick"], 3)
+        code, out = env.cli("status")
+        self.assertEqual(code, 0, out)
+        self.assertIn("supervisor heartbeat:", out)
+        self.assertIn("tick 3", out)
+
+    def test_a_queued_retire_waits_for_the_loop_and_a_second_loop_is_refused_meanwhile(self):
+        env = Env(self)
+        self.orphan(env)
+        env.cli("start", "--yes", "--no-main", "--max-ticks", "1")                  # marks it LOST
+        env.cli("retire", "w-orphan01", "--reason", "orphan", "--yes")
+        (env.state / "supervisor.lock").write_text(json.dumps({"pid": 888888, "owner": "dev_supervisor"}), encoding="utf-8")
+        env.alive.add(888888)
+        code, out = env.cli("start", "--yes", "--no-main", "--max-ticks", "1")
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.worker(env).status, "LOST")                           # the refused start applied nothing
+        env.alive.discard(888888)
+        code, out = env.cli("start", "--yes", "--no-main", "--max-ticks", "1")      # the holder died: stale, replaced
+        self.assertEqual(code, 0, out)
+        w = self.worker(env)
+        self.assertEqual((w.status, w.restart_count), ("STOPPED", 2))
+
+
 if __name__ == "__main__":
     unittest.main()
