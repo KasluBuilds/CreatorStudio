@@ -556,6 +556,29 @@ class TestMilestoneProposals(Base):
         self.write_status([ms("M-INT-02")])
         self.assertEqual(self.props(), ["M-INT-02"])
 
+    def test_an_id_embedded_in_a_longer_id_before_it_does_not_suppress_either(self):
+        t = task("T-OPEN", "ACTIVE")
+        t["title"] = "Work for T-M-X"
+        self.write_registry([t])
+        self.write_status([ms("M-X")])
+        self.assertEqual(self.props(), ["M-X"])
+
+    def test_an_unreadable_or_malformed_registry_proposes_nothing_and_warns(self):
+        self.write_status([ms("M-A")])
+        for text in (None, "{", '{"tasks": null}', '{"tasks": 5}'):
+            with self.subTest(registry=text):
+                if text is None:
+                    (self.repo / "ACTIVE_TASKS.json").unlink(missing_ok=True)
+                else:
+                    (self.repo / "ACTIVE_TASKS.json").write_text(text, encoding="utf-8")
+                res = self.items()
+                if text == '{"tasks": null}':
+                    self.assertEqual(self.props(res), ["M-A"])          # null means no tasks: nothing to suppress
+                else:
+                    self.assertEqual(res["proposals"], [])
+                    self.assertTrue(any("ACTIVE_TASKS.json" in w and "proposals" in w for w in res["warnings"]),
+                                    res["warnings"])
+
     def test_milestones_with_questions_or_blockers_are_flagged_and_listed_after_ready_ones(self):
         self.write_registry([])
         self.write_status([ms("M-Q", questions=["Q1 is open"]), ms("M-R"), ms("M-B", blockers=["no engine"])])

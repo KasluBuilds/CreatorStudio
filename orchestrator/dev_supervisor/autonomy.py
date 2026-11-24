@@ -347,13 +347,14 @@ def _milestone_proposals(root: Path, warnings: List[str]) -> List[dict]:
         return str(impl.get("state")) if isinstance(impl, dict) else "UNKNOWN"
 
     by_id = {m["id"]: m for m in milestones}
-    open_work = ""
     try:
         reg = _load_json(root / "ACTIVE_TASKS.json")
-        open_work = json.dumps([t for t in reg.get("tasks", []) if isinstance(t, dict)
+        open_work = json.dumps([t for t in (reg.get("tasks") or []) if isinstance(t, dict)
                                 and t.get("status") not in DONE_STATUSES])
-    except (OSError, ValueError, AttributeError):
-        pass  # the registry problem is already reported by _task_items
+    except (OSError, ValueError, AttributeError, TypeError):
+        # Without the registry nothing can be checked against open work, so propose nothing (fail closed).
+        warnings.append("ACTIVE_TASKS.json unreadable or malformed: no milestone proposals")
+        return []
     out: List[dict] = []
     for m in milestones:
         if state(m) != "NOT_STARTED":
@@ -362,7 +363,7 @@ def _milestone_proposals(root: Path, warnings: List[str]) -> List[dict]:
         if not isinstance(deps, list) or any(not isinstance(d, str) or d not in by_id or state(by_id[d]) != "IMPLEMENTED"
                                              for d in deps):
             continue
-        if re.search(r"(?<![A-Za-z0-9-])" + re.escape(m["id"]) + r"(?![A-Za-z0-9-])", open_work):
+        if re.search(r"(?<![A-Za-z0-9-])" + re.escape(m["id"]) + r"(?![A-Za-z0-9-])", open_work):   # whole-id match
             continue
         questions = [str(q) for q in (m.get("open_questions") or [])] if isinstance(m.get("open_questions"), list) else []
         blockers = [str(b) for b in (m.get("blockers") or [])] if isinstance(m.get("blockers"), list) else []
