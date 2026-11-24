@@ -2774,7 +2774,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-051-restart-command",
       "worktree": "../CreatorStudio-worktrees/t-dev-051-restart-command",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2795,10 +2795,11 @@
         "affected suites: test_dev_lifecycle, test_dev_dispatch_routing",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Evidence for the need: the first dispatched worker ended FAILED on a provider 503 and stayed FAILED; there was no supported way to retry it within the restart budget.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Evidence for the need: the first dispatched worker ended FAILED on a provider 503 and stayed FAILED; there was no supported way to retry it within the restart budget. Completed 2026-11-24: merged as PR #179 (all eight gates PASS; independent review bound to diff 40fde428467ff97e after one round). restart <worker-id> [--yes]: dry run by default, same dispatch gate, existing restart budget and backoff, auto_restart still off. test_dev_cli 84 tests; 14 of 14 mutations caught. Not yet used on a real failed worker.",
       "lease": {
         "acquired": "2026-11-24T08:45:34+00:00",
-        "expires": "2026-11-25T08:45:34+00:00"
+        "expires": "2026-11-25T08:45:34+00:00",
+        "released": "2026-11-24T08:57:59+00:00"
       }
     }
   ]
