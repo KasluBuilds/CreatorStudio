@@ -80,6 +80,7 @@ class Worker:
     last_result_ref: Optional[str] = None
     previous_session_ids: List[str] = field(default_factory=list)
     note: str = ""
+    allocation: Dict[str, Any] = field(default_factory=dict)   # route chosen by role (T-DEV-038); never a credential
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
