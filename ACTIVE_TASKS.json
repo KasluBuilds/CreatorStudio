@@ -2610,7 +2610,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-047-claim-handoff-read",
       "worktree": "../CreatorStudio-worktrees/t-dev-047-claim-handoff-read",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2629,10 +2629,11 @@
         "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_claim.py from the repository root",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Intended for a dispatched worker; if the worker cannot finish, Main finishes it and the pull request says so.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Intended for a dispatched worker; if the worker cannot finish, Main finishes it and the pull request says so. Completed 2026-11-24: merged as PR #167 (all eight gates PASS; independent review bound to diff aa918ecf01d9f7b0, no changes requested). Implemented entirely by dispatched worker w-195e048477 on gemini/gemini-3.1-flash-lite (code, test, tests run, commit; 197 s); Main verified it (tests, 4 of 4 mutations), merged the base in, pushed and opened the pull request. First change written entirely by a dispatched worker to reach main. Run record: WORKER_GATEWAY.md section 7 describes the first run; this second run succeeded.",
       "lease": {
         "acquired": "2026-11-24T07:37:08+00:00",
-        "expires": "2026-11-25T07:37:08+00:00"
+        "expires": "2026-11-25T07:37:08+00:00",
+        "released": "2026-11-24T08:09:57+00:00"
       }
     },
     {
