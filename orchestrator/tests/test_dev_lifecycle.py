@@ -22,7 +22,7 @@ from dev_supervisor.lifecycle import (BackoffActive, ClaudeCliLauncher, GitWorkt
                                       WorktreeCheckFailed, build_claude_argv)
 from dev_supervisor.state_store import (LockHeldError, SchemaError, StateStore, StoreCorruptError,  # noqa: E402
                                         StoreError, UnsafeStoreLocation, scrub)
-from dev_supervisor.workers import (DuplicateWorkerError, ResultStatus, Worker, WorkerRegistry,  # noqa: E402
+from dev_supervisor.workers import (DuplicateWorkerError, ResultStatus, UnknownWorkerError, Worker, WorkerRegistry,  # noqa: E402
                                     WorkerStatus)
 
 T0 = 1_800_000_000.0
@@ -1137,6 +1137,109 @@ class TestRecovery(Base):
         kinds = [e["kind"] for e in s.store.read_events()[0]]
         for k in ("worker_assigned", "launch_begin", "launch_done", "worker_exited"):
             self.assertIn(k, kinds)
+
+
+
+class TestRetire(Base):
+    """T-DEV-059: retire a LOST worker without spending a restart."""
+
+    def lost(self, restart_count=2):
+        s = self.sup()
+        w = self.running(s, task="T-LOST", wt=self.tmp / "lost")
+        w.restart_count = restart_count
+        s.registry.update(w)
+        s.close()
+        self.alive = set()                                  # its process is gone
+        s2 = self.sup()
+        s2.recover()
+        self.assertEqual(s2.registry.get(w.worker_id).status, WorkerStatus.LOST)
+        return s2, w.worker_id
+
+    def events(self, s, kind):
+        return [e for e in s.store.read_events()[0] if e.get("kind") == kind]
+
+    def test_retire_frees_the_slot_and_keeps_every_record(self):
+        s, wid = self.lost()
+        before = s.registry.get(wid).to_dict()
+        w = s.retire(wid, "orphaned worker, owner decided")
+        self.assertEqual(w.status, WorkerStatus.STOPPED)
+        self.assertTrue(w.note.startswith("retired: orphaned worker"))
+        after = w.to_dict()
+        for key in ("restart_count", "failures", "pid", "task_id", "branch", "worktree", "exit_code", "ended_at",
+                    "next_restart_not_before", "session_id", "previous_session_ids", "allocation", "last_result_ref"):
+            self.assertEqual(after[key], before[key], key)
+        self.assertEqual(after["restart_count"], 2)
+        fresh = WorkerRegistry(StateStore(self.state_dir, clock=self.clock))
+        self.assertEqual(fresh.get(wid).status, WorkerStatus.STOPPED)          # persisted
+        self.assertEqual(fresh.list(WorkerStatus.ACTIVE + (WorkerStatus.LOST,)), [])   # no longer counts toward the cap
+        (ev,) = self.events(s, "worker_retired")
+        self.assertEqual(ev["data"]["reason"], "orphaned worker, owner decided")
+        self.assertEqual(ev["data"]["previous_note"], "pid not alive at recovery")
+
+    def test_retire_launches_and_signals_nothing(self):
+        s, wid = self.lost()
+        s.retire(wid, "r")
+        self.assertEqual(self.launcher.launches, [])
+        self.assertEqual((self.launcher.terminated, self.launcher.killed), ([], []))
+
+    def test_only_a_lost_worker_can_be_retired(self):
+        s, wid = self.lost()
+        for status in (WorkerStatus.ASSIGNED, WorkerStatus.STARTING, WorkerStatus.RUNNING, WorkerStatus.STALE,
+                       WorkerStatus.STOPPING, WorkerStatus.STOPPED, WorkerStatus.EXITED, WorkerStatus.FAILED,
+                       WorkerStatus.BLOCKED):
+            with self.subTest(status=status):
+                w = s.registry.get(wid)
+                w.status, w.note = status, "not retired"
+                s.registry.update(w)
+                with self.assertRaises(LifecycleError):
+                    s.retire(wid, "r")
+                self.assertEqual(s.registry.get(wid).status, status)
+                self.assertEqual(self.events(s, "worker_retired"), [])
+
+    def test_a_worker_with_a_live_process_is_refused(self):
+        s, wid = self.lost()
+        w = s.registry.get(wid)
+        self.alive = {w.pid}
+        with self.assertRaises(LifecycleError):
+            s.retire(wid, "r")
+        self.assertEqual(s.registry.get(wid).status, WorkerStatus.LOST)
+        self.assertEqual((self.launcher.terminated, self.launcher.killed), ([], []))
+
+    def test_a_reason_is_required_and_an_unknown_worker_is_refused(self):
+        s, wid = self.lost()
+        for reason in ("", "   ", None):
+            with self.subTest(reason=reason), self.assertRaises(LifecycleError):
+                s.retire(wid, reason)
+        self.assertEqual(s.registry.get(wid).status, WorkerStatus.LOST)
+        with self.assertRaises(UnknownWorkerError):
+            s.retire("w-nope", "r")
+
+    def test_retiring_twice_is_a_no_op(self):
+        s, wid = self.lost()
+        first = s.retire(wid, "first reason").to_dict()
+        again = s.retire(wid, "second reason").to_dict()
+        self.assertEqual(again, first)
+        self.assertEqual(len(self.events(s, "worker_retired")), 1)
+
+    def test_a_retired_worker_can_still_be_restarted_within_its_budget(self):
+        s, wid = self.lost(restart_count=1)
+        s.retire(wid, "r")
+        w = s.restart(wid)
+        self.assertEqual((w.status, w.restart_count), (WorkerStatus.RUNNING, 2))
+
+    def test_retire_does_not_touch_other_workers_or_results(self):
+        s, wid = self.lost()
+        other = self.running(s, task="T-OTHER", wt=self.tmp / "other")
+        s.collect(other.worker_id, "DONE", {"tests": "pass"})
+        results, others = dict(s.registry.results), s.registry.get(other.worker_id).to_dict()
+        s.retire(wid, "r")
+        self.assertEqual(s.registry.results, results)
+        self.assertEqual(s.registry.get(other.worker_id).to_dict(), others)
+
+    def test_a_secret_shaped_reason_is_scrubbed(self):
+        s, wid = self.lost()
+        w = s.retire(wid, "token " + "sk-ant-" + "api03-" + "A" * 28 + " leaked")
+        self.assertNotIn("AAAAAAAAAAAA", w.note)
 
 
 if __name__ == "__main__":

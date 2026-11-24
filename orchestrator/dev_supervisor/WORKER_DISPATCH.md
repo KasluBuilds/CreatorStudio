@@ -13,6 +13,7 @@ Written 2026-11-24 for the overnight mission (tasks T-DEV-032, T-DEV-038, T-DEV-
 | `integrate --preflight` checks the offline merge gates before pushing | IMPLEMENTED (PR #144) |
 | A worker running a real task through the OmniRoute gateway | OBSERVED three times (`WORKER_GATEWAY.md`, sections 7 and 8): one failed on a provider 503, two completed small tasks alone; one was published with `intake` and merged through the gates. **Unattended operation, automatic restart and a dispatched reviewer are NOT DEMONSTRATED** |
 | `python -B -m dev_supervisor restart <worker-id> [--yes]` queues the restart of a FAILED, LOST or STOPPED worker through the same dispatch gate, within the restart budget and backoff | IMPLEMENTED (PR #179); first real use OBSERVED on 2026-11-24 (`WORKER_GATEWAY.md` section 9): the worker started again, then ended on the same provider 503. A running Supervisor loop must itself be restarted after this code is merged. Automatic restart stays off |
+| `python -B -m dev_supervisor retire <worker-id> --reason TEXT [--yes]` queues the retirement of a LOST worker whose process is gone: it becomes STOPPED (note `retired: <reason>`), stops counting toward the one-worker cap, and keeps its restart count, failures, results and blockers; nothing is launched or signalled | IMPLEMENTED (T-DEV-059), tested offline; never run against the real registry yet |
 | The dispatch gate refuses a worker when free physical memory is below a floor (default 1024 MB, `CREATORSTUDIO_MIN_FREE_MB`); an unreadable reading refuses | IMPLEMENTED (PR #186, T-DEV-053); REPORTED once refusing at 644 MB free (Main's command output, not in the event log). It reads only: it kills nothing and changes no setting |
 | `python -B -m dev_supervisor.specdraft <milestone-id>` prints a claim-spec draft for an eligible milestone (title and description copied, task id, branch, worktree and agreement id by the naming rules); `owned_paths`, `acceptance_criteria` and `agreement` are listed as missing, never invented | IMPLEMENTED (PR #192, T-DEV-055); read-only; a human or Main must still supply the missing fields |
 | `python -B -m dev_supervisor.cycle <task-id>` reports the stage of a task in the claim-to-close-out chain with OBSERVED evidence and the next action | IMPLEMENTED (PR #197, T-DEV-057); read-only; sees `origin/main` as of the last fetch; it does not drive the chain |
@@ -79,6 +80,15 @@ No fitting route is a refusal with a reason: never a fallback, never a Claude mo
 
 - `live_autonomy` needs `CREATORSTUDIO_VERIFIED_ROUTES` pointing at a verified registry that lists the model, and refuses every Claude model. `LIVE_AUTONOMY.md` describes a haiku run from 2026-11-19; that evidence is historical and the harness cannot be re-run on haiku.
 - `session_policy live-probe --yes` and `context_monitor live-compaction-probe --yes` refuse unless a process runner is injected, because they would start a real Claude session on the Claude login. Their 2026-11-19 results remain historical evidence.
+
+## Retiring an orphaned worker (T-DEV-059)
+
+A worker whose process vanished while no Supervisor was watching is marked LOST at the next Supervisor start (`Supervisor.recover`). A LOST worker still counts toward the one-worker cap, so until it is dealt with no new task can be dispatched. `restart` clears it but spends one restart. `retire` clears it without spending anything:
+
+1. Start the Supervisor loop (it marks the dead RUNNING worker LOST; nothing is relaunched).
+2. From another window: `python -B -m dev_supervisor retire <worker-id> --reason "<why>"` (dry run), then the same with `--yes`. The running loop applies it on its next tick and writes a `worker_retired` event with the reason and the previous note.
+
+What it refuses: any status except LOST (a RUNNING worker is refused, even with a dead pid: let the Supervisor mark it LOST first), a LOST worker whose recorded pid is alive (pids can be reused; stop that process by hand), a missing reason, an unknown worker. Retiring twice is a no-op. The retired worker is STOPPED, so `restart` can still use its remaining attempts later; retirement is not a ban. It does not touch the task registry or the task's claim.
 
 ## Known limits and follow-ups
 

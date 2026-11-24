@@ -55,6 +55,7 @@ from .launch import (MAIN_ROLE, InteractiveMainLauncher, LaunchError, MainProfil
                      read_main, write_main, write_main_fresh)
 from .lifecycle import (ClaudeCliLauncher, GitWorktreeChecker, LifecycleError, ProcessLauncher, Supervisor,
                         SupervisorPolicy, build_claude_argv, pid_alive)
+from .lifecycle import RETIRED_NOTE
 from .state_store import (LOCK_FILE, LockHeldError, StateStore, StoreError, UnsafeStoreLocation, check_location,
                           parse_iso, scrub, utc_iso)
 from .workers import WorkerRegistry, WorkerStatus
@@ -547,6 +548,10 @@ class SupervisorLoop:
                         w = self.sup.restart(old.worker_id)
                         outcome = {"ok": w.status == WorkerStatus.RUNNING, "worker_id": w.worker_id, "status": w.status,
                                    "restart_count": w.restart_count}
+                elif op == "retire":
+                    # No launch and no dispatch gate: retirement only frees the cap slot of a LOST worker (T-DEV-059).
+                    w = self.sup.retire(p["worker_id"], p["reason"])
+                    outcome = {"ok": True, "worker_id": w.worker_id, "status": w.status, "restart_count": w.restart_count}
                 elif op == "replace":
                     res = self.replace_main(p["handoff_id"])
                     outcome = {"ok": res.get("status") in (replacement.ReplacementStatus.REPLACED,
@@ -1309,6 +1314,46 @@ def cmd_restart(svc: Services, a: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_retire(svc: Services, a: argparse.Namespace) -> int:
+    """Queue the retirement of a LOST worker whose process is gone (a dry run unless --yes). The running loop applies
+    ``Supervisor.retire``: the worker becomes STOPPED, stops counting toward the worker cap, and keeps its restart count.
+    Nothing is launched, signalled or restarted."""
+    try:
+        w = WorkerRegistry(svc.store(create=False)).get(a.worker_id)
+    except StoreError as e:
+        _print(svc, {"ok": False, "problems": [f"cannot read worker {a.worker_id} ({e.__class__.__name__})"]}, a.json,
+               f"refused: cannot read worker {a.worker_id} ({e.__class__.__name__})")
+        return EXIT_FAIL
+    if w.status == WorkerStatus.STOPPED and (w.note or "").startswith(RETIRED_NOTE):
+        _print(svc, {"ok": True, "already_retired": True, "restart_count": w.restart_count}, a.json,
+               f"worker {w.worker_id} is already retired ({scrub(w.note)[:160]}); nothing queued")
+        return EXIT_OK
+    problems: List[str] = []
+    if w.status != WorkerStatus.LOST:
+        problems.append(f"the worker is {w.status}: only a LOST worker can be retired")
+    elif w.pid is not None and svc.pid_alive(w.pid):
+        problems.append("the recorded pid is alive: stop that process by hand first (it is never signalled here)")
+    reason = scrub(a.reason or "").strip()
+    if not reason:
+        problems.append("a reason is required (--reason)")
+    if problems:
+        _print(svc, {"ok": False, "problems": problems}, a.json, "refused: " + "; ".join(problems))
+        return EXIT_FAIL
+    payload = {"worker_id": w.worker_id, "reason": reason[:160]}
+    if not a.yes:
+        _print(svc, {"ok": True, "dry_run": True, "would_queue": payload, "restart_count": w.restart_count}, a.json,
+               f"worker {w.worker_id} (LOST) can be retired; its restart count stays {w.restart_count}; rerun with --yes to queue it")
+        return EXIT_OK
+    store = svc.store()
+    rid = enqueue(store, "retire", payload)
+    holder = lock_holder(store, svc.pid_alive)
+    running = bool(holder and holder["alive"])
+    _print(svc, {"ok": True, "queued": rid, "loop_running": running}, a.json,
+           f"queued {rid}; " + ("the running supervisor loop will retire it" if running
+                                else "it will be retired when the supervisor loop runs (start --yes)"))
+    return EXIT_OK
+
+
 def _load_facts(path: str) -> Dict[str, Any]:
     try:
         facts = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -1638,6 +1683,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("restart", "validate (and with --yes queue) the restart of a FAILED, LOST or STOPPED worker")
     p.add_argument("worker_id")
     p.add_argument("--yes", action="store_true")
+    p = add("retire", "validate (and with --yes queue) the retirement of a LOST worker, without restarting it")
+    p.add_argument("worker_id")
+    p.add_argument("--reason", required=True, help="why the worker is retired (recorded in its note and the event log)")
+    p.add_argument("--yes", action="store_true")
     p = add("handoff", "build/write/verify a handoff")
     p.add_argument("--input", help="facts JSON (keys: " + ", ".join(FACT_KEYS) + ")")
     p.add_argument("--verify", metavar="HANDOFF_ID")
@@ -1669,7 +1718,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 COMMANDS: Dict[str, Callable[[Services, argparse.Namespace], int]] = {
-    "start": cmd_start, "main-host": cmd_main_host, "status": cmd_status, "workers": cmd_workers, "assign": cmd_assign, "restart": cmd_restart, "handoff": cmd_handoff,
+    "start": cmd_start, "main-host": cmd_main_host, "status": cmd_status, "workers": cmd_workers, "assign": cmd_assign, "restart": cmd_restart, "retire": cmd_retire, "handoff": cmd_handoff,
     "compact-check": cmd_compact_check, "replace": cmd_replace, "report": cmd_report, "snapshot": cmd_snapshot,
     "route": cmd_route, "doctor": cmd_doctor, "config": cmd_config,
 }
