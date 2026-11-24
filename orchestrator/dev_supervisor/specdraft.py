@@ -5,9 +5,10 @@
 Read-only: it reads PROJECT_STATUS.json and ACTIVE_TASKS.json, prints one JSON object and writes nothing, runs no git or
 gh command and registers no task. The output is the starting point of a claim spec for ``dev_supervisor.claim``:
 
-* copied verbatim from the milestone record: ``title`` and ``description``;
-* derived by the repository's naming rules: ``id`` (next free number for the milestone's area), ``branch``,
-  ``worktree``, ``agreement_id``;
+* copied from the milestone record (surrounding whitespace trimmed): ``title`` and ``description``;
+* derived by the repository's naming rules: ``id`` (next free number for the milestone's area, counting task ids and
+  agreement ids), ``branch``, ``worktree``, ``agreement_id``; unique against the REGISTRY only (no git or gh lookup), and
+  not reserved: two drafts made before either is claimed get the same id;
 * the protocol's own checks as ``test_requirements`` (registry validation, merge preflight, independent review);
 * everything else is NOT invented. ``owned_paths``, ``acceptance_criteria`` and ``agreement`` are listed under
   ``missing`` and stay absent, so the draft is rejected by ``claim`` until someone who knows the answer supplies them.
@@ -85,6 +86,8 @@ def draft(root: Path, milestone_id: str) -> Dict[str, Any]:
         registry = _load(root / "ACTIVE_TASKS.json")
         milestones = [m for m in status_doc["milestones"] if isinstance(m, dict) and isinstance(m.get("id"), str)]
         tasks = [t for t in registry["tasks"] if isinstance(t, dict)]
+        agreements = registry.get("integration_agreements")
+        agreements = agreements if isinstance(agreements, dict) else {}
     except (OSError, ValueError, KeyError, TypeError):
         return refused("PROJECT_STATUS.json or ACTIVE_TASKS.json is missing or malformed")
     by_id = {m["id"]: m for m in milestones}
@@ -111,6 +114,8 @@ def draft(root: Path, milestone_id: str) -> Dict[str, Any]:
     prefix = area.group(1)
     numbers = [int(x.group(1)) for t in tasks
                for x in [re.match(rf"^T-{re.escape(prefix)}-(\d{{3}})$", str(t.get("id", "")))] if x]
+    numbers += [int(x.group(1)) for a in agreements
+                for x in [re.match(rf"^AGR-{re.escape(prefix)}-(\d{{3}})-\d+$", str(a))] if x]   # never reuse an agreement's number
     number = max(numbers, default=0) + 1
     if number > 999:
         return refused(f"no free three-digit task number in area {prefix}")
@@ -119,10 +124,12 @@ def draft(root: Path, milestone_id: str) -> Dict[str, Any]:
     used_branches = {t.get("branch") for t in tasks}
     if branch in used_branches:
         return refused(f"the derived branch {branch} is already registered")
-    questions = [str(q) for q in (m.get("open_questions") or [])] if isinstance(m.get("open_questions"), list) else [
-        "open_questions is malformed in PROJECT_STATUS.json"]
-    blockers = [str(b) for b in (m.get("blockers") or [])] if isinstance(m.get("blockers"), list) else [
-        "blockers is malformed in PROJECT_STATUS.json"]
+    raw_q, raw_b = m.get("open_questions") or [], m.get("blockers") or []        # absent or null means none
+    questions = [str(q) for q in raw_q] if isinstance(raw_q, list) else ["open_questions is malformed in PROJECT_STATUS.json"]
+    blockers = [str(b) for b in raw_b] if isinstance(raw_b, list) else ["blockers is malformed in PROJECT_STATUS.json"]
+    agreement_id = f"AGR-{prefix}-{number:03d}-01"
+    if agreement_id in agreements:
+        return refused(f"the derived agreement id {agreement_id} is already registered")
     return {
         "milestone_id": milestone_id,
         "status": "needs_decision" if (questions or blockers) else "draft",
@@ -133,7 +140,7 @@ def draft(root: Path, milestone_id: str) -> Dict[str, Any]:
             "description": description.strip(),
             "branch": branch,
             "worktree": f"../CreatorStudio-worktrees/{branch[len('task/'):]}",
-            "agreement_id": f"AGR-{prefix}-{number:03d}-01",
+            "agreement_id": agreement_id,
             "test_requirements": list(TEST_REQUIREMENTS),
             "integration_notes": f"Drafted by dev_supervisor.specdraft from milestone {milestone_id}; "
                                  "owned paths, acceptance criteria and the agreement text still have to be supplied by whoever claims it.",
@@ -142,7 +149,9 @@ def draft(root: Path, milestone_id: str) -> Dict[str, Any]:
         "open_questions": questions,
         "blockers": blockers,
         "note": "owned_paths, acceptance_criteria and agreement are deliberately absent: they are decisions, not "
-                "derivable facts. The claim command rejects this draft until they are supplied.",
+                "derivable facts. The claim command rejects this draft until they are supplied. Ids are not reserved: "
+                "two drafts of the same area made before either is claimed get the same task id. Branch uniqueness "
+                "is checked against registered branches only, not against git.",
     }
 
 

@@ -99,6 +99,50 @@ class DraftTests(unittest.TestCase):
         joined = " ".join(problems)
         for k in rec["missing"]:
             self.assertIn(k, joined)
+        # nothing else is wrong: a completed spec built from the draft passes the claim rules (ids, branch, worktree)
+        full = dict(rec["draft"], owned_paths=["orchestrator/dev_supervisor/x.py"], acceptance_criteria=["it works"],
+                    agreement="T-NEW-001 may add x.py only.")
+        self.assertEqual(claim.check_spec(full, {"tasks": [], "integration_agreements": {}}), [])
+
+    def test_an_existing_agreement_number_is_never_reused(self):
+        root = Repo(self, [milestone("M-NEW-01")]).root
+        reg = json.loads((root / "ACTIVE_TASKS.json").read_text(encoding="utf-8"))
+        reg["integration_agreements"] = {"AGR-NEW-001-01": {}, "AGR-NEW-001-02": {}}
+        (root / "ACTIVE_TASKS.json").write_text(json.dumps(reg), encoding="utf-8")
+        rec = specdraft.draft(root, "M-NEW-01")
+        self.assertEqual((rec["draft"]["id"], rec["draft"]["agreement_id"]), ("T-NEW-002", "AGR-NEW-002-01"))
+
+    def test_absent_or_null_open_questions_and_blockers_mean_none(self):
+        m = milestone("M-NEW-01")
+        del m["open_questions"]
+        m["blockers"] = None
+        self.assertEqual(specdraft.draft(self.repo([m]), "M-NEW-01")["status"], "draft")
+
+    def test_malformed_question_or_blocker_fields_need_a_decision(self):
+        m = milestone("M-NEW-01")
+        m["open_questions"] = "not a list"
+        rec = specdraft.draft(self.repo([m]), "M-NEW-01")
+        self.assertEqual(rec["status"], "needs_decision")
+        self.assertIn("malformed", rec["open_questions"][0])
+
+    def test_slug_fallback_and_truncation(self):
+        self.assertEqual(specdraft._slug("!!!"), "task")
+        long = specdraft._slug("word " * 30)
+        self.assertLessEqual(len(long), specdraft._SLUG_MAX)
+        self.assertFalse(long.endswith("-"))
+
+    def test_the_three_digit_cap_is_a_refusal(self):
+        tasks = [{"id": "T-NEW-999", "branch": "task/t-new-999-x", "status": "COMPLETED"}]
+        rec = specdraft.draft(self.repo([milestone("M-NEW-01")], tasks), "M-NEW-01")
+        self.assertEqual(rec["status"], "refused")
+        self.assertIn("three-digit", " ".join(rec["reasons"]))
+
+    def test_malformed_depends_on_and_task_shapes_never_raise(self):
+        m = milestone("M-NEW-01")
+        m["depends_on"] = "M-AAA-01"
+        rec = specdraft.draft(self.repo([m], ["junk", 5, {"id": 7}]), "M-NEW-01")
+        self.assertEqual(rec["status"], "refused")
+        self.assertIn("malformed", " ".join(rec["reasons"]))
 
 
 if __name__ == "__main__":
