@@ -1217,5 +1217,197 @@ class TickLatencyTests(Offline):
         self.assertIn(cached["action"], ("REPLACE", "COMPACT"))
 
 
+# ------------------------------------------------------------------ T-DEV-051: restart command
+
+class RestartCommandTests(Offline):
+    def failed(self, env, worker_id="w-fail01", status="FAILED", restart_count=0, not_before=None, provider="gemini",
+               model="auto/coding"):
+        from dev_supervisor.workers import Worker, WorkerRegistry
+        w = Worker(worker_id=worker_id, role="worker", task_id="T-X-9", branch="lane/x9", worktree=str(env.wt),
+                   owner_stream="s", provider=provider, model=model, status=status, restart_count=restart_count,
+                   next_restart_not_before=not_before, prompt_file=env.prompt_file(), exit_code=1,
+                   allocation={"role": "implementation", "capability": 2})
+        WorkerRegistry(env.store()).add(w)
+        return w
+
+    def queued(self, env):
+        return [r for _p, r in cli.pending_requests(env.store())]
+
+    def test_a_dry_run_says_the_worker_can_be_restarted_and_queues_nothing(self):
+        env = Env(self)
+        env.verified_route()
+        self.failed(env)
+        code, out = env.cli("restart", "w-fail01")
+        self.assertEqual(code, 0, out)
+        self.assertIn("can be restarted (restart 1 of 3)", out)
+        self.assertEqual(self.queued(env), [])
+
+    def test_yes_queues_exactly_one_restart_request_carrying_only_the_worker_id(self):
+        env = Env(self)
+        env.verified_route()
+        self.failed(env)
+        code, out = env.cli("restart", "w-fail01", "--yes")
+        self.assertEqual(code, 0, out)
+        (req,) = self.queued(env)
+        self.assertEqual((req["op"], req["payload"]), ("restart", {"worker_id": "w-fail01"}))
+
+    def test_every_unmet_condition_is_refused_and_queues_nothing(self):
+        from dev_supervisor.state_store import utc_iso
+        cases = {
+            "unknown worker": (None, {}, "cannot read worker"),
+            "still running": (dict(status="RUNNING"), {}, "only a FAILED, LOST or STOPPED worker"),
+            "assigned": (dict(status="ASSIGNED"), {}, "only a FAILED, LOST or STOPPED worker"),
+            "blocked": (dict(status="BLOCKED"), {}, "needs a human decision"),
+            "exited cleanly": (dict(status="EXITED"), {}, "only a FAILED, LOST or STOPPED worker"),
+            "budget exhausted": (dict(restart_count=3), {}, "restart budget is exhausted (3/3)"),
+            "backoff not elapsed": (dict(not_before="@future"), {}, "backoff has not elapsed"),
+            "route no longer verified": (dict(model="auto/other"), {}, "verified"),
+        }
+        for name, (wover, _x, text) in cases.items():
+            with self.subTest(case=name):
+                env = Env(self)
+                env.verified_route()
+                if wover is not None:
+                    if wover.get("not_before") == "@future":
+                        wover = dict(wover, not_before=utc_iso(env.svc.clock() + 3600))
+                    self.failed(env, **wover)
+                code, out = env.cli("restart", "w-fail01", "--yes")
+                self.assertEqual(code, 1, out)
+                self.assertIn(text, out)
+                self.assertEqual(self.queued(env), [])
+
+    def test_without_a_gateway_environment_or_a_registry_the_restart_is_refused(self):
+        env = Env(self)
+        env.verified_route()
+        self.failed(env)
+        env.svc.env = {"PATH": "p"}
+        code, out = env.cli("restart", "w-fail01", "--yes")
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.queued(env), [])
+        env = Env(self)
+        self.failed(env)                                   # no verified_routes.json at all
+        code, out = env.cli("restart", "w-fail01", "--yes")
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.queued(env), [])
+
+    def test_a_lost_worker_can_be_restarted_even_though_it_counts_as_active(self):
+        env = Env(self)
+        env.verified_route()
+        self.failed(env, status="LOST")
+        code, out = env.cli("restart", "w-fail01")
+        self.assertEqual(code, 0, out)
+
+    def test_another_active_worker_blocks_the_restart(self):
+        env = Env(self)
+        env.verified_route()
+        self.failed(env)
+        self.failed(env, worker_id="w-other1", status="RUNNING")
+        code, out = env.cli("restart", "w-fail01", "--yes")
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.queued(env), [])
+
+    def test_the_loop_restarts_the_worker_through_the_gated_launcher_and_counts_the_restart(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        env.verified_route()
+        self.failed(env)
+        env.cli("restart", "w-fail01", "--yes")
+        code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        self.assertEqual(code, 0, out)
+        w = WorkerRegistry(env.store()).get("w-fail01")
+        self.assertEqual((w.status, w.restart_count), ("RUNNING", 1))
+        self.assertEqual(len(env.worker_launcher.specs), 1)
+        self.assertEqual(env.worker_launcher.specs[0].provider, "gemini")
+        self.assertEqual(self.queued(env), [])
+
+    def test_the_loop_applies_the_gate_again_a_route_that_stopped_being_verified_blocks_the_restart(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        env.verified_route()
+        self.failed(env)
+        env.cli("restart", "w-fail01", "--yes")
+        (env.state / "verified_routes.json").unlink()
+        code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        self.assertEqual(code, 0, out)
+        w = WorkerRegistry(env.store()).get("w-fail01")
+        self.assertEqual((w.status, w.restart_count), ("FAILED", 0))
+        self.assertEqual(env.worker_launcher.specs, [])
+
+    def test_a_restart_that_could_not_launch_is_refused_before_it_uses_a_budget_step(self):
+        env = Env(self)
+        env.verified_route()
+        w = self.failed(env)
+        Path(w.prompt_file).unlink()
+        code, out = env.cli("restart", "w-fail01", "--yes")
+        self.assertEqual(code, 1, out)
+        self.assertIn("prompt file no longer exists", out)
+        env = Env(self)
+        env.verified_route()
+        self.failed(env)
+        env.svc.worktree_checker = lambda wt, br: (False, "worktree is on branch 'main'")
+        code, out = env.cli("restart", "w-fail01", "--yes")
+        self.assertEqual(code, 1, out)
+        self.assertIn("worktree check", out)
+        self.assertEqual(self.queued(env), [])
+
+    def test_the_dry_run_shows_the_recorded_note_of_a_lost_worker(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        env.verified_route()
+        w = self.failed(env, status="LOST")
+        w.note = "supervisor stopped during launch; launch outcome unknown"
+        WorkerRegistry(env.store()).update(w)
+        code, out = env.cli("restart", "w-fail01")
+        self.assertEqual(code, 0, out)
+        self.assertIn("launch outcome unknown", out)
+
+    def test_the_loop_restarts_a_lost_worker_although_a_lost_worker_counts_toward_the_cap(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        env.verified_route()
+        self.failed(env, status="LOST")
+        cli.enqueue(env.store(), "restart", {"worker_id": "w-fail01"})
+        code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        self.assertEqual(code, 0, out)
+        w = WorkerRegistry(env.store()).get("w-fail01")
+        self.assertEqual((w.status, w.restart_count), ("RUNNING", 1))
+
+    def test_the_loop_refuses_a_restart_whose_recorded_route_is_not_verified_even_if_queued_directly(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        env.verified_route()
+        self.failed(env, model="auto/unlisted")
+        cli.enqueue(env.store(), "restart", {"worker_id": "w-fail01"})
+        code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(WorkerRegistry(env.store()).get("w-fail01").status, "FAILED")
+        self.assertEqual(env.worker_launcher.specs, [])
+
+    def test_forged_restart_requests_never_crash_the_loop_or_launch_anything(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        env.verified_route()
+        self.failed(env, worker_id="w-blk001", status="BLOCKED", restart_count=3)      # not active: added first, the running one after
+        self.failed(env, worker_id="w-run001", status="ASSIGNED")      # active and not touched by the monitor
+        for payload in ({"worker_id": "w-nope"}, {"worker_id": "w-run001"}, {"worker_id": "w-blk001"}, {},
+                        {"worker_id": ["w-run001"]}, {"worker_id": 7}, {"worker_id": "x" * 5000}):
+            with self.subTest(payload=str(payload)[:40]):
+                cli.enqueue(env.store(), "restart", payload)
+                code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+                self.assertEqual(code, 0, out)
+        self.assertEqual(env.worker_launcher.specs, [])
+        self.assertEqual(WorkerRegistry(env.store()).get("w-blk001").status, "BLOCKED")
+
+    def test_a_failed_worker_is_never_restarted_by_the_loop_on_its_own(self):
+        from dev_supervisor.workers import WorkerRegistry
+        env = Env(self)
+        env.verified_route()
+        self.failed(env)
+        code, out = env.cli("start", "--yes", "--max-ticks", "3", "--no-main")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(WorkerRegistry(env.store()).get("w-fail01").status, "FAILED")
+        self.assertEqual(env.worker_launcher.specs, [])
+
+
 if __name__ == "__main__":
     unittest.main()
