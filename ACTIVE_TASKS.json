@@ -571,6 +571,15 @@
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
         "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
       ]
+    },
+    "AGR-DEV-063-01": {
+      "description": "T-DEV-063 changes the integrate test module only; no production code, documentation or launcher changes.",
+      "task_ids": [
+        "T-DEV-063"
+      ],
+      "paths": [
+        "orchestrator/tests/test_dev_integrate.py"
+      ]
     }
   },
   "tasks": [
@@ -3327,6 +3336,39 @@
       "lease": {
         "acquired": "2026-11-24T23:07:50+00:00",
         "expires": "2026-11-25T23:07:50+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-063",
+      "title": "dev_supervisor: keep the preflight read-only command whitelist exact",
+      "description": "Test hardening only. After T-DEV-056 two assertions in test_dev_integrate.py that check which git commands the preflight runs were widened to accept the literal option --no-optional-locks as if it were a command name. Restore the exact check: compute each recorded git call's command name after skipping a leading --no-optional-locks, and compare that set with the original whitelist of command names, which must not contain the option. Add one test of that helper showing that a leading option is skipped and that an unlisted command such as push is still reported.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-063-exact-readonly-whitelist",
+      "worktree": "../CreatorStudio-worktrees/t-dev-063-exact-readonly-whitelist",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-063-01"
+      ],
+      "owned_paths": [
+        "orchestrator/tests/test_dev_integrate.py"
+      ],
+      "acceptance_criteria": [
+        "the two read-only whitelist assertions compare command names with the leading --no-optional-locks skipped and the whitelist no longer contains that option",
+        "a new test shows the helper skips the option and still reports an unlisted command such as push",
+        "test_dev_integrate.py passes; no other file changes"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_integrate.py",
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the overnight worker mission; follow-up to the non-blocking review note on PR #211.",
+      "lease": {
+        "acquired": "2026-11-24T23:12:55+00:00",
+        "expires": "2026-11-25T23:12:55+00:00"
       }
     }
   ]
