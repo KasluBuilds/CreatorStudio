@@ -436,6 +436,16 @@
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
         "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
       ]
+    },
+    "AGR-DEV-051-01": {
+      "description": "cli.py belongs to the dev_supervisor package owned by claude:repository-coordinator. The second overnight mission (2026-11-24, Priority 4) directs Main to investigate and fix supervisor recovery. Under that mandate T-DEV-051 may edit cli.py and its test file, only to add a restart command and the matching request handler. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-051"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/tests/test_dev_cli.py"
+      ]
     }
   },
   "tasks": [
@@ -2729,7 +2739,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-050-chain-record",
       "worktree": "../CreatorStudio-worktrees/t-dev-050-chain-record",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2750,10 +2760,45 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Evidence: the Supervisor event log, the worker stream logs, the worker gateway call log and the merged pull requests #167, #169, #172.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Evidence: the Supervisor event log, the worker stream logs, the worker gateway call log and the merged pull requests #167, #169, #172. Completed 2026-11-24: merged as PR #176 (all eight gates PASS; independent review bound to diff 8f6e78a811696567 after one round of wording corrections). Documentation only; the record is WORKER_GATEWAY.md section 8.",
       "lease": {
         "acquired": "2026-11-24T08:29:28+00:00",
-        "expires": "2026-11-25T08:29:28+00:00"
+        "expires": "2026-11-25T08:29:28+00:00",
+        "released": "2026-11-24T08:39:34+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-051",
+      "title": "dev_supervisor: restart command for a failed worker, through the same dispatch gate and the existing restart budget",
+      "description": "A worker that ends FAILED (for example on a provider error) stays FAILED: lifecycle restart() exists with a restart budget and backoff, but nothing reaches it (auto_restart is off by design and the CLI has no restart command). Add `python -B -m dev_supervisor restart <worker-id> [--yes]`: a dry run by default that checks the worker is FAILED, LOST or STOPPED (never BLOCKED or active), that its restart budget is not exhausted and its backoff has elapsed, and that the worker's recorded route still passes the dispatch gate; with --yes it queues a restart request that the running supervisor loop processes by running the same gate again and then restart(). Nothing restarts without an explicit command, the budget and backoff still apply, and a route that is no longer verified refuses the restart.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-051-restart-command",
+      "worktree": "../CreatorStudio-worktrees/t-dev-051-restart-command",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-051-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/tests/test_dev_cli.py"
+      ],
+      "acceptance_criteria": [
+        "restart <worker-id> without --yes prints a plan or the refusal reason and queues nothing; it refuses an unknown worker, a worker that is active, BLOCKED, or has exhausted its restart budget, a worker whose backoff has not elapsed, and a worker whose recorded route no longer passes the dispatch gate",
+        "with --yes it queues one restart request; the supervisor loop handles it by applying the dispatch gate again and then Supervisor.restart, and reports the outcome in the request result",
+        "the restart budget and backoff of the lifecycle policy are unchanged and still enforced; automatic restart stays off",
+        "the launch-path audit and the existing dispatch tests still pass: the only way to start a worker remains the gated launcher"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_cli.py from the repository root",
+        "affected suites: test_dev_lifecycle, test_dev_dispatch_routing",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Evidence for the need: the first dispatched worker ended FAILED on a provider 503 and stayed FAILED; there was no supported way to retry it within the restart budget.",
+      "lease": {
+        "acquired": "2026-11-24T08:45:34+00:00",
+        "expires": "2026-11-25T08:45:34+00:00"
       }
     }
   ]
