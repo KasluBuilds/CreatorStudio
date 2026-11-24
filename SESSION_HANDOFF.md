@@ -90,7 +90,6 @@ Status record dated **2026-11-18**. Baseline commit **`93a9a829e073`** on `main`
 | T-EDT-001 Validated edit-plan schema and Editor planning workflow (M-EDT-01, offline) | claude:repository-coordinator | `task/t-edt-001-edit-plan` | ACTIVE | 2026-11-23T17:00:00+00:00 | orchestrator/edit_plan/, orchestrator/tests/test_edit_plan.py, AI_Creator_Studio_Documentation/EDITING_ENGINE.md |
 | T-DEV-056 dev_supervisor: preflight reads git status without taking optional locks | claude:main-coordinator | `task/t-dev-056-preflight-no-locks` | ACTIVE | 2026-11-25T17:27:15+00:00 | orchestrator/dev_supervisor/integrate.py, orchestrator/tests/test_dev_integrate.py |
 | T-DEV-060 dev_supervisor: record the retire command, the evening route probe and the independent start procedure | claude:main-coordinator | `task/t-dev-060-overnight-record` | ACTIVE | 2026-11-25T21:20:17+00:00 | orchestrator/dev_supervisor/WORKER_DISPATCH.md, orchestrator/dev_supervisor/WORKER_GATEWAY.md |
-| T-DEV-061 dev_supervisor: tests for foreground start, Ctrl+C, stale lock and orphan recovery | claude:main-coordinator | `task/t-dev-061-start-lifecycle-tests` | ACTIVE | 2026-11-25T21:24:21+00:00 | orchestrator/tests/test_dev_cli.py |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
