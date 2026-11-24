@@ -90,6 +90,7 @@ Status record dated **2026-11-18**. Baseline commit **`93a9a829e073`** on `main`
 | T-EDT-001 Validated edit-plan schema and Editor planning workflow (M-EDT-01, offline) | claude:repository-coordinator | `task/t-edt-001-edit-plan` | ACTIVE | 2026-11-23T17:00:00+00:00 | orchestrator/edit_plan/, orchestrator/tests/test_edit_plan.py, AI_Creator_Studio_Documentation/EDITING_ENGINE.md |
 | T-DEV-042 dev_supervisor: record the credential rotation and the worker-gateway findings; document the isolated worker gateway and the first verified route | claude:main-coordinator | `task/t-dev-042-worker-gateway` | ACTIVE | 2026-11-25T06:28:37+00:00 | orchestrator/dev_supervisor/WORKER_GATEWAY.md, orchestrator/dev_supervisor/WORKER_DISPATCH.md |
 | T-DEV-043 dev_supervisor: machine-readable independent flag on review allocations (first task run by a dispatched worker) | claude:main-coordinator | `task/t-dev-043-review-independence` | ACTIVE | 2026-11-25T06:36:49+00:00 | orchestrator/dev_supervisor/model_allocation.py, orchestrator/tests/test_dev_model_allocation.py |
+| T-DEV-044 dev_supervisor: preflight also checks the branch name and that SESSION_HANDOFF.md is current | claude:main-coordinator | `task/t-dev-044-preflight-handoff` | ACTIVE | 2026-11-25T06:47:19+00:00 | orchestrator/dev_supervisor/integrate.py, orchestrator/tests/test_dev_integrate.py |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
