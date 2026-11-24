@@ -357,6 +357,16 @@
         "orchestrator/dev_supervisor/WORKER_GATEWAY.md",
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md"
       ]
+    },
+    "AGR-DEV-043-01": {
+      "description": "model_allocation.py belongs to the dev_supervisor package owned by claude:repository-coordinator and was added in the first overnight mission. The second overnight mission (2026-11-24, Priority 4) directs Main to investigate machine-readable reviewer independence. Under that mandate T-DEV-043 may edit model_allocation.py and its test file, only to add the independent field. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-043"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/model_allocation.py",
+        "orchestrator/tests/test_dev_model_allocation.py"
+      ]
     }
   },
   "tasks": [
@@ -2400,6 +2410,40 @@
       "lease": {
         "acquired": "2026-11-24T06:28:37+00:00",
         "expires": "2026-11-25T06:28:37+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-043",
+      "title": "dev_supervisor: machine-readable independent flag on review allocations (first task run by a dispatched worker)",
+      "description": "WORKER_DISPATCH.md lists as a known limit that a review allocation has no machine-readable independent flag: self-review is disclosed only in the reason text. Add Allocation.independent (True when the chosen review route is not the author's route, False when it is, None when the role is not review or the author's route was not given), with tests. Selection logic and refusal messages do not change. This is also the first task intended to run through the production worker dispatch path on a verified zero-cost route; if the worker cannot finish it, Main finishes it and the record says so.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-043-review-independence",
+      "worktree": "../CreatorStudio-worktrees/t-dev-043-review-independence",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-043-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/model_allocation.py",
+        "orchestrator/tests/test_dev_model_allocation.py"
+      ],
+      "acceptance_criteria": [
+        "Allocation has an independent field: True for a review whose chosen route differs from the given author route, False for a review that had to use the author's own route, None for any other role or when no author route was given",
+        "selection order, reasons and refusal messages are unchanged and all existing tests pass",
+        "to_dict includes the new key and no other new key",
+        "no file outside the two owned paths changes"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p test_dev_model_allocation.py from orchestrator/",
+        "python -B -I -m unittest discover -s tests -p test_dev_cli.py from orchestrator/",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Implemented by a dispatched worker on a verified zero-cost route when the dispatch record shows it; otherwise by Main, disclosed in the PR.",
+      "lease": {
+        "acquired": "2026-11-24T06:36:49+00:00",
+        "expires": "2026-11-25T06:36:49+00:00"
       }
     }
   ]
