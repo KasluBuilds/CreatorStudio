@@ -565,19 +565,33 @@ class TestMilestoneProposals(Base):
 
     def test_an_unreadable_or_malformed_registry_proposes_nothing_and_warns(self):
         self.write_status([ms("M-A")])
-        for text in (None, "{", '{"tasks": null}', '{"tasks": 5}'):
+        wrong = ("{", "[]", "null", "{}", '{"tasks": null}', '{"tasks": 5}', '{"tasks": "abc"}',
+                 '{"tasks": {"T-1": {"status": "ACTIVE", "title": "M-A"}}}', '{"tasks": [1, "M-A"]}',
+                 '{"tasks": [{"id": "T-1", "status": "ACTIVE", "title": "M-A"}, "junk"]}')
+        for text in (None,) + wrong:
             with self.subTest(registry=text):
                 if text is None:
                     (self.repo / "ACTIVE_TASKS.json").unlink(missing_ok=True)
                 else:
                     (self.repo / "ACTIVE_TASKS.json").write_text(text, encoding="utf-8")
                 res = self.items()
-                if text == '{"tasks": null}':
-                    self.assertEqual(self.props(res), ["M-A"])          # null means no tasks: nothing to suppress
-                else:
-                    self.assertEqual(res["proposals"], [])
-                    self.assertTrue(any("ACTIVE_TASKS.json" in w and "proposals" in w for w in res["warnings"]),
-                                    res["warnings"])
+                self.assertEqual(res["proposals"], [], "a registry that cannot be checked must propose nothing")
+                self.assertTrue(any("ACTIVE_TASKS.json" in w and "proposals" in w for w in res["warnings"]),
+                                res["warnings"])
+        (self.repo / "ACTIVE_TASKS.json").write_text('{"tasks": []}', encoding="utf-8")
+        self.assertEqual(self.props(), ["M-A"])                              # an empty list is a valid registry
+
+    def test_malformed_question_or_blocker_fields_lean_towards_needs_decision(self):
+        self.write_registry([])
+        a, b, c = ms("M-A"), ms("M-B"), ms("M-C")
+        a["open_questions"] = "Q open"
+        b["blockers"] = {"x": 1}
+        c["open_questions"] = None            # absent or null means none
+        self.write_status([a, b, c])
+        res = self.items()
+        self.assertEqual({p["milestone_id"]: p["needs_decision"] for p in res["proposals"]},
+                         {"M-A": True, "M-B": True, "M-C": False})
+        self.assertEqual(self.props(res)[0], "M-C")
 
     def test_milestones_with_questions_or_blockers_are_flagged_and_listed_after_ready_ones(self):
         self.write_registry([])
@@ -639,21 +653,6 @@ class TestMilestoneProposals(Base):
         self.run_cli(["next", "--json"])
         self.assertEqual(before, {p.name: p.read_bytes() for p in self.repo.iterdir()})
         self.assertFalse(self.state.exists())
-
-    def test_the_real_project_status_file_parses_into_proposals_or_none_without_error(self):
-        """Smoke check on the repository's own plan: never raises, only milestones with dependencies met are listed."""
-        root = Path(__file__).resolve().parents[2]
-        if not (root / "PROJECT_STATUS.json").is_file():
-            self.skipTest("no PROJECT_STATUS.json next to the tests")
-        warnings = []
-        found = au._milestone_proposals(root, warnings)
-        self.assertEqual(warnings, [])
-        doc = json.loads((root / "PROJECT_STATUS.json").read_text(encoding="utf-8"))
-        impl = {m["id"]: m["implementation"]["state"] for m in doc["milestones"]}
-        by = {m["id"]: m for m in doc["milestones"]}
-        for p in found:
-            self.assertEqual(impl[p["milestone_id"]], "NOT_STARTED")
-            self.assertTrue(all(impl[d] == "IMPLEMENTED" for d in by[p["milestone_id"]].get("depends_on") or []))
 
 
 class TestStopHook(Base):

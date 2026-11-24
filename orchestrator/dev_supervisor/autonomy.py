@@ -349,8 +349,9 @@ def _milestone_proposals(root: Path, warnings: List[str]) -> List[dict]:
     by_id = {m["id"]: m for m in milestones}
     try:
         reg = _load_json(root / "ACTIVE_TASKS.json")
-        open_work = json.dumps([t for t in (reg.get("tasks") or []) if isinstance(t, dict)
-                                and t.get("status") not in DONE_STATUSES])
+        if not isinstance(reg, dict) or not isinstance(reg.get("tasks"), list)                 or False:
+            raise ValueError("the registry must be an object with a list of task objects")
+        open_work = json.dumps([t for t in reg["tasks"] if t.get("status") not in DONE_STATUSES])
     except (OSError, ValueError, AttributeError, TypeError):
         # Without the registry nothing can be checked against open work, so propose nothing (fail closed).
         warnings.append("ACTIVE_TASKS.json unreadable or malformed: no milestone proposals")
@@ -365,8 +366,11 @@ def _milestone_proposals(root: Path, warnings: List[str]) -> List[dict]:
             continue
         if re.search(r"(?<![A-Za-z0-9-])" + re.escape(m["id"]) + r"(?![A-Za-z0-9-])", open_work):   # whole-id match
             continue
-        questions = [str(q) for q in (m.get("open_questions") or [])] if isinstance(m.get("open_questions"), list) else []
-        blockers = [str(b) for b in (m.get("blockers") or [])] if isinstance(m.get("blockers"), list) else []
+        questions, blockers = m.get("open_questions") or [], m.get("blockers") or []
+        malformed = not isinstance(questions, list) or not isinstance(blockers, list)
+        if malformed:   # junk leans towards "needs a decision", never towards "ready"
+            questions, blockers = ["open_questions or blockers is malformed in PROJECT_STATUS.json"], []
+        questions, blockers = [str(q) for q in questions], [str(b) for b in blockers]
         out.append({"kind": "propose_milestone", "id": f"propose:{m['id']}", "milestone_id": m["id"],
                     "title": str(m.get("title", "")), "phase": str(m.get("phase", "")), "weight": m.get("weight"),
                     "needs_decision": bool(questions or blockers), "open_questions": questions, "blockers": blockers,
