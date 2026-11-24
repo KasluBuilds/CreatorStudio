@@ -879,5 +879,150 @@ class Cli(unittest.TestCase):
         self.assertNotIn("a|b", t)
 
 
+class PreGit(FakeGit):
+    """FakeGit that also answers the extra reads preflight makes: the branch name and the working-tree status."""
+
+    def __init__(self, branch=TASK_BRANCH, dirty="", boom=None, **kw):
+        super().__init__(**kw)
+        self.branch, self.dirty, self.boom = branch, dirty, boom
+
+    def __call__(self, args):
+        a = list(args)
+        if self.boom and a[0] == self.boom:
+            raise RuntimeError("synthetic git failure")
+        if a[:2] == ["rev-parse", "--abbrev-ref"]:
+            self.calls.append(a)
+            return 0, self.branch.encode()
+        if a[:2] == ["status", "--porcelain"]:
+            self.calls.append(a)
+            return 0, self.dirty.encode()
+        return super().__call__(args)
+
+
+def pre(git=None, **kw):
+    git = git or PreGit(**kw)
+    gates, info = I.preflight(git)
+    return gates, info, git
+
+
+class Preflight(unittest.TestCase):
+    def test_a_clean_branch_passes_the_four_offline_gates_and_reports_the_diff_hash(self):
+        gates, info, _ = pre()
+        self.assertEqual([(g.num, g.name, g.status) for g in gates],
+                         [(4, "scope", I.PASS), (6, "secrets", I.PASS), (7, "forbidden_files", I.PASS),
+                          (8, "reserved", I.PASS)])
+        self.assertEqual((info["head"], info["branch"], info["diff_sha"], info["dirty"]), (HEAD, TASK_BRANCH, DHASH, False))
+
+    def test_it_reads_the_local_head_not_the_remote_branch_and_only_reads(self):
+        _, _, git = pre()
+        flat = [x for call in git.calls for x in call]
+        self.assertIn("HEAD", flat)
+        self.assertFalse([c for c in git.calls if any(x == "origin/" + TASK_BRANCH or x.startswith("origin/" + TASK_BRANCH + ":")
+                                                      for x in c)], "preflight must not read origin/<branch>")
+        self.assertLessEqual({c[0] for c in git.calls}, {"fetch", "rev-parse", "status", "merge-base", "diff", "show", "log"})
+
+    def test_the_real_evaluation_still_reads_the_remote_branch(self):
+        git = FakeGit()
+        I.evaluate(7, FakeGh(), git)
+        self.assertTrue([c for c in git.calls if "origin/" + TASK_BRANCH in c], "the default path must be unchanged")
+        self.assertFalse([c for c in git.calls if c[:2] == ["rev-parse", "HEAD"]])
+
+    def test_each_offline_gate_fails_for_the_same_reason_as_a_real_run(self):
+        cases = {
+            "outside owned paths": dict(files=["orchestrator/demo/a.py", "README.md"], added=[]),
+            "credential-shaped line": dict(lines=["key = " + fake_secret()]),
+            "launcher file added": dict(files=["backup.ps1"], added=["backup.ps1"]),
+            "reserved path changed": dict(files=["orchestrator/governance/x.py"], added=[]),
+        }
+        for name, kw in cases.items():
+            with self.subTest(case=name):
+                gates, _, _ = pre(**kw)
+                real, _ = I.evaluate(7, FakeGh(), FakeGit(**kw))
+                self.assertFalse(all(g.status == I.PASS for g in gates), "the case must fail somewhere")
+                for g in gates:
+                    r = next(x for x in real if x.name == g.name)
+                    self.assertEqual((g.status, g.detail), (r.status, r.detail), g.name)
+
+    def test_a_passing_case_matches_the_real_evaluation_gate_by_gate(self):
+        gates, _, _ = pre()
+        real, _ = I.evaluate(7, FakeGh(), FakeGit())
+        for g in gates:
+            r = next(x for x in real if x.name == g.name)
+            self.assertEqual((g.status, g.detail), (r.status, r.detail), g.name)
+
+    def test_a_close_out_on_a_branch_that_is_not_the_tasks_own_fails_scope_like_a_real_run(self):
+        base = active_doc([task_rec("T-X", "task/x")])
+        done = active_doc([task_rec("T-X", "task/x", status="COMPLETED")])
+        kw = dict(files=["ACTIVE_TASKS.json", "SESSION_HANDOFF.md"], added=[], base_active=base, head_active=done)
+        wrong, _, _ = pre(branch="task/closeout", **kw)
+        right, _, _ = pre(branch="task/x", **kw)
+        self.assertEqual(status(wrong, "scope"), I.FAIL)
+        self.assertIn("not this PR's own task", next(g for g in wrong if g.name == "scope").detail)
+        self.assertEqual(status(right, "scope"), I.PASS)
+
+    def test_git_failures_make_every_gate_unknown_and_never_raise(self):
+        for label, kw in (("fetch fails", dict(fetch_rc=1)), ("no merge base", dict(mb_rc=1)),
+                          ("detached HEAD", dict(branch="HEAD")), ("empty branch", dict(branch="")),
+                          ("git raises", dict(boom="fetch")), ("git raises on rev-parse", dict(boom="rev-parse"))):
+            with self.subTest(case=label):
+                gates, _, _ = pre(**kw)
+                self.assertEqual([g.num for g in gates], [4, 6, 7, 8])
+                self.assertTrue(all(g.status == I.UNKNOWN for g in gates), [(g.name, g.status) for g in gates])
+
+    def test_an_exception_inside_one_gate_makes_that_gate_unknown_and_leaves_the_others(self):
+        from unittest import mock
+        with mock.patch.object(I, "_gate_secrets", side_effect=RuntimeError("synthetic gate failure")):
+            gates, _, _ = pre()
+        self.assertEqual([(g.name, g.status) for g in gates], [("scope", I.PASS), ("secrets", I.UNKNOWN),
+                                                               ("forbidden_files", I.PASS), ("reserved", I.PASS)])
+        self.assertIn("RuntimeError", next(g for g in gates if g.name == "secrets").detail)
+
+    def test_uncommitted_changes_are_reported_not_evaluated(self):
+        _, info, _ = pre(dirty=" M orchestrator/demo/a.py")
+        self.assertTrue(info["dirty"])
+        buf = io.StringIO()
+        rc = I.main(["--preflight"], git=PreGit(dirty=" M x"), out=buf)
+        self.assertEqual(rc, 0)
+        self.assertIn("uncommitted changes are NOT evaluated", buf.getvalue())
+
+    def test_the_cli_prints_the_table_the_hash_and_the_limits(self):
+        buf = io.StringIO()
+        rc = I.main(["--preflight"], git=PreGit(), out=buf)
+        text = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("diff " + DHASH, text)
+        self.assertIn("| 4 | scope | PASS |", text)
+        self.assertIn("result: PREFLIGHT_PASS", text)
+        self.assertIn("CI, merge state and review need the pull request", text)
+        self.assertNotIn("| 5 | review |", text)
+
+    def test_the_cli_exits_one_on_a_failing_gate(self):
+        buf = io.StringIO()
+        rc = I.main(["--preflight"], git=PreGit(lines=["key = " + fake_secret()]), out=buf)
+        self.assertEqual(rc, 1)
+        self.assertIn("PREFLIGHT_FAIL", buf.getvalue())
+        self.assertIn("| 6 | secrets | FAIL |", buf.getvalue())
+
+    def test_the_cli_usage_rules(self):
+        for argv in (["--preflight", "7"], ["--preflight", "--yes"], []):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit) as cm:
+                I.main(argv, gh=FakeGh(), git=PreGit(), out=io.StringIO())
+            self.assertEqual(cm.exception.code, 2)
+        self.assertEqual(I.main(["7"], gh=FakeGh(), git=FakeGit(), out=io.StringIO()), 0)   # unchanged
+
+    def test_the_secret_patterns_equal_the_regex_ci_runs(self):
+        """Preflight only prevents CI failures while the gate is at least as strict as CI's scan; this pins them equal."""
+        import re
+        wf = Path(__file__).resolve().parents[2] / ".github" / "workflows"
+        text = "".join(p.read_text(encoding="utf-8") for p in sorted(wf.glob("*.yml"))) if wf.is_dir() else ""
+        found = re.findall(r'grep -E "(\(\(\^\|\[\^A-Za-z0-9\]\)sk-.*?)"', text)
+        if not text:
+            self.skipTest("no workflow files next to the tests")
+        self.assertEqual(len(found), 1, "the CI secret-scan line was not found or is ambiguous; update this test")
+        from governance import waves
+        self.assertEqual(waves.SECRET.pattern, found[0])
+        self.assertEqual(I._FALLBACK_SECRET.pattern, found[0])
+
+
 if __name__ == "__main__":
     unittest.main()
