@@ -161,8 +161,9 @@ def claim(root: Path, spec: Any, write: bool = False, now: Optional[_dt.datetime
     if write:
         text = json.dumps(new_doc, indent=2, ensure_ascii=False) + "\n"
         crlf = "\r\n" in raw
-        old_handoff = handoff_path.read_bytes() if handoff_path.is_file() else None
+        old_handoff = None
         try:
+            old_handoff = handoff_path.read_bytes() if handoff_path.is_file() else None
             handoff_path.write_text(handoff_text, encoding="utf-8", newline="\n")   # first: a failure here changes nothing
             reg_path.write_bytes((text.replace("\n", "\r\n") if crlf else text).encode("utf-8"))
         except OSError as e:

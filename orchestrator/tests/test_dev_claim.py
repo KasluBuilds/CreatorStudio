@@ -247,6 +247,24 @@ class ClaimWriteSafety(unittest.TestCase):
         self.assertTrue(any("must look like T-" in p for p in probs))
         self.assertFalse(any("other task ids" in p for p in probs))
 
+    def test_an_unreadable_existing_handoff_is_a_problem_not_an_exception(self):
+        repo = Repo(self)
+        before_active = (repo.dir / "ACTIVE_TASKS.json").read_bytes()
+
+        real_read = Path.read_bytes
+
+        def fail_for_handoff(self_):
+            if self_.name == "SESSION_HANDOFF.md":
+                raise PermissionError("synthetic")
+            return real_read(self_)
+
+        with mock.patch.object(Path, "read_bytes", fail_for_handoff):
+            probs, task = C.claim(repo.dir, spec(), write=True, now=NOW)
+
+        self.assertIsNone(task)
+        self.assertIn("writing failed", probs[0])
+        self.assertEqual((repo.dir / "ACTIVE_TASKS.json").read_bytes(), before_active)
+
 
 class Cli(unittest.TestCase):
     def run_cli(self, repo, spec_text, *flags):
