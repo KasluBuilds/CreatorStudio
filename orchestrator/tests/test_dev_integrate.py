@@ -27,6 +27,11 @@ def fake_secret():
     return "gh" + "p_" + "A" * 24          # built at runtime so no literal key-like string is committed
 
 
+def command_names(calls):
+    """The git command name of each recorded call, skipping a leading --no-optional-locks option."""
+    return {(c[1] if c and c[0] == "--no-optional-locks" and len(c) > 1 else c[0]) for c in calls}
+
+
 def marker(pr=7, h=DHASH, verdict="APPROVE", reviewer="claude-reviewer-1"):
     return f"<!-- dev-review v1 pr={pr} diff_sha256={h} verdict={verdict} reviewer={reviewer} -->"
 
@@ -935,7 +940,7 @@ class Preflight(unittest.TestCase):
         self.assertIn("HEAD", flat)
         self.assertFalse([c for c in git.calls if any(x == "origin/" + TASK_BRANCH or x.startswith("origin/" + TASK_BRANCH + ":")
                                                       for x in c)], "preflight must not read origin/<branch>")
-        self.assertLessEqual({c[0] for c in git.calls}, {"fetch", "rev-parse", "status", "merge-base", "diff", "show", "log", "--no-optional-locks"})
+        self.assertLessEqual(command_names(git.calls), {"fetch", "rev-parse", "status", "merge-base", "diff", "show", "log"})
 
     def test_the_real_evaluation_still_reads_the_remote_branch(self):
         git = FakeGit()
@@ -1120,11 +1125,15 @@ class PreflightBranchAndHandoff(unittest.TestCase):
         _, _, git = pre()
         shown = [c for c in git.calls if c[0] == "show" and c[1].startswith("HEAD:")]
         self.assertTrue({"HEAD:PROJECT_STATUS.json", "HEAD:ACTIVE_TASKS.json", "HEAD:SESSION_HANDOFF.md"} <= {c[1] for c in shown})
-        self.assertLessEqual({c[0] for c in git.calls}, {"fetch", "rev-parse", "status", "merge-base", "diff", "show", "log", "--no-optional-locks"})
+        self.assertLessEqual(command_names(git.calls), {"fetch", "rev-parse", "status", "merge-base", "diff", "show", "log"})
 
     def test_preflight_uses_no_optional_locks(self):
         _, _, git = pre()
         self.assertTrue(any(c == ["--no-optional-locks", "status", "--porcelain"] for c in git.calls))
+
+    def test_command_names_skip_the_option_and_still_report_other_commands(self):
+        self.assertEqual(command_names([["--no-optional-locks", "status", "--porcelain"], ["diff", "x"]]), {"status", "diff"})
+        self.assertEqual(command_names([["--no-optional-locks", "status"], ["push", "origin"]]), {"status", "push"})
 
 
 class PreflightHandoffOnTheRealRepository(unittest.TestCase):
