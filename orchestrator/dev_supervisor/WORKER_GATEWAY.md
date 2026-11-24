@@ -88,7 +88,7 @@ Labels: OBSERVED = read from the Supervisor event log, the worker's stream log o
 
 **Next steps.**
 1. Re-dispatch one small task with the prompt telling the worker to use single simple commands and the root-level test command, and to commit before finishing; compare with this run.
-2. Done afterwards: the `restart <worker-id> [--yes]` command (PR #179, dry run by default, same dispatch gate, the lifecycle restart budget and backoff, `auto_restart` still off). It has not yet been used on a real failed worker.
+2. Done afterwards: the `restart <worker-id> [--yes]` command (PR #179, dry run by default, same dispatch gate, the lifecycle restart budget and backoff, `auto_restart` still off). It was first used on a real failed worker later the same day (section 9).
 3. Owner decisions in section 6 (main gateway exposure, upgrade, Kiro re-authorisation).
 4. A reviewer route of capability 3 or more must be verified before a dispatched reviewer is possible.
 
@@ -130,3 +130,12 @@ The same route was unreliable in the first run and reliable in the third. The ca
 2. Supervisor: from `orchestrator/`, with `ANTHROPIC_BASE_URL` set to the worker gateway and a placeholder `ANTHROPIC_AUTH_TOKEN`, run `python -B -m dev_supervisor start --yes --no-main`.
 3. Route registry: `<state dir>/verified_routes.json` persists; it is not in the repository.
 4. A worker is assigned with `assign ... --allocation-role implementation --yes` and a prompt file that tells it to use single simple shell commands and to commit but not push.
+
+## 9. Later on 2026-11-24: first real restart, and what stopped T-DEV-056
+
+Labels as in section 7.
+
+- **Worker run 4 (T-DEV-056, `w-1c6bd827e3`), OBSERVED.** A two-file change taken from the Known limits list (preflight reads `git status` without optional locks). It was dispatched through `assign --allocation-role implementation`. It ended FAILED on a provider 503 ("high demand") after about two minutes, with no tool call and no change in its worktree.
+- **First real use of `restart`, OBSERVED.** The restart request was queued, and the long-running Supervisor loop answered `unknown op 'restart'`. That loop had been started at 07:33, before the restart operation was merged, and a running loop does not load merged code. After the loop was stopped (no worker was running, Main was not attached) and started again from the merged checkout, `restart w-1c6bd827e3 --yes` queued, the loop restarted the worker, and it was RUNNING again within seconds (restart 1 of 3). The restarted run ended on the same 503 after about two minutes, again with no change. **Lesson:** merging code that the loop executes does not change a running loop; restart the loop after such a merge.
+- **No further retry.** The route was saturated twice in a row; the mission rule is not to hammer an unavailable provider, so the worker was left FAILED (restart budget used: 1 of 3). T-DEV-056 is NOT completed and no work of it exists. Its claim stays ACTIVE.
+- **Memory floor, OBSERVED.** While free memory sat near 650 MB, `assign` was refused by the memory guard (`memory guard: 644 MB free, at least 1024 MB required`). The dispatch went through when free memory rose to about 1.5 GB. The refusal worked as designed; the cause of the low memory was other applications on the machine, which were not touched.
