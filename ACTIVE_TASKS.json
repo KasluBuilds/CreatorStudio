@@ -529,6 +529,19 @@
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
         "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
       ]
+    },
+    "AGR-DEV-059-01": {
+      "description": "T-DEV-059 adds the retire operation to the dev_supervisor lifecycle and command line, with tests and its documentation section, and changes nothing else in the package.",
+      "task_ids": [
+        "T-DEV-059"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/lifecycle.py",
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/tests/test_dev_lifecycle.py",
+        "orchestrator/tests/test_dev_cli.py"
+      ]
     }
   },
   "tasks": [
@@ -3141,6 +3154,46 @@
         "acquired": "2026-11-24T18:04:04+00:00",
         "expires": "2026-11-25T18:04:04+00:00",
         "released": "2026-11-24T18:15:00+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-059",
+      "title": "dev_supervisor: retire a LOST worker without spending its restart",
+      "description": "A LOST worker still counts toward the one-active-worker cap, and today only `restart` clears it, which spends one of its restart attempts. Add an explicit, audited `retire` command: a dry run by default; with --yes it queues a request that the running Supervisor loop applies. Retirement applies only to a LOST worker whose recorded process is not alive. It moves the worker to STOPPED with a note that records the reason and the time, writes a worker_retired event, never launches or signals a process, never changes restart_count, never edits history (results, failures, blockers) and is idempotent. A retired worker frees the cap slot; it can still be restarted later with its remaining attempts.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-059-retire-lost-worker",
+      "worktree": "../CreatorStudio-worktrees/t-dev-059-retire-lost-worker",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-059-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/lifecycle.py",
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/tests/test_dev_lifecycle.py",
+        "orchestrator/tests/test_dev_cli.py"
+      ],
+      "acceptance_criteria": [
+        "retire refuses every status except LOST, refuses a LOST worker whose recorded pid is alive, and refuses an unknown worker",
+        "retiring a LOST worker leaves restart_count, failures, results and blockers unchanged and starts no process",
+        "after retirement the worker no longer counts toward the active-worker cap, and a later restart still works within the remaining budget",
+        "retiring twice is a no-op that reports the earlier retirement",
+        "the command is a dry run without --yes, and --yes only queues one request that carries the worker id and a reason",
+        "the retirement is recorded as a worker_retired event with the reason, and the section in WORKER_DISPATCH.md states the precondition and the limits"
+      ],
+      "test_requirements": [
+        "python -B -m governance validate from orchestrator/",
+        "python -B -m unittest tests.test_dev_lifecycle tests.test_dev_cli from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the overnight preparation mission. Unblocks dispatch after a worker is orphaned (T-DEV-056's worker) without consuming its last restart.",
+      "lease": {
+        "acquired": "2026-11-24T21:05:27+00:00",
+        "expires": "2026-11-25T21:05:27+00:00"
       }
     }
   ]
