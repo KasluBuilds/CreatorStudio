@@ -726,7 +726,15 @@ class CliTests(Offline):
                 self.assertIn("allocation refused", out)
         self.assertEqual(cli.pending_requests(env.store()), [])
         code, out = env.cli(*self._alloc_args(env, "--allocation-role", "review", "--author-capability", "3"))
+        self.assertEqual(code, 1, out)                                         # T-DEV-054: a review needs the author's route
+        self.assertIn("needs the author's route", out)
+        code, out = env.cli(*self._alloc_args(env, "--allocation-role", "review", "--author-capability", "3",
+                                              "--author-route", "gemini", "auto/author"))
         self.assertEqual(code, 0, out)                                         # a route as capable as the work exists
+        code, out = env.cli(*self._alloc_args(env, "--allocation-role", "review", "--author-capability", "3",
+                                              "--author-route", "gemini", "auto/rev"))
+        self.assertEqual(code, 1, out)                                         # the only fitting route is the author's own
+        self.assertIn("author's own", out)
 
     def test_assign_with_an_allocation_role_and_no_registry_is_refused(self):
         env = Env(self)
