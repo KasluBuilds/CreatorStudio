@@ -63,7 +63,8 @@ LEGEND = {REAL: "a real external process (git, claude) did the work",
 OWNER = autonomy.DEFAULT_OWNER
 T1, T2, T3 = "T-ACC-1", "T-ACC-2", "T-ACC-3"
 WORK_FILE = "ACCEPTANCE_RESULT.txt"
-WORKER_MODEL = "haiku"
+WORKER_MODEL = "auto/coding"        # a gateway route id; the fake launcher stands in for it
+WORKER_PROVIDER = "gemini"
 WORKER_TIMEOUT_S = 180.0
 MAIN_MODEL = "claude-sonnet-5-5"
 OLD_MAIN = "00000000-0000-4000-8000-0000000000a1"
@@ -175,13 +176,6 @@ class SetCheckers:
 
 
 # ------------------------------------------------------------------ helpers
-
-def child_env(parent: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    """Environment for the real worker: a copy minus parent-session markers and provider overrides."""
-    src = dict(os.environ if parent is None else parent)
-    return {k: v for k, v in src.items()
-            if k != "CLAUDECODE" and not k.startswith("CLAUDE_CODE_") and not k.startswith("ANTHROPIC_")}
-
 
 def _rmtree(path: Path) -> None:
     def onerror(func: Callable[..., Any], p: str, _exc: Any) -> None:
@@ -460,10 +454,9 @@ class Scenario:
         policy = SupervisorPolicy(max_runtime_s=self.worker_timeout_s, heartbeat_stale_s=self.worker_timeout_s)
         verifier = self._verifier
         if self.real_worker:
-            launcher: Any = ClaudeCliLauncher(self.claude, popen=self._real_popen)
-            self.worker_launcher = launcher
-            sleep: Callable[[float], None] = time.sleep
-            clock: Callable[[], float] = time.time
+            # Never starts claude on the supervisor's own login: a real worker needs a verified free route (T-DEV-032).
+            raise StepFailed("real-worker acceptance is refused: workers run only on a verified free route through the "
+                             "gateway, and the Claude login is never used")
         else:
             fake = FakeLauncher(RuntimeError("injected launch failure") if "launch_error" in self.inject else None)
             fake.on_launch = self._fake_worker
@@ -472,7 +465,8 @@ class Scenario:
         self.sup = Supervisor(self.store, launcher, worktree_checker=GitWorktreeChecker(self.git), clock=clock,
                               sleep=sleep, policy=policy, verifier=verifier)
         w = self.sup.assign(task_id=T1, role="worker", branch=self.facts["branch"], worktree=str(self.wt),
-                            owner_stream="acceptance", model=WORKER_MODEL, prompt_file=str(prompt))
+                            owner_stream="acceptance", model=WORKER_MODEL, provider=WORKER_PROVIDER,
+                            prompt_file=str(prompt))
         w = self.sup.spawn(w.worker_id)
         self.facts["worker_id"] = w.worker_id
         if w.status != WorkerStatus.RUNNING:
@@ -497,11 +491,6 @@ class Scenario:
             body = "wrong content\n" if "worker_wrong_content" in self.inject else self.expected + "\n"
             (Path(spec.cwd) / WORK_FILE).write_text(body, encoding="utf-8")
         self.worker_launcher.exit(pid, 3 if "worker_exit_nonzero" in self.inject else 0)
-
-    def _real_popen(self, argv: List[str], **kw: Any) -> Any:
-        """REAL: the one place a ``claude`` process is started. Tools limited to Write; cleaned environment."""
-        full = list(argv) + ["--allowedTools", "Write"]
-        return subprocess.Popen(full, env=child_env(), **kw)  # noqa: S603 - argument list, shell=False
 
     def _observe_stream(self, w: Any) -> None:
         """Counts only from the real run's stream-json output: no text is kept."""
@@ -697,7 +686,7 @@ def build_parser() -> argparse.ArgumentParser:
                                 description="End-to-end autonomy acceptance scenario (isolated, synthetic)")
     p.add_argument("--out", required=True, help="where to write the JSON report (outside the repository)")
     p.add_argument("--real-worker", action="store_true",
-                   help="run ONE bounded real `claude -p --model haiku` worker (uses a little Claude Pro usage)")
+                   help="REFUSED: a real worker needs a verified free route; the Claude login is never used")
     p.add_argument("--keep", action="store_true", help="keep the temp directory and print its location on stderr")
     return p
 

@@ -40,6 +40,10 @@ SETTING_SOURCES = "project,local"   # the user's settings are merged into the de
 COPIED_USER_KEYS = ("hooks", "autoMode", "modelSettings", "model", "statusLine", "permissions")
 DROPPED_PERMISSION_KEYS = ("defaultMode", "additionalDirectories", "allow")   # never widened from the user file
 PROJECT_SETTINGS = ("settings.json", "settings.local.json")   # loaded by --setting-sources project,local
+# Keys a worktree's project or local settings may never carry: they would re-inject credentials, a provider or a model
+# route into a worker after the environment was isolated (T-DEV-032).
+FORBIDDEN_PROJECT_KEYS = ("env", "apiKeyHelper", "awsAuthRefresh", "awsCredentialExport", "gcpAuthRefresh",
+                          "otelHeadersHelper", "forceLoginMethod", "forceLoginOrgUUID", "modelOverrides")
 DENY_PROBE = "git push --force origin task/policy-probe"
 ALLOW_PROBE = "git status --short"
 
@@ -150,7 +154,7 @@ def load_user_settings(path: Optional[os.PathLike] = None) -> Dict[str, Any]:
     return out
 
 
-def check_project_settings(project_dir: str) -> None:
+def check_project_settings(project_dir: str, strict: bool = True) -> None:
     """Refuse (PolicyInstallError) when the launch cwd's ``.claude/settings.json`` or ``settings.local.json`` holds
     ``disableAllHooks`` or any hooks, or cannot be read: ``--setting-sources project,local`` would load them."""
     if not project_dir:
@@ -167,6 +171,9 @@ def check_project_settings(project_dir: str) -> None:
             raise PolicyInstallError(f"project settings {p} is not a JSON object; refusing to launch")
         if "disableAllHooks" in data or data.get("hooks"):
             raise PolicyInstallError(f"project settings {p} sets disableAllHooks or hooks; refusing to launch")
+        bad = [k for k in FORBIDDEN_PROJECT_KEYS if k in data] if strict else []   # strict: workers; Main is exempt
+        if bad:
+            raise PolicyInstallError(f"project settings {p} sets {', '.join(bad)}; refusing to launch")
 
 
 def build_settings(command: str, user: Optional[Dict[str, Any]] = None,
@@ -309,7 +316,7 @@ def install(state_dir: os.PathLike, session_id: str, role: str, repo_root: str, 
             run: Callable[..., Any] = subprocess.run, verify: bool = True,
             user_settings: Optional[os.PathLike] = None) -> PolicyInstall:
     path = settings_path(state_dir, role, session_id)
-    check_project_settings(repo_root)
+    check_project_settings(repo_root, strict=(role != "main"))
     cmd = hook_command(python)
     env = policy_env(repo_root, roots, owned_paths, grants, role=role, approvals=approvals_dir(state_dir),
                      boundary=boundary_paths(None, user_settings))
@@ -352,7 +359,7 @@ def argv_with_policy(argv: Sequence[str], inst: PolicyInstall) -> List[str]:
         raise PolicyInstallError("argv already carries --settings; merge it explicitly instead")
     if any(a == "--setting-sources" or a.startswith("--setting-sources=") for a in argv):
         raise PolicyInstallError("argv already carries --setting-sources; refusing to guess the merge")
-    check_project_settings(inst.project_dir)          # re-checked at launch: the files may have changed since install
+    check_project_settings(inst.project_dir, strict=(inst.role != "main"))          # re-checked at launch: the files may have changed since install
     try:
         on_disk = json.loads(Path(inst.settings_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -401,7 +408,12 @@ def parse_probe_transcript(lines: Sequence[str]) -> Dict[str, Any]:
 
 
 def live_probe(claude: str = "claude", model: str = "haiku", python: Optional[str] = None,
-               run: Callable[..., Any] = subprocess.run, workdir: Optional[str] = None) -> Dict[str, Any]:
+               run: Optional[Callable[..., Any]] = None, workdir: Optional[str] = None) -> Dict[str, Any]:
+    if run is None or run is subprocess.run:
+        # The probe starts a real claude from the caller's environment (the Claude login) with a Claude model.
+        # Workers and probes never do that (T-DEV-032); a test may inject a fake runner.
+        raise PolicyInstallError("live probe refused: it would start claude on the caller's Claude login; "
+                                 "use a verified gateway route and the isolated worker environment")
     base = Path(workdir or tempfile.mkdtemp(prefix="cs-policy-probe-"))
     repo = base / "repo"
     repo.mkdir(parents=True, exist_ok=True)
@@ -432,7 +444,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not a.yes:
         print("dry run: would start one headless claude session in a throwaway repo; pass --yes")
         return 0
-    res = live_probe(a.claude, a.model)
+    try:
+        res = live_probe(a.claude, a.model)
+    except PolicyInstallError as exc:
+        print(str(exc))
+        return 2
     print(json.dumps(res, indent=2))
     return 0 if res["passed"] else 1
 

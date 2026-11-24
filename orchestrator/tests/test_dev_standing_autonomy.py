@@ -886,6 +886,36 @@ class ReviewRound1Settings(Base):
                 with self.assertRaises(sp.PolicyInstallError):
                     sp.install(self.tmp / "state", SID, "worker", proj, run=_fake_run, user_settings=self.tmp / "n.json")
 
+    def test_install_refuses_project_settings_that_carry_credentials_or_a_provider(self):
+        """env, apiKeyHelper and friends would re-inject a login, provider or model route after isolation (T-DEV-032)."""
+        for key in sp.FORBIDDEN_PROJECT_KEYS:
+            for name in ("settings.json", "settings.local.json"):
+                with self.subTest(key=key, name=name):
+                    td = tempfile.TemporaryDirectory()
+                    self.addCleanup(td.cleanup)
+                    self.tmp = Path(td.name)
+                    proj = self.project(name, {key: {"X": "1"} if key == "env" else "helper"})
+                    with self.assertRaises(sp.PolicyInstallError) as cm:
+                        sp.install(self.tmp / "state", SID, "worker", proj, run=_fake_run,
+                                   user_settings=self.tmp / "n.json")
+                    self.assertIn(key, str(cm.exception))
+
+    def test_main_is_exempt_from_the_strict_project_keys(self):
+        """Main runs on the Claude login by design; only workers are refused for env or credential helpers."""
+        proj = self.project("settings.json", {"env": {"X": "1"}, "apiKeyHelper": "helper"})
+        inst = sp.install(self.tmp / "state", SID, "main", proj, run=_fake_run, user_settings=self.tmp / "n.json")
+        sp.argv_with_policy(["claude"], inst)                          # no refusal for role main
+        with self.assertRaises(sp.PolicyInstallError):
+            sp.install(self.tmp / "state", SID, "worker", proj, run=_fake_run, user_settings=self.tmp / "n.json")
+
+    def test_credential_keys_appearing_after_install_are_refused_at_launch(self):
+        proj = self.project("settings.local.json", {"enableAllProjectMcpServers": True})
+        inst = sp.install(self.tmp / "state", SID, "worker", proj, run=_fake_run, user_settings=self.tmp / "n.json")
+        sp.argv_with_policy(["claude"], inst)
+        self.project("settings.local.json", {"env": {"ANTHROPIC_API_KEY": "sk-x"}})
+        with self.assertRaises(sp.PolicyInstallError):
+            sp.argv_with_policy(["claude"], inst)
+
     def test_benign_project_settings_are_accepted_and_rechecked_at_launch(self):
         proj = self.project("settings.local.json", {"enableAllProjectMcpServers": True})
         inst = sp.install(self.tmp / "state", SID, "main", proj, run=_fake_run, user_settings=self.tmp / "n.json")

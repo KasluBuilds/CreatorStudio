@@ -29,7 +29,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence, Tuple
 
-from . import provider_env
+from . import provider_env, worker_spawner
 from .session_policy import PolicyInstallError
 
 try:
@@ -47,7 +47,8 @@ __all__ = ["SupervisorPolicy", "LaunchSpec", "LaunchHandle", "ProcessLauncher", 
            "DuplicateWorkerError", "UnknownWorkerError"]
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}$")
-_MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\-\[\]]{0,99}$")
+# A plain id (claude-style) or one provider/model gateway route, e.g. "auto/coding"; never a path, never a leading dash.
+_MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\-\[\]]{0,99}(/[A-Za-z0-9][A-Za-z0-9._:\-]{0,99})?$")
 _SAFE_ARG = re.compile(r"^[A-Za-z0-9._:/\\\-=\[\]@+]+$")  # no shell or cmd.exe metacharacters, no spaces
 PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")  # claude 2.1.316 --help
 
@@ -97,6 +98,7 @@ class LaunchSpec:
     stderr_path: str
     max_runtime_s: float
     env: Dict[str, str] = field(default_factory=dict)   # extra child environment (authority policy), merged last
+    provider: str = ""                                  # the worker's recorded provider; the launch gate checks the pair
 
 
 @dataclass
@@ -182,6 +184,23 @@ def build_claude_argv(model: str, session_id: str, executable: str = "claude",
     return argv
 
 
+_FORBIDDEN_WORKER_ENV = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
+
+
+def forbidden_worker_env(name: str) -> bool:
+    """A direct Anthropic credential or login variable: never allowed in a worker environment, in any spelling."""
+    up = name.upper()
+    return (up in _FORBIDDEN_WORKER_ENV or "OAUTH" in up or up.endswith("API_KEY") or up.endswith("_API_KEY_FILE_DESCRIPTOR")
+            or up.startswith("CLAUDE_CODE_USE_"))
+
+
+def _no_worker_env(spec: "LaunchSpec") -> Dict[str, str]:
+    """Default environment builder: there is none. A launcher built without an explicit, safe builder refuses to start a
+    worker, so a worker can never fall back to the supervisor's own (Claude Pro) environment."""
+    raise LifecycleError("no worker environment is configured: refusing to launch a worker (fail closed; "
+                         "workers never inherit the supervisor's Claude login or a default provider)")
+
+
 class ClaudeCliLauncher:
     """Runs ``claude`` as a child process from an argument list (``shell=False``), prompt on stdin, output to files.
 
@@ -190,9 +209,13 @@ class ClaudeCliLauncher:
     """
 
     def __init__(self, executable: str = "claude", which: Callable[[str], Optional[str]] = shutil.which,
-                 popen: Callable[..., Any] = subprocess.Popen) -> None:
+                 popen: Callable[..., Any] = subprocess.Popen,
+                 env_builder: Callable[["LaunchSpec"], Dict[str, str]] = _no_worker_env,
+                 extra_args: Sequence[str] = ()) -> None:
         self.executable = executable
         self._which, self._popen = which, popen
+        self._env_builder = env_builder
+        self._extra_args = list(extra_args)
         self._procs: Dict[int, Any] = {}
 
     def resolve_executable(self) -> str:
@@ -204,8 +227,31 @@ class ClaudeCliLauncher:
     def launch(self, spec: LaunchSpec) -> LaunchHandle:
         if not spec.argv or any(not isinstance(a, str) for a in spec.argv):
             raise LifecycleError("argv must be a non-empty list of strings")
-        argv = [self.resolve_executable()] + list(spec.argv[1:])
-        kwargs: Dict[str, Any] = {"cwd": spec.cwd, "shell": False, "close_fds": True, "env": {**provider_env.child_env(), **spec.env}}
+        env = self._env_builder(spec)              # fail closed: the default builder raises
+        if not isinstance(env, dict) or any(forbidden_worker_env(k) for k in env):
+            raise LifecycleError("worker environment carries a direct Anthropic credential: refusing to launch")
+        for k in spec.env:                         # only the authority-policy variables may be added, never overridden
+            if not isinstance(k, str) or not k.upper().startswith("CS_AUTHORITY_"):
+                raise LifecycleError("launch spec environment may only carry CS_AUTHORITY_ variables: refusing to launch")
+            if any(k.upper() == e.upper() for e in env):
+                raise LifecycleError("launch spec environment may not override the worker environment: refusing to launch")
+        env = {**env, **spec.env}
+        args = list(spec.argv[1:])
+        sources = [a for a in args if a == "--setting-sources" or a.startswith("--setting-sources=")]
+        if sources:
+            # The authority policy already supplies --setting-sources (project,local). Whatever supplies it, user settings
+            # must be excluded: a worker never loads the supervisor user's own settings.
+            if len(sources) != 1:
+                raise LifecycleError("worker command line carries more than one --setting-sources: refusing to launch")
+            first = sources[0]
+            value = first.split("=", 1)[1] if "=" in first else (args[args.index(first) + 1] if args.index(first) + 1 < len(args) else "")
+            if not value or "user" in [v.strip() for v in value.split(",")]:
+                raise LifecycleError("worker setting sources must exclude user settings: refusing to launch")
+            lead: List[str] = []
+        else:
+            lead = list(self._extra_args)
+        argv = [self.resolve_executable()] + lead + args
+        kwargs: Dict[str, Any] = {"cwd": spec.cwd, "shell": False, "close_fds": True, "env": env}
         if os.name == "nt":
             kwargs["creationflags"] = (getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
                                        | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
@@ -355,13 +401,17 @@ class Supervisor:
     # -------------------------------------------------- assign / spawn
 
     def assign(self, *, task_id: str, role: str, branch: str, worktree: str, owner_stream: str, model: str,
-               prompt_file: str, provider: str = "anthropic") -> Worker:
+               prompt_file: str, provider: str) -> Worker:
         for label, v in (("task_id", task_id), ("role", role), ("owner_stream", owner_stream),
                          ("provider", provider)):
             if not _ID.match(v or ""):
                 raise LifecycleError(f"invalid {label} {v!r}")
         if not _MODEL.match(model or ""):
             raise LifecycleError("an explicit model id is required")
+        if provider.strip().lower() == "anthropic":
+            raise LifecycleError("provider anthropic (Claude Pro) is never a worker provider")
+        if worker_spawner.is_claude_model(model):
+            raise LifecycleError("a Claude model is never a worker model")
         if not branch or branch.startswith("-") or any(c.isspace() for c in branch):
             raise LifecycleError(f"invalid branch {branch!r}")
         worktree = os.path.abspath(worktree)
@@ -386,7 +436,7 @@ class Supervisor:
         d = self._log_dir(w)
         return LaunchSpec(argv=argv, cwd=w.worktree, stdin_path=str(w.prompt_file),
                           stdout_path=str(self.stdout_path(w)), stderr_path=str(d / f"run-{w.restart_count}.stderr.log"),
-                          max_runtime_s=self.policy.max_runtime_s)
+                          max_runtime_s=self.policy.max_runtime_s, provider=w.provider)
 
     def spawn(self, worker_id: str) -> Worker:
         w = self.registry.get(worker_id)

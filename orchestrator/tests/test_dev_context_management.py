@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import test_dev_cli as T  # noqa: E402  (its Env/Offline fixtures; its TestCase classes are not imported here)
 from dev_supervisor import cli, compaction, config as cfgmod, context_monitor, handoff, launch  # noqa: E402
+from dev_supervisor import dispatch_routing  # noqa: E402
 from dev_supervisor import replacement, session_policy, telemetry  # noqa: E402
 from dev_supervisor.evidence import Label  # noqa: E402
 from dev_supervisor.telemetry import cwd_slug  # noqa: E402
@@ -462,6 +463,7 @@ class PrepareHandoffTests(Base):
 
     def test_mechanical_handoff_contents_come_from_recorded_state(self):
         env, store, loop = self.make(github_repo="owner/repo")
+        env.verified_route()
         seed_tasks(env)
         env.run_results["pr list"] = (0, json.dumps([{"number": 7, "state": "OPEN", "headRefName": "task/t-x-1"}]), "")
         pending = store.directory / "approvals" / "pending"
@@ -471,7 +473,8 @@ class PrepareHandoffTests(Base):
         wt = env.wt / "T-X-1"
         wt.mkdir()
         code, out = env.cli("assign", "--task", "T-X-1", "--role", "worker", "--branch", "task/t-x-1", "--worktree",
-                            str(wt), "--owner-stream", "claude:t", "--prompt-file", env.prompt_file(), "--yes")
+                            str(wt), "--owner-stream", "claude:t", "--prompt-file", env.prompt_file(),
+                            "--model", "auto/coding", "--provider", "gemini", "--yes")
         self.assertEqual(code, 0, out)
         sid = self.running_main(env, loop, tokens=150000)
         loop.tick()
@@ -778,20 +781,22 @@ class ReplacementTests(Base):
 
     def test_workers_are_never_killed_by_context_management(self):
         env, store, loop = self.make(auto_replace_main=True)
-        for task in ("T-W-1", "T-W-2"):
+        env.verified_route()
+        for task in ("T-W-1",):   # concurrency cap 1 (T-DEV-032): one worker is enough for this property
             wt = env.wt / task
             wt.mkdir()
             code, out = env.cli("assign", "--task", task, "--role", "worker", "--branch", f"lane/{task}", "--worktree",
-                                str(wt), "--owner-stream", "claude:t", "--prompt-file", env.prompt_file(), "--yes")
+                                str(wt), "--owner-stream", "claude:t", "--prompt-file", env.prompt_file(),
+                                "--model", "auto/coding", "--provider", "gemini", "--yes")
             self.assertEqual(code, 0, out)
         sid = self.running_main(env, loop, tokens=1000)
         loop.tick()
-        self.assertEqual(len(env.worker_launcher.procs), 2)
+        self.assertEqual(len(env.worker_launcher.procs), 1)
         env.write_transcript(sid, 190000)
         loop.tick()
         self.assertEqual(len(env.terminal.opened), 2)                   # Main was replaced ...
         self.assertTrue(all(code is None for code in env.worker_launcher.procs.values()))   # ... workers untouched
-        self.assertEqual(sum(1 for w in loop.sup.registry.list() if w.status == "RUNNING"), 2)
+        self.assertEqual(sum(1 for w in loop.sup.registry.list() if w.status == "RUNNING"), 1)
 
     def test_no_replacement_without_the_auto_flag(self):
         env, store, loop = self.make()                                  # auto_replace_main defaults to False

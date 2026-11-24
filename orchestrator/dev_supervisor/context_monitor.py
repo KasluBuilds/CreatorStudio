@@ -219,10 +219,13 @@ _PROBE_TOPICS = ("rivers", "bridges", "bread", "clocks", "lighthouses", "orchard
 
 
 def live_compaction_probe(claude: str = "claude", model: str = "haiku", turns: int = 4,
-                          run: Callable[..., Any] = subprocess.run, projects_dir: Optional[Any] = None,
+                          run: Optional[Callable[..., Any]] = None, projects_dir: Optional[Any] = None,
                           workdir: Optional[str] = None, timeout: float = 300.0) -> Dict[str, Any]:
     """A throwaway headless session: CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=1 makes Claude Code compact itself at 1% of the
     window, so a few turns must produce a ``compact_boundary`` record. Reports where it was seen."""
+    if run is None or run is subprocess.run:
+        # Starting claude from the caller's environment would use the Claude login (T-DEV-032): refused.
+        raise RuntimeError("live compaction probe refused: it would start claude on the caller's Claude login")
     work = Path(workdir or tempfile.mkdtemp(prefix="cs-compaction-probe-"))
     work.mkdir(parents=True, exist_ok=True)
     sid = str(uuid.uuid4())
@@ -291,7 +294,11 @@ def main(argv: Optional[Sequence[str]] = None, stdin: Any = None, stdout: Any = 
                 out.write("dry run: would start %d headless claude turns (model %s) in a temp folder with %s=1; "
                           "pass --yes\n" % (a.turns, a.model, AUTOCOMPACT_ENV))
                 return 0
-            res = live_compaction_probe(a.claude, a.model, a.turns)
+            try:
+                res = live_compaction_probe(a.claude, a.model, a.turns)
+            except RuntimeError as exc:
+                out.write(str(exc) + "\n")
+                return 2
             out.write(json.dumps(res, indent=2) + "\n")
             return 0 if res["passed"] else 1
         text = _read_stdin(stdin or sys.stdin)

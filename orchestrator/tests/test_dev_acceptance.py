@@ -308,84 +308,29 @@ class Isolation(Base):
         self.assertIn("refused", buf.getvalue())
         self.assertFalse((root / "acceptance-report-should-not-exist.json").exists())
 
-    def test_real_worker_env_strips_session_markers_and_overrides(self):
-        parent = {"CLAUDECODE": "1", "CLAUDE_CODE_ENTRYPOINT": "cli", "CLAUDE_CODE_SSE_PORT": "1",
-                  "ANTHROPIC_BASE_URL": "http://x", "ANTHROPIC_API_KEY": "k", "PATH": "p", "HOME": "h",
-                  "CLAUDE_OTHER": "keep"}
-        env = acc.child_env(parent)
-        self.assertEqual(env, {"PATH": "p", "HOME": "h", "CLAUDE_OTHER": "keep"})
-        self.assertIn("PATH", acc.child_env())
-        self.assertNotIn("CLAUDECODE", acc.child_env())
-
 
 class RealWorkerPath(Base):
-    """The --real-worker wiring, with ``subprocess.Popen`` replaced: no ``claude`` is ever started here."""
+    """The real-worker mode is refused: workers run only on a verified free route, never on the Claude login."""
 
-    def test_real_popen_uses_clean_env_and_limited_tools(self):
-        seen = {}
+    def test_acceptance_has_no_claude_login_environment_builder_or_launcher_path(self):
+        self.assertFalse(hasattr(acc, "child_env"))
+        self.assertFalse(hasattr(acc.Scenario, "_real_popen"))
 
-        class P:
-            pid = 4242
-
-            def poll(self):
-                return 0
-
-        def fake_popen(argv, **kw):
-            seen["argv"], seen["env"] = list(argv), kw.get("env")
-            return P()
-        sc = acc.Scenario(real_worker=True, base_dir=str(self.tmp))
-        with mock.patch.object(acc.subprocess, "Popen", fake_popen), \
-                mock.patch.dict(os.environ, {"CLAUDECODE": "1", "ANTHROPIC_API_KEY": "x", "CLAUDE_CODE_FOO": "1"}):
-            sc._real_popen(["claude", "-p"], cwd=".")
-        self.assertEqual(seen["argv"][-2:], ["--allowedTools", "Write"])
-        for k in seen["env"]:
-            self.assertFalse(k == "CLAUDECODE" or k.startswith(("CLAUDE_CODE_", "ANTHROPIC_")), k)
-
-    def test_real_worker_flow_with_substituted_popen(self):
-        """Drive the real-worker branch end to end: the substituted process writes the file and exits 0."""
-        procs = []
-
-        class P:
-            def __init__(self, argv, **kw):
-                self.pid = 5000 + len(procs)
-                self.argv = argv
-                (Path(kw["cwd"]) / acc.WORK_FILE).write_text(sc.expected + "\n", encoding="utf-8")
-                kw["stdout"].write(b'{"type":"system"}\n{"type":"result","is_error":false}\nnot json\n')
-                kw["stdout"].flush()
-                procs.append(self)
-
-            def poll(self):
-                return 0
-
+    def test_real_worker_mode_is_refused_and_builds_no_launcher(self):
         sc = acc.Scenario(real_worker=True, base_dir=str(self.tmp), claude="python")
-        sc._real_popen = lambda argv, **kw: P(list(argv) + ["--allowedTools", "Write"], **kw)
-        report = sc.run()
-        self.assertEqual(report["overall"], "PASS", report["steps"])
-        self.assertEqual(report["mode"], "real-worker")
-        m = {s["id"]: s["mode"] for s in report["steps"]}
-        self.assertEqual((m["worker_run"], m["result_reported"], m["result_verified"]), ("REAL", "REAL", "REAL"))
-        obs = report["observation"]["real_worker"]
-        self.assertEqual((obs["model"], obs["exit_code"], obs["stream_lines"], obs["result_events"]),
-                         ("haiku", 0, 3, 1))
-        self.assertEqual(len(procs), 1)
-        self.assertIn("--model", procs[0].argv)
-        self.assertIn("haiku", procs[0].argv)
-        self.assertIn("stream-json", procs[0].argv)
-        self.assertEqual(procs[0].argv[-2:], ["--allowedTools", "Write"])
+        with mock.patch.object(acc, "ClaudeCliLauncher", side_effect=AssertionError("a launcher was built")):
+            report = sc.run()
+        self.assert_fails_at(report, "worker_run")
+        self.assertIn("refused", json.dumps(report["steps"]))
 
-    def test_real_worker_that_writes_nothing_is_rejected(self):
-        class P:
-            pid = 7000
-
-            def __init__(self, argv, **kw):
-                pass
-
-            def poll(self):
-                return 0
-        sc = acc.Scenario(real_worker=True, base_dir=str(self.tmp), claude="python")
-        sc._real_popen = lambda argv, **kw: P(argv, **kw)
-        report = sc.run()
-        self.assert_fails_at(report, "result_verified")
+    def test_cli_real_worker_flag_does_not_pass(self):
+        out = self.tmp / "out" / "r.json"
+        buf = io.StringIO()
+        orig = acc.run_acceptance
+        with mock.patch.object(acc, "run_acceptance", lambda **kw: orig(base_dir=str(self.tmp), **kw)),                 mock.patch.object(acc, "ClaudeCliLauncher", side_effect=AssertionError("a launcher was built")):
+            rc = acc.main(["--out", str(out), "--real-worker"], out=buf, err=io.StringIO())
+        self.assertNotEqual(rc, 0)
+        self.assertNotEqual(json.loads(out.read_text(encoding="utf-8"))["overall"], "PASS")
 
 
 class Cli(Base):
@@ -407,7 +352,7 @@ class Cli(Base):
             self.assertEqual(acc.main([], out=io.StringIO()), 2)
 
     def test_default_mode_never_starts_claude(self):
-        with mock.patch.object(acc.Scenario, "_real_popen", side_effect=AssertionError("claude started")),                 mock.patch.object(acc.ClaudeCliLauncher, "launch", side_effect=AssertionError("real launcher")):
+        with mock.patch.object(acc, "ClaudeCliLauncher", side_effect=AssertionError("claude started")),                 mock.patch.object(acc.ClaudeCliLauncher, "launch", side_effect=AssertionError("real launcher")):
             report = self.run_scn()
         self.assertEqual(report["overall"], "PASS")
         self.assertNotIn("real_worker", report["observation"])
