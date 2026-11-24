@@ -22,12 +22,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
+from typing import Any, Callable, List, Optional, Sequence, TextIO, Tuple
 
-from . import integrate
+from . import github_log, integrate
 from .workers import Worker, WorkerStatus
 
 __all__ = ["Result", "intake", "build_body", "main"]
@@ -54,6 +55,20 @@ class Result:
 
 def _txt(out: Any) -> str:
     return (out.decode("utf-8", "replace") if isinstance(out, bytes) else str(out)).strip()
+
+
+def _plain(text: str) -> str:
+    """Worker-written text goes into a public pull request: no @-pings, no forged ``<!--`` markers (a review marker is
+    one), and no ``#123`` references, which could carry a closing keyword such as 'Closes #44'."""
+    return re.sub(r"#(?=\d)", "#" + chr(0x200B), github_log._neutralise(text))
+
+
+def _commits_and_files(git: Git, base: str) -> Tuple[List[str], List[str]]:
+    rc, out = git(["log", "--no-merges", "--format=%h %s", f"origin/{base}..HEAD"])
+    commits = [integrate._clean(x, 160) for x in _txt(out).splitlines() if x.strip()] if rc == 0 else []
+    rc, out = git(["diff", "--name-only", "--no-renames", f"origin/{base}...HEAD"])
+    files = [x for x in _txt(out).splitlines() if x.strip()] if rc == 0 else []
+    return commits, files
 
 
 def _duration(w: Worker) -> str:
@@ -140,23 +155,19 @@ def intake(w: Worker, git: Git, gh: Gh, *, yes: bool = False, base: str = "main"
     if _txt(out):
         return refuse("the worktree has uncommitted changes; review and commit them by hand or discard them, intake only publishes commits")
 
-    title, why = _task_title(git, base, w)
-    if title is None:
-        return refuse(why)
-
-    gates, info = integrate.preflight(git, base)
+    gates, info = integrate.preflight(git, base)          # fetches first, so origin/<base> below is current
     r.gates, r.diff_sha = gates, info.get("diff_sha", "")
     failing = [f"{g.name}: {g.status}" for g in gates if g.status != integrate.PASS]
     if failing:
         return refuse("the merge preflight does not pass (" + "; ".join(failing) + ")")
+    title, why = _task_title(git, base, w)
+    if title is None:
+        return refuse(why)
 
     rc, out = git(["rev-list", "--count", "--no-merges", f"origin/{base}..HEAD"])
     if rc != 0 or not _txt(out).isdigit() or int(_txt(out)) < 1:
         return refuse("the branch has no commit of its own beyond the base: there is nothing to publish")
-    rc, out = git(["log", "--no-merges", "--format=%h %s", f"origin/{base}..HEAD"])
-    commits = [integrate._clean(x, 160) for x in _txt(out).splitlines() if x.strip()] if rc == 0 else []
-    rc, out = git(["diff", "--name-only", "--no-renames", f"origin/{base}...HEAD"])
-    files = [x for x in _txt(out).splitlines() if x.strip()] if rc == 0 else []
+    commits, files = _commits_and_files(git, base)
 
     behind = git(["merge-base", "--is-ancestor", f"origin/{base}", "HEAD"])[0] != 0
     r.lines.append(f"worker {w.worker_id} ({w.status}) on {w.branch}: {len(commits)} commit(s), {len(files)} file(s), diff {r.diff_sha or 'unknown'}")
@@ -169,22 +180,25 @@ def intake(w: Worker, git: Git, gh: Gh, *, yes: bool = False, base: str = "main"
         rc, _ = git(["merge", "--no-edit", f"origin/{base}"])
         if rc != 0:
             git(["merge", "--abort"])
-            return refuse(f"merging origin/{base} into the branch conflicts; the merge was aborted, resolve it by hand")
+            return refuse(f"merging origin/{base} into the branch failed (a conflict, or no git identity); the merge was aborted, resolve it by hand")
         gates, info = integrate.preflight(git, base)
         r.gates, r.diff_sha = gates, info.get("diff_sha", "")
         failing = [f"{g.name}: {g.status}" for g in gates if g.status != integrate.PASS]
         if failing:
             return refuse("after merging the base the preflight does not pass (" + "; ".join(failing) + ")")
-    body = build_body(w, title, commits, files, r.diff_sha)
+        commits, files = _commits_and_files(git, base)       # the merge changed the branch: describe what is pushed
+    body = _plain(build_body(w, title, commits, files, r.diff_sha))
     if integrate._secret_hits(body.splitlines()):
         return refuse("the pull request body would contain a credential-shaped string; nothing was pushed")
     rc, out = gh(["pr", "list", "--head", w.branch, "--state", "open", "--json", "number", "--jq", "length"])
-    if rc == 0 and _txt(out) not in ("", "0"):
+    if rc != 0:
+        return refuse("could not check whether a pull request is already open (gh failed); nothing was pushed")
+    if _txt(out) not in ("", "0"):
         return refuse(f"a pull request is already open for {w.branch}")
     rc, _ = git(["push", "-u", "origin", w.branch])
     if rc != 0:
         return refuse("git push was rejected or failed (never forced); check the remote branch")
-    pr_title = integrate._clean(f"{w.task_id}: {title}", TITLE_MAX)
+    pr_title = _plain(integrate._clean(f"{w.task_id}: {title}", TITLE_MAX))
     rc, out = gh(["pr", "create", "--base", base, "--head", w.branch, "--title", pr_title, "--body-file", "-"], input=body)
     if rc != 0:
         return refuse("the branch was pushed but the pull request could not be opened: " + integrate._clean(out, 200))
