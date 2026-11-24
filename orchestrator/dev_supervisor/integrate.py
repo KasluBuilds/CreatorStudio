@@ -35,7 +35,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from dev_supervisor import review as _review
 
-__all__ = ["Gate", "Result", "IntegrationLock", "LockHeld", "evaluate", "integrate", "parse_review_marker",
+__all__ = ["Gate", "Result", "IntegrationLock", "LockHeld", "evaluate", "preflight", "integrate", "parse_review_marker",
            "diff_hash", "render_table", "real_gh_runner", "real_git_runner", "main"]
 
 PASS, FAIL, UNKNOWN = "PASS", "FAIL", "UNKNOWN"
@@ -347,6 +347,11 @@ class _Ctx:
     head_oid: str = ""
     mb: str = ""
     reg_cache: Dict[Any, Tuple[str, str]] = field(default_factory=dict)
+    head_ref: str = ""   # the git ref of the head; "" means origin/<headRefName> (a pull request), "HEAD" is a preflight
+
+
+def _head_ref(c: "_Ctx") -> str:
+    return c.head_ref or f"origin/{c.pr.get('headRefName', '')}"
 
 
 def _collect_git(git: Callable, pr: Dict[str, Any], base: str, ctx: _Ctx) -> None:
@@ -355,32 +360,33 @@ def _collect_git(git: Callable, pr: Dict[str, Any], base: str, ctx: _Ctx) -> Non
     if rc != 0:
         ctx.git_error = "git fetch origin failed"
         return
-    rc, out = git(["rev-parse", f"origin/{head}"])
+    ref = _head_ref(ctx)
+    rc, out = git(["rev-parse", ref])
     sha = out.decode("utf-8", "replace").strip()
     if rc != 0 or sha != pr.get("headRefOid"):
         ctx.git_error = "origin/<head> does not match the PR head commit"
         return
-    rc, mb = git(["merge-base", f"origin/{base}", f"origin/{head}"])
+    rc, mb = git(["merge-base", f"origin/{base}", ref])
     mbs = mb.decode("utf-8", "replace").strip()
     if rc != 0 or not mbs:
         ctx.git_error = "no merge-base"
         return
     ctx.mb = mbs
-    ctx.diff_sha = diff_hash(git, f"origin/{base}", f"origin/{head}") or ""
+    ctx.diff_sha = diff_hash(git, f"origin/{base}", ref) or ""
     if not ctx.diff_sha:
         ctx.git_error = "diff hash failed"
         return
-    rc, out = git(["diff", "--name-only", "--no-renames", "-z", mbs, f"origin/{head}"])
+    rc, out = git(["diff", "--name-only", "--no-renames", "-z", mbs, ref])
     if rc != 0:
         ctx.git_error = "git diff --name-only failed"
         return
     ctx.files = [p for p in out.decode("utf-8", "replace").split("\0") if p]
-    rc, out = git(["diff", "--name-only", "--no-renames", "--diff-filter=AM", "-z", mbs, f"origin/{head}"])
+    rc, out = git(["diff", "--name-only", "--no-renames", "--diff-filter=AM", "-z", mbs, ref])
     if rc != 0:
         ctx.git_error = "git diff --diff-filter failed"
         return
     ctx.added_files = [p for p in out.decode("utf-8", "replace").split("\0") if p]
-    rc, out = git(["diff", "-U0", "--no-renames", mbs, f"origin/{head}"])
+    rc, out = git(["diff", "-U0", "--no-renames", mbs, ref])
     if rc != 0:
         ctx.git_error = "git diff -U0 failed"
         return
@@ -525,11 +531,12 @@ def _registry_check(c: _Ctx, git: Callable, wave_ids: Sequence[str] = ()) -> Tup
         return d
 
     try:
-        probs = registry_problems(load(c.mb, "ACTIVE_TASKS.json"), load(f"origin/{head}", "ACTIVE_TASKS.json"),
+        hr = _head_ref(c)
+        probs = registry_problems(load(c.mb, "ACTIVE_TASKS.json"), load(hr, "ACTIVE_TASKS.json"),
                                   load(c.mb, "DEVELOPMENT_TRACKER.json"),
-                                  load(f"origin/{head}", "DEVELOPMENT_TRACKER.json"), head, wave_ids)
+                                  load(hr, "DEVELOPMENT_TRACKER.json"), head, wave_ids)
         if "CHANGELOG.md" in c.files:
-            rc, out = git(["diff", "-U0", "--no-renames", c.mb, f"origin/{head}", "--", "CHANGELOG.md"])
+            rc, out = git(["diff", "-U0", "--no-renames", c.mb, hr, "--", "CHANGELOG.md"])
             if rc != 0:
                 raise ValueError("CHANGELOG.md diff failed")
             if any(l.startswith("-") and not l.startswith("---") for l in out.decode("utf-8", "replace").splitlines()):
@@ -547,7 +554,7 @@ def _wave_scope(c: _Ctx, git: Callable, head: str) -> Tuple[List[str], List[str]
     wid = head[len("wave/"):]
     doc = None
     refs = [f"origin/{c.base}"]
-    rc, out = git(["log", "--reverse", "--format=%H", f"{c.mb}..origin/{head}"])
+    rc, out = git(["log", "--reverse", "--format=%H", f"{c.mb}..{_head_ref(c)}"])
     first = out.decode("utf-8", "replace").split() if rc == 0 else []
     if first:
         refs.append(first[0])
@@ -753,6 +760,57 @@ def evaluate(pr: int, gh: Callable, git: Callable, base: str = "main",
     return gates, info
 
 
+PREFLIGHT_GATES = ((4, "scope"), (6, "secrets"), (7, "forbidden_files"), (8, "reserved"))
+
+
+def preflight(git: Callable, base: str = "main", lukas_word: str = "") -> Tuple[List[Gate], Dict[str, Any]]:
+    """The offline gates (scope, secrets, forbidden files, reserved paths) on the LOCAL branch against origin/<base>.
+
+    Needs no pull request, no gh, no lock, and changes neither the working tree nor any branch (like a dry run it runs
+    ``git fetch``, which only updates remote-tracking refs). It uses the same gate functions as a real evaluation, on the
+    committed HEAD (uncommitted changes are reported in ``info['dirty']`` and are NOT evaluated). A PASS here means those
+    four gates would pass on the pushed head. CI, merge state and review need the pull request and are not checked.
+    Never raises: a failure to read git state turns every gate into UNKNOWN."""
+    info: Dict[str, Any] = {"head": "", "diff_sha": "", "branch": "", "dirty": False}
+
+    def unknown(msg: str) -> Tuple[List[Gate], Dict[str, Any]]:
+        return [Gate(n, nm, UNKNOWN, _clean(msg)) for n, nm in PREFLIGHT_GATES], info
+
+    try:
+        rc, out = git(["rev-parse", "HEAD"])
+        sha = out.decode("utf-8", "replace").strip()
+        if rc != 0 or not sha:
+            return unknown("cannot read HEAD")
+        rc, out = git(["rev-parse", "--abbrev-ref", "HEAD"])
+        branch = out.decode("utf-8", "replace").strip()
+        if rc != 0 or not branch or branch == "HEAD":
+            return unknown("detached HEAD: preflight needs a named branch")
+        info["head"], info["branch"] = sha, branch
+        rc, out = git(["status", "--porcelain"])
+        info["dirty"] = not (rc == 0 and not out.strip())   # a failing status counts as dirty: warn, never assume clean
+        ctx = _Ctx(pr={"headRefName": branch, "headRefOid": sha}, base=base, head_ref="HEAD")
+        try:
+            _collect_git(git, ctx.pr, base, ctx)
+        except Exception as e:
+            ctx.git_error = _clean(f"{type(e).__name__}: {e}")
+        info["diff_sha"] = ctx.diff_sha
+        if ctx.git_error:
+            return unknown(ctx.git_error)
+        owners: List[str] = []
+        checks = ((4, "scope", lambda: _gate_scope(ctx, git, owners)), (6, "secrets", lambda: _gate_secrets(ctx)),
+                  (7, "forbidden_files", lambda: _gate_forbidden(ctx)),
+                  (8, "reserved", lambda: _gate_reserved(ctx, lukas_word)))
+        gates: List[Gate] = []
+        for num, name, fn in checks:
+            try:
+                gates.append(fn())
+            except Exception as e:
+                gates.append(Gate(num, name, UNKNOWN, _clean(f"{type(e).__name__}: {e}")))
+        return gates, info
+    except Exception as e:
+        return unknown(f"{type(e).__name__}: {e}")
+
+
 def render_table(gates: Sequence[Gate]) -> str:
     rows = [f"| {g.num} | {g.name} | {g.status} | {_clean(g.detail)} |" for g in gates]
     return "\n".join(["| # | gate | status | detail |", "|---|---|---|---|", *rows])
@@ -886,7 +944,11 @@ def _merge(pr: int, res: Result, gh: Callable, base: str, heartbeat: Callable[[]
 def main(argv: Optional[Sequence[str]] = None, *, gh: Optional[Callable] = None, git: Optional[Callable] = None,
          out: Any = None) -> int:
     ap = argparse.ArgumentParser(prog="dev_supervisor.integrate", description=__doc__.split("\n\n")[0])
-    ap.add_argument("pr", type=int)
+    ap.add_argument("pr", type=int, nargs="?", help="pull request number (not used with --preflight)")
+    ap.add_argument("--preflight", action="store_true",
+                    help="evaluate only the offline gates (scope, secrets, forbidden files, reserved) on the local "
+                         "branch against origin/<base>; no pull request, no gh, no merge; changes no branch or file "
+                         "(the fetch only updates remote-tracking refs)")
     ap.add_argument("--yes", action="store_true", help="merge when every gate passes (default: dry run)")
     ap.add_argument("--repo", default=".", help="repository root (default: current directory)")
     ap.add_argument("--base", default="main")
@@ -899,6 +961,20 @@ def main(argv: Optional[Sequence[str]] = None, *, gh: Optional[Callable] = None,
         ap.error("--lukas-direct-word must be a GitHub issue or pull request comment URL")
     out = out or sys.stdout
     root = Path(a.repo)
+    if a.preflight:
+        if a.pr is not None or a.yes:
+            ap.error("--preflight takes no pull request number and no --yes")
+        gates, info = preflight(git or real_git_runner(root), a.base, a.lukas_direct_word)
+        print(f"preflight {info['head'][:12] or '?'} branch {info['branch'] or '?'} diff {info['diff_sha'] or '?'}", file=out)
+        print(render_table(gates), file=out)
+        if info["dirty"]:
+            print("warning: uncommitted changes are NOT evaluated; commit first", file=out)
+        ok = bool(gates) and all(g.status == PASS for g in gates)
+        print("result: " + ("PREFLIGHT_PASS" if ok else "PREFLIGHT_FAIL") +
+              " (offline gates only; CI, merge state and review need the pull request)", file=out)
+        return 0 if ok else 1
+    if a.pr is None:
+        ap.error("a pull request number is required (or use --preflight)")
     res = integrate(a.pr, yes=a.yes, base=a.base, gh=gh or real_gh_runner(root), git=git or real_git_runner(root),
                     state_dir=a.state_dir, lukas_word=a.lukas_direct_word)
     print(f"PR #{res.pr} head {res.head[:12] or '?'} diff {res.diff_sha or '?'}", file=out)
