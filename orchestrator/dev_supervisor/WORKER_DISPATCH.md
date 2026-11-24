@@ -11,7 +11,8 @@ Written 2026-11-24 for the overnight mission (tasks T-DEV-032, T-DEV-038, T-DEV-
 | A worker record carries the route chosen by role (role, provider, model, capability, evidence id, reason) | IMPLEMENTED (PR #139) |
 | `autonomy next` proposes eligible milestone work when nothing is actionable | IMPLEMENTED (PR #137) |
 | `integrate --preflight` checks the offline merge gates before pushing | IMPLEMENTED (PR #144) |
-| A worker running a real task through the OmniRoute gateway | OBSERVED once (`WORKER_GATEWAY.md`, section 7): correct partial work, ended FAILED on a provider 503; Main finished it. **A complete worker-only cycle is NOT DEMONSTRATED** |
+| A worker running a real task through the OmniRoute gateway | OBSERVED three times (`WORKER_GATEWAY.md`, sections 7 and 8): one failed on a provider 503, two completed small tasks alone; one was published with `intake` and merged through the gates. **Unattended operation, a dispatched reviewer and automatic restart are NOT DEMONSTRATED** |
+| `python -B -m dev_supervisor.intake <worker-id> [--yes]` publishes a finished worker's branch as a pull request with recorded provenance | IMPLEMENTED (PR #169); used for PR #172 |
 | `python -B -m dev_supervisor.claim spec.json [--write]` registers one task and regenerates the handoff, applying the claim-PR rules | IMPLEMENTED (PR #159); used to register T-DEV-046 |
 | `integrate --preflight` also checks the branch name (gate 1) and that `SESSION_HANDOFF.md` is current (gate 2) | IMPLEMENTED (PR #155) |
 | `Allocation.independent` records whether a review route differs from the author's (True / False / None) | IMPLEMENTED (PR #160); written by a dispatched worker, finished by Main |

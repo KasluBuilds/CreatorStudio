@@ -9,7 +9,7 @@ Companion pages: `WORKER_DISPATCH.md` (the dispatch gate and the registry file),
 | Question | Answer |
 |---|---|
 | Is a worker route verified? | Yes, one: provider `gemini`, model `gemini/gemini-3.1-flash-lite` (the gateway's model id, which is the string the registry and `--model` use), on the **worker gateway** below. The registry entry is written in the state directory, not in the repository; it is not part of this change. Two complete Claude Code round trips passed (OBSERVED, section 4). |
-| Has any worker run through the dispatch path? | Once (OBSERVED, section 7): it implemented a small task correctly but ended FAILED on a provider 503 before running its tests, and Main finished the task. **No complete worker-only task-to-merge cycle has been demonstrated.** |
+| Has any worker run through the dispatch path? | Three times (OBSERVED, sections 7 and 8): the first run failed on a provider 503 and Main finished its task; the second and third each completed a small task alone, and the third was published with the intake command and merged through the gates. **Autonomous operation is not declared complete**: task selection, review spawning and restart of a failed worker are still manual, and no dispatched independent reviewer exists. |
 | Is the exposed gateway key still valid? | No. It was rotated on 2026-11-24 (section 2). |
 | Is the main gateway safe from other machines? | **No, and unchanged.** It answers inference requests without any credential on all network interfaces (section 3). That needs the owner's decision. |
 | Can the main gateway run the verified route? | No. The installed version (3.8.49) fails Claude Code tool turns on Gemini 3 routes. Version 3.8.54 passed on `gemini-3.1-flash-lite` (INFERRED to be the release fix, because the release notes name it; the same model was not re-tested on 3.8.49). |
@@ -64,6 +64,8 @@ Label note: a statement marked OBSERVED was seen directly; where a conclusion is
 
 ## 7. First dispatched worker run (T-DEV-043), 2026-11-24
 
+Superseded in part: section 8 records two later runs that completed their tasks alone; the 'NOT DEMONSTRATED' items below that those runs answered are marked there. The figure of 28.7 minutes is Claude Code's own run duration; the supervisor record gives 29.1.
+
 Labels: OBSERVED = read from the Supervisor event log, the worker's stream log or the worker gateway's call log on this machine.
 
 **What ran.** `assign --allocation-role implementation` resolved the registry's only route (`gemini/gemini-3.1-flash-lite`), the dispatch gate passed, and the Supervisor started worker `w-b88c568c18` in its own worktree with the isolated worker environment that the launcher builds and re-checks (the gate and the launcher refuse a login, an API key or a non-local gateway). The task was small: add `Allocation.independent` with tests, two owned files.
@@ -89,3 +91,42 @@ Labels: OBSERVED = read from the Supervisor event log, the worker's stream log o
 2. Decide whether the Supervisor needs a `restart` command or a bounded auto restart for a worker that ends on a provider error.
 3. Owner decisions in section 6 (main gateway exposure, upgrade, Kiro re-authorisation).
 4. A reviewer route of capability 3 or more must be verified before a dispatched reviewer is possible.
+
+## 8. Runs 2 and 3, the intake command and the demonstrated chain (2026-11-24)
+
+Labels as in section 7. Figures are from the supervisor's worker records and the worker gateway's call log.
+
+| Run | Task | Worker | Result | Wall time (supervisor record) | Gateway calls (ok / all) |
+|---|---|---|---|---|---|
+| 1 | T-DEV-043 | `w-b88c568c18` | FAILED on a provider 503 after correct partial work; Main finished it (PR #160) | 29.1 min | 7 / 48 |
+| 2 | T-DEV-047 | `w-195e048477` | EXITED: code, test, test run and commit all by the worker (PR #167) | 3.5 min | 12 / 19 (4 x 503, 3 x 429) |
+| 3 | T-DEV-049 | `w-51544909ee` | EXITED: a two-line test change, by the worker (PR #172) | 1.3 min | 9 / 9 |
+
+The same route was unreliable in the first run and reliable in the third. The cause is not known (INFERRED: provider load that varies with the time of day). Nothing here promises that the route stays reliable.
+
+**The chain, as it ran for T-DEV-049, and who did each step.**
+1. Choose the task: Main, by hand (a review note on the previous task). `autonomy next` does not yet turn proposals into specs.
+2. Register it: the `claim` command (a tool) writes the registry record and the handoff from a spec file. Main created the branch, committed, pushed and opened the claim pull request, and merged it with `integrate --yes` (a tool that evaluates the eight gates and merges only when all pass).
+3. Dispatch: Main ran `assign --allocation-role implementation`; the Supervisor started the worker through the production gate.
+4. Implement, test, commit: the worker, in its own worktree, under the authority hook. It never pushes.
+5. Verify: Main ran the test file and a mutation of the code under test before publishing. This is Main's check, not a tool's.
+6. Publish: the `intake` command (a tool), dry run first, then `--yes`: it merged the base branch in, pushed and opened the pull request with the recorded provenance.
+7. Independent review: a fresh Claude subagent of the Main session, bound to the diff hash. Same account, different context; not a dispatched worker.
+8. Merge: Main ran `integrate --yes`; the tool evaluated all eight gates, found them PASS and merged, one pull request at a time.
+9. Close out the task in the registry: a registry-only pull request on the task's own branch, prepared and pushed by Main with a small script and merged like step 8.
+
+**Still manual or not demonstrated (be exact).**
+- Task selection, writing the spec and the worker prompt; creating the branch and worktree; committing, pushing and opening the claim and close-out pull requests; running `integrate --yes`.
+- The verification in step 5, and spawning the reviewer in step 7.
+- A **dispatched independent reviewer**: no verified route reaches capability 3, the minimum for the review role.
+- **Restart of a failed worker**: `auto_restart` is off and the CLI has no restart command.
+- **Unattended operation**: nothing starts the next task by itself, and the route's reliability is not established.
+- Only small, precisely specified tasks have been tried (2 files at most, a prompt that names the exact change). Nothing says a free capability-2 model can do open-ended work.
+
+**The `intake` command (IMPLEMENTED, PR #169).** `python -B -m dev_supervisor.intake <worker-id> [--yes] [--base main]`. It refuses, naming the unmet condition and doing nothing, when the worker is unknown or still active, is not on its registered `task/` branch, has uncommitted changes, has no commit of its own, has no registered task for that branch on `origin/main`, or the merge preflight fails or is unknown. With `--yes` it merges `origin/main` in when the branch is behind (aborting and refusing on failure), repeats the preflight, pushes without force and opens the pull request, after checking that no pull request is open and that the body contains no credential shape. Worker-written text is neutralised (no pings, no forged markers, no `#123` references). It never merges a pull request, reviews, edits files or force-pushes. The body says UNREVIEWED and discloses a worker that did not finish.
+
+**Starting everything again after a reboot (PowerShell).**
+1. Worker gateway: section 5 above (install once; start with `DATA_DIR` and `OMNIROUTE_SERVER_HOST=127.0.0.1`; check the listener address).
+2. Supervisor: from `orchestrator/`, with `ANTHROPIC_BASE_URL` set to the worker gateway and a placeholder `ANTHROPIC_AUTH_TOKEN`, run `python -B -m dev_supervisor start --yes --no-main`.
+3. Route registry: `<state dir>/verified_routes.json` persists; it is not in the repository.
+4. A worker is assigned with `assign ... --allocation-role implementation --yes` and a prompt file that tells it to use single simple shell commands and to commit but not push.
