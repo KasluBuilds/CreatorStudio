@@ -1238,7 +1238,7 @@ class TestRetire(Base):
 
     def test_a_secret_shaped_reason_is_scrubbed(self):
         s, wid = self.lost()
-        w = s.retire(wid, "token sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAA leaked")
+        w = s.retire(wid, "token " + "sk-ant-" + "api03-" + "A" * 28 + " leaked")
         self.assertNotIn("AAAAAAAAAAAA", w.note)
 
 
