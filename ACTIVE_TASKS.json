@@ -417,6 +417,15 @@
         "orchestrator/dev_supervisor/intake.py",
         "orchestrator/tests/test_dev_intake.py"
       ]
+    },
+    "AGR-DEV-049-01": {
+      "description": "test_dev_claim.py belongs to the dev_supervisor test suite owned by claude:repository-coordinator and was added earlier in the second overnight mission. Under that mission's mandate to harden the task-to-merge loop, T-DEV-049 may edit that one test file, only to strengthen one existing test. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-049"
+      ],
+      "paths": [
+        "orchestrator/tests/test_dev_claim.py"
+      ]
     }
   },
   "tasks": [
@@ -2668,6 +2677,37 @@
       "lease": {
         "acquired": "2026-11-24T07:51:25+00:00",
         "expires": "2026-11-25T07:51:25+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-049",
+      "title": "dev_supervisor: claim test also asserts the handoff file is untouched when it cannot be read (third dispatched worker task)",
+      "description": "A review note on the T-DEV-047 test: test_an_unreadable_existing_handoff_is_a_problem_not_an_exception asserts that ACTIVE_TASKS.json is unchanged but not that SESSION_HANDOFF.md is unchanged, so a future reordering that wrote the handoff before reading it would not be caught. Add that assertion. Test only, one file. Also the first task whose published pull request is produced by the intake command from the worker record.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-049-handoff-untouched-test",
+      "worktree": "../CreatorStudio-worktrees/t-dev-049-handoff-untouched-test",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-049-01"
+      ],
+      "owned_paths": [
+        "orchestrator/tests/test_dev_claim.py"
+      ],
+      "acceptance_criteria": [
+        "the test named test_an_unreadable_existing_handoff_is_a_problem_not_an_exception also asserts that the bytes of SESSION_HANDOFF.md are identical before and after the call",
+        "no other test is changed and all tests in the file pass",
+        "no file outside the owned path changes"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_claim.py from the repository root",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Intended for a dispatched worker and for publication through the intake command.",
+      "lease": {
+        "acquired": "2026-11-24T08:13:30+00:00",
+        "expires": "2026-11-25T08:13:30+00:00"
       }
     }
   ]

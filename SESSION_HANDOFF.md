@@ -89,6 +89,7 @@ Status record dated **2026-11-18**. Baseline commit **`93a9a829e073`** on `main`
 | T-RSV-002 Safe, validated DaVinci Resolve execution layer (M-RSV-02) | claude:repository-coordinator | `task/t-rsv-002` | ACTIVE | 2026-11-22T16:00:00+00:00 | orchestrator/resolve_executor/, orchestrator/tests/test_resolve_executor.py, AI_Creator_Studio_Documentation/RESOLVE_INTEGRATION.md, AI_Creator_Studio_Documentation/TECHNICAL_ARCHITECTURE.md, PROJECT_STATUS.json, ACTIVE_TASKS.json, DEVELOPMENT_TRACKER.json, SESSION_HANDOFF.md, CHANGELOG.md |
 | T-EDT-001 Validated edit-plan schema and Editor planning workflow (M-EDT-01, offline) | claude:repository-coordinator | `task/t-edt-001-edit-plan` | ACTIVE | 2026-11-23T17:00:00+00:00 | orchestrator/edit_plan/, orchestrator/tests/test_edit_plan.py, AI_Creator_Studio_Documentation/EDITING_ENGINE.md |
 | T-DEV-048 dev_supervisor: intake command that turns a finished worker's branch into a reviewed-ready pull request | claude:main-coordinator | `task/t-dev-048-worker-intake` | ACTIVE | 2026-11-25T07:51:25+00:00 | orchestrator/dev_supervisor/intake.py, orchestrator/tests/test_dev_intake.py |
+| T-DEV-049 dev_supervisor: claim test also asserts the handoff file is untouched when it cannot be read (third dispatched worker task) | claude:main-coordinator | `task/t-dev-049-handoff-untouched-test` | ACTIVE | 2026-11-25T08:13:30+00:00 | orchestrator/tests/test_dev_claim.py |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
