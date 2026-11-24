@@ -3115,7 +3115,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-058-mission-record",
       "worktree": "../CreatorStudio-worktrees/t-dev-058-mission-record",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3136,10 +3136,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission.",
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission. Merged as PR #200 (independent review of diff e56e4865d43fa91a).",
       "lease": {
         "acquired": "2026-11-24T18:04:04+00:00",
-        "expires": "2026-11-25T18:04:04+00:00"
+        "expires": "2026-11-25T18:04:04+00:00",
+        "released": "2026-11-24T18:15:00+00:00"
       }
     }
   ]
