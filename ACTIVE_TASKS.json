@@ -367,6 +367,26 @@
         "orchestrator/dev_supervisor/model_allocation.py",
         "orchestrator/tests/test_dev_model_allocation.py"
       ]
+    },
+    "AGR-DEV-044-01": {
+      "description": "integrate.py is part of the dev_supervisor package owned by claude:repository-coordinator. The second overnight mission (2026-11-24, Priority 4) directs Main to identify and fix missing integration points in the task-to-merge loop. Under that mandate T-DEV-044 may edit integrate.py and its test file, only to extend the read-only preflight. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-044"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/integrate.py",
+        "orchestrator/tests/test_dev_integrate.py"
+      ]
+    },
+    "AGR-DEV-045-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The second overnight mission (2026-11-24, Priority 4) directs Main to identify and fix the missing integration points of the task-to-merge loop. Under that mandate T-DEV-045 may add claim.py and its test file in dev_supervisor, as a new module that edits only the registry and handoff files of the checkout it is run in. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-045"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/claim.py",
+        "orchestrator/tests/test_dev_claim.py"
+      ]
     }
   },
   "tasks": [
@@ -2385,7 +2405,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-042-worker-gateway",
       "worktree": "../CreatorStudio-worktrees/t-dev-042-worker-gateway",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2406,10 +2426,11 @@
         "integrate --preflight passes on the branch",
         "a credential-pattern scan of the added lines finds nothing"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence is in the PR description and in the verified route registry entry that cites it.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence is in the PR description and in the verified route registry entry that cites it. Completed 2026-11-24: merged as PR #153 (all eight gates PASS; independent review bound to diff 6857b708c4551bb0). Documentation only; evidence in WORKER_GATEWAY.md.",
       "lease": {
         "acquired": "2026-11-24T06:28:37+00:00",
-        "expires": "2026-11-25T06:28:37+00:00"
+        "expires": "2026-11-25T06:28:37+00:00",
+        "released": "2026-11-24T06:52:46+00:00"
       }
     },
     {
@@ -2444,6 +2465,75 @@
       "lease": {
         "acquired": "2026-11-24T06:36:49+00:00",
         "expires": "2026-11-25T06:36:49+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-044",
+      "title": "dev_supervisor: preflight also checks the branch name and that SESSION_HANDOFF.md is current",
+      "description": "The T-DEV-042 claim PR failed twice for reasons the merge preflight did not report: the head branch used a prefix the pr_state gate refuses, and ACTIVE_TASKS.json changed without regenerating SESSION_HANDOFF.md (CI's handoff --check). Both are decidable offline. Extend the preflight with a branch-name check (the same prefix rule as the real pr_state gate) and a handoff-current check (the same check CI runs), reported as gates 1 and 2 of the preflight table, so the failures cost no push and no CI run.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-044-preflight-handoff",
+      "worktree": "../CreatorStudio-worktrees/t-dev-044-preflight-handoff",
+      "status": "COMPLETED",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-044-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/integrate.py",
+        "orchestrator/tests/test_dev_integrate.py"
+      ],
+      "acceptance_criteria": [
+        "preflight reports a branch_name gate that fails for a head branch outside the real gate's prefixes and passes for the allowed ones, using the same constant as the real pr_state gate",
+        "preflight reports a handoff_current gate that fails when the committed registry or status changed and SESSION_HANDOFF.md is stale, using the same check CI runs; an unreadable state is UNKNOWN, never PASS",
+        "the existing preflight gates, the real evaluation and exit codes are unchanged",
+        "the preflight stays read-only: no write, no lock, no network"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p test_dev_integrate.py from orchestrator/",
+        "affected suites: test_dev_review, test_dev_standing_autonomy",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: PR #149 (closed, replaced by #150) used a refused head-branch prefix and lacked the regenerated SESSION_HANDOFF.md; the preflight run on it before the push reported PREFLIGHT_PASS. Completed 2026-11-24: merged as PR #155 (all eight gates PASS; independent review bound to diff c38ea4f74733ac62 after one round of changes). 141 tests in test_dev_integrate; 8 of 8 mutations caught.",
+      "lease": {
+        "acquired": "2026-11-24T06:47:19+00:00",
+        "expires": "2026-11-25T06:47:19+00:00",
+        "released": "2026-11-24T07:02:26+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-045",
+      "title": "dev_supervisor: claim command that registers a task from a spec and applies the claim-PR rules",
+      "description": "Main registers every task by hand-written scripts today, and the claim rules are learned by failing: one task per claim PR, a task/ head branch, SESSION_HANDOFF.md regenerated in the same commit, no other task id in the agreement text, and a unique task id. Add a claim module (python -B -m dev_supervisor.claim spec.json [--write]) that validates a task spec against those rules, previews the registry record in a dry run, and with --write adds the task and its agreement to ACTIVE_TASKS.json and regenerates SESSION_HANDOFF.md exactly as governance does. It never commits, pushes or opens a pull request. This closes the 'Main registers task' step of the autonomous loop.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-045-claim-command",
+      "worktree": "../CreatorStudio-worktrees/t-dev-045-claim-command",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-045-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/claim.py",
+        "orchestrator/tests/test_dev_claim.py"
+      ],
+      "acceptance_criteria": [
+        "a spec that breaks a claim rule (duplicate task id, head branch outside the allowed prefixes, absolute or parent-relative paths, another task id in the agreement text, a credential-shaped string, a missing field) is refused with the rule named and nothing is written",
+        "a valid spec in dry-run mode prints the record and writes nothing; with --write it adds exactly one task and one agreement to ACTIVE_TASKS.json, preserves the file's line endings, regenerates SESSION_HANDOFF.md, and the result passes the governance registry validation and the handoff check",
+        "the record it writes is accepted by the integrate preflight scope gate as a registry-only claim",
+        "it never runs git commit, git push, gh or any network call"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p test_dev_claim.py from orchestrator/",
+        "a test that runs the written result through governance validation and handoff --check",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: the claim PRs for T-DEV-042 and T-DEV-043 failed or were rebuilt four times on rules that are decidable from the spec.",
+      "lease": {
+        "acquired": "2026-11-24T07:06:24+00:00",
+        "expires": "2026-11-25T07:06:24+00:00"
       }
     }
   ]

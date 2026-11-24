@@ -760,16 +760,46 @@ def evaluate(pr: int, gh: Callable, git: Callable, base: str = "main",
     return gates, info
 
 
-PREFLIGHT_GATES = ((4, "scope"), (6, "secrets"), (7, "forbidden_files"), (8, "reserved"))
+def _gate_branch_name(branch: str) -> Gate:
+    """The offline part of the real pr_state gate: the head branch must start with one of BRANCH_PREFIXES."""
+    if str(branch).startswith(BRANCH_PREFIXES):
+        return Gate(1, "branch_name", PASS, "head branch prefix ok")
+    return Gate(1, "branch_name", FAIL, f"head branch prefix not in {list(BRANCH_PREFIXES)}")
+
+
+def _gate_handoff_current(git: Callable) -> Gate:
+    """What CI's ``governance handoff --check`` decides, from the committed HEAD: SESSION_HANDOFF.md must equal the
+    handoff rendered from PROJECT_STATUS.json and ACTIVE_TASKS.json. UNKNOWN when anything cannot be read or rendered."""
+    try:
+        from governance import handoff as handoff_mod
+    except Exception as e:
+        return Gate(2, "handoff_current", UNKNOWN, _clean(f"governance handoff not importable: {type(e).__name__}"))
+    blobs: Dict[str, str] = {}
+    for name in ("PROJECT_STATUS.json", "ACTIVE_TASKS.json", "SESSION_HANDOFF.md"):
+        rc, out = git(["show", f"HEAD:{name}"])
+        if rc != 0:
+            return Gate(2, "handoff_current", UNKNOWN, f"{name} is not readable at HEAD")
+        blobs[name] = out.decode("utf-8", "replace")
+    try:
+        rendered = handoff_mod.render(json.loads(blobs["PROJECT_STATUS.json"]), json.loads(blobs["ACTIVE_TASKS.json"]))
+    except Exception as e:
+        return Gate(2, "handoff_current", UNKNOWN, _clean(f"cannot render the handoff: {type(e).__name__}"))
+    crlf, lf = chr(13) + chr(10), chr(10)    # the same normalisation as governance/cli.py _norm: only CRLF becomes LF
+    if blobs["SESSION_HANDOFF.md"].replace(crlf, lf) != rendered.replace(crlf, lf):
+        return Gate(2, "handoff_current", FAIL, "SESSION_HANDOFF.md is stale; run: python -B -m governance handoff --write")
+    return Gate(2, "handoff_current", PASS, "SESSION_HANDOFF.md matches the registry and status files")
+
+
+PREFLIGHT_GATES = ((1, "branch_name"), (2, "handoff_current"), (4, "scope"), (6, "secrets"), (7, "forbidden_files"), (8, "reserved"))
 
 
 def preflight(git: Callable, base: str = "main", lukas_word: str = "") -> Tuple[List[Gate], Dict[str, Any]]:
-    """The offline gates (scope, secrets, forbidden files, reserved paths) on the LOCAL branch against origin/<base>.
+    """The offline gates (branch name, handoff currency, scope, secrets, forbidden files, reserved paths) on the LOCAL branch against origin/<base>.
 
     Needs no pull request, no gh, no lock, and changes neither the working tree nor any branch (like a dry run it runs
     ``git fetch``, which only updates remote-tracking refs). It uses the same gate functions as a real evaluation, on the
     committed HEAD (uncommitted changes are reported in ``info['dirty']`` and are NOT evaluated). A PASS here means those
-    four gates would pass on the pushed head. CI, merge state and review need the pull request and are not checked.
+    gates would pass on the pushed head. CI, merge state and review need the pull request and are not checked.
     Never raises: a failure to read git state turns every gate into UNKNOWN."""
     info: Dict[str, Any] = {"head": "", "diff_sha": "", "branch": "", "dirty": False}
 
@@ -797,7 +827,8 @@ def preflight(git: Callable, base: str = "main", lukas_word: str = "") -> Tuple[
         if ctx.git_error:
             return unknown(ctx.git_error)
         owners: List[str] = []
-        checks = ((4, "scope", lambda: _gate_scope(ctx, git, owners)), (6, "secrets", lambda: _gate_secrets(ctx)),
+        checks = ((1, "branch_name", lambda: _gate_branch_name(branch)), (2, "handoff_current", lambda: _gate_handoff_current(git)),
+                  (4, "scope", lambda: _gate_scope(ctx, git, owners)), (6, "secrets", lambda: _gate_secrets(ctx)),
                   (7, "forbidden_files", lambda: _gate_forbidden(ctx)),
                   (8, "reserved", lambda: _gate_reserved(ctx, lukas_word)))
         gates: List[Gate] = []
