@@ -335,6 +335,18 @@
         "orchestrator/dev_supervisor/integrate.py",
         "orchestrator/tests/test_dev_integrate.py"
       ]
+    },
+    "AGR-DEV-041-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The overnight mission (2026-11-24, Phase 4) directs Main to leave an accurate handoff and to keep records truthful. Under that mandate T-DEV-041 may add WORKER_DISPATCH.md and add status notes to LIVE_AUTONOMY.md, SESSION_POLICY.md and CONTEXT_MANAGEMENT.md in dev_supervisor, documentation only. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-041"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/LIVE_AUTONOMY.md",
+        "orchestrator/dev_supervisor/SESSION_POLICY.md",
+        "orchestrator/dev_supervisor/CONTEXT_MANAGEMENT.md"
+      ]
     }
   },
   "tasks": [
@@ -2309,6 +2321,41 @@
         "full per-file validation on the exact head"
       ],
       "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 4. Evidence for the need: in this mission a credential-shaped test dummy failed CI's secret scan twice (T-DEV-032, T-DEV-038) and a registry close-out on a new branch was refused by the scope gate (T-DEV-039); each cost a push, a CI run and a re-review. Preflight does not replace the gates and does not check CI, merge state or review, which need the pull request. Merged as PR #144 (merge commit e0484a7, final head 734acf7, content diff hash c4c9179d249fd05b). Two independent reviews by fresh subagents, both APPROVE (the first with two notes that were fixed: accurate 'writes nothing' wording and a failing git status counting as dirty). Evidence (OBSERVED by the author session): per-file validation on the exact head 3390 tests, no failures; nine mutation checks plus one more after the fixes, all caught; CI validate green; merged through the integration tool with all eight gates PASS. Open follow-ups (not blocking): no preflight test uses a wave/ branch or CHANGELOG.md; git status could use --no-optional-locks; a dirty tree prints the warning above the result line but still reports PREFLIGHT_PASS; the variable head in _collect_git is unused. Preflight does not check CI, merge state or review."
+    },
+    {
+      "id": "T-DEV-041",
+      "title": "dev_supervisor: document worker dispatch, route allocation, proposals and the merge preflight; mark stale live-proof docs as historical",
+      "description": "Documentation for the overnight mission's results. Nothing documents the worker dispatch gate, the verified route registry format, allocation by role, autonomy proposals or the merge preflight, and three documents still present live proofs as runnable that the dispatch gate and the probe guards now refuse (the live autonomy harness on haiku, session_policy live-probe, context_monitor live-compaction-probe). Add one page WORKER_DISPATCH.md that states what is implemented, what is NOT demonstrated and how a route would be verified, and add a short status note to the three stale documents. Documentation only; no code.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-041-dispatch-docs",
+      "worktree": "../CreatorStudio-worktrees/t-dev-041-dispatch-docs",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-24T02:26:05+00:00",
+        "expires": "2026-11-25T02:26:05+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-041-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/LIVE_AUTONOMY.md",
+        "orchestrator/dev_supervisor/SESSION_POLICY.md",
+        "orchestrator/dev_supervisor/CONTEXT_MANAGEMENT.md"
+      ],
+      "acceptance_criteria": [
+        "WORKER_DISPATCH.md states, with evidence labels, what is implemented and what is NOT demonstrated, including that no route is verified and dispatch is refused",
+        "every rule and command in the page matches the code (checked line by line against dispatch_routing, model_allocation, autonomy, integrate)",
+        "LIVE_AUTONOMY.md, SESSION_POLICY.md and CONTEXT_MANAGEMENT.md say that the documented live proofs now refuse to run and that their 2026-11-19 results are historical, without deleting that evidence",
+        "no code, test, launcher or credential file changes; no secret appears in the documents"
+      ],
+      "test_requirements": [
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 4. Evidence for the need: grep found no document that mentions verified_routes.json, --allocation-role or --preflight; three documents still describe the harness and two live probes as runnable. The page is a map of the code and the PR comments, not new evidence."
     }
   ]
 }
