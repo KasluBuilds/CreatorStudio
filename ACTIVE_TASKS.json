@@ -3163,7 +3163,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-059-retire-lost-worker",
       "worktree": "../CreatorStudio-worktrees/t-dev-059-retire-lost-worker",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3190,10 +3190,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the overnight preparation mission. Unblocks dispatch after a worker is orphaned (T-DEV-056's worker) without consuming its last restart.",
+      "integration_notes": "Claimed 2026-11-24 under the overnight preparation mission. Unblocks dispatch after a worker is orphaned (T-DEV-056's worker) without consuming its last restart. Merged as PR #203 (independent review of diff 6584919f43b72e8e).",
       "lease": {
         "acquired": "2026-11-24T21:05:27+00:00",
-        "expires": "2026-11-25T21:05:27+00:00"
+        "expires": "2026-11-25T21:05:27+00:00",
+        "released": "2026-11-24T21:15:11+00:00"
       }
     }
   ]
