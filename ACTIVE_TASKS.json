@@ -3223,7 +3223,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-060-overnight-record",
       "worktree": "../CreatorStudio-worktrees/t-dev-060-overnight-record",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3244,10 +3244,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the overnight preparation mission.",
+      "integration_notes": "Claimed 2026-11-24 under the overnight preparation mission. Merged as PR #208 (independent review of diff ae38c722a79077b1).",
       "lease": {
         "acquired": "2026-11-24T21:20:17+00:00",
-        "expires": "2026-11-25T21:20:17+00:00"
+        "expires": "2026-11-25T21:20:17+00:00",
+        "released": "2026-11-24T21:45:11+00:00"
       }
     },
     {
