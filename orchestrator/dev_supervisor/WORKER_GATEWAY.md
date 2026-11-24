@@ -9,7 +9,7 @@ Companion pages: `WORKER_DISPATCH.md` (the dispatch gate and the registry file),
 | Question | Answer |
 |---|---|
 | Is a worker route verified? | Yes, one: provider `gemini`, model `gemini/gemini-3.1-flash-lite` (the gateway's model id, which is the string the registry and `--model` use), on the **worker gateway** below. The registry entry is written in the state directory, not in the repository; it is not part of this change. Two complete Claude Code round trips passed (OBSERVED, section 4). |
-| Has any worker run through the dispatch path? | Three times (OBSERVED, sections 7 and 8): the first run failed on a provider 503 and Main finished its task; the second and third each completed a small task alone, and the third was published with the intake command and merged through the gates. **Autonomous operation is not declared complete**: task selection and review spawning are still manual, a failed worker restarts only on an explicit `restart` command (PR #179, never yet used on a real worker), and no dispatched independent reviewer exists. |
+| Has any worker run through the dispatch path? | Three times (OBSERVED, sections 7 and 8): the first run failed on a provider 503 and Main finished its task; the second and third each completed a small task alone, and the third was published with the intake command and merged through the gates. **Autonomous operation is not declared complete**: task selection and review spawning are still manual, a failed worker restarts only on an explicit `restart` command (PR #179; used once on a real failed worker, which then failed again on a provider 503, section 9), and no dispatched independent reviewer exists. |
 | Is the exposed gateway key still valid? | No. It was rotated on 2026-11-24 (section 2). |
 | Is the main gateway safe from other machines? | **No, and unchanged.** It answers inference requests without any credential on all network interfaces (section 3). That needs the owner's decision. |
 | Can the main gateway run the verified route? | No. The installed version (3.8.49) fails Claude Code tool turns on Gemini 3 routes. Version 3.8.54 passed on `gemini-3.1-flash-lite` (INFERRED to be the release fix, because the release notes name it; the same model was not re-tested on 3.8.49). |
@@ -88,7 +88,7 @@ Labels: OBSERVED = read from the Supervisor event log, the worker's stream log o
 
 **Next steps.**
 1. Re-dispatch one small task with the prompt telling the worker to use single simple commands and the root-level test command, and to commit before finishing; compare with this run.
-2. Done afterwards: the `restart <worker-id> [--yes]` command (PR #179, dry run by default, same dispatch gate, the lifecycle restart budget and backoff, `auto_restart` still off). It has not yet been used on a real failed worker.
+2. Done afterwards: the `restart <worker-id> [--yes]` command (PR #179, dry run by default, same dispatch gate, the lifecycle restart budget and backoff, `auto_restart` still off). It was first used on a real failed worker later the same day (section 9).
 3. Owner decisions in section 6 (main gateway exposure, upgrade, Kiro re-authorisation).
 4. A reviewer route of capability 3 or more must be verified before a dispatched reviewer is possible.
 
@@ -119,7 +119,7 @@ The same route was unreliable in the first run and reliable in the third. The ca
 - Task selection, writing the spec and the worker prompt; creating the branch and worktree; committing, pushing and opening the claim and close-out pull requests; running `integrate --yes`.
 - The verification in step 5, and spawning the reviewer in step 7.
 - A **dispatched independent reviewer**: no verified route reaches capability 3, the minimum for the review role.
-- **Restart of a failed worker**: `python -B -m dev_supervisor restart <worker-id> [--yes]` exists (IMPLEMENTED, PR #179: refuses a worker that is active or BLOCKED, past its restart budget or inside its backoff, whose route no longer passes the dispatch gate, or whose prompt file or worktree is gone; the running loop applies the gate again). It was exercised only in tests with fake launchers. `auto_restart` stays off, so nothing restarts without that command.
+- **Restart of a failed worker**: `python -B -m dev_supervisor restart <worker-id> [--yes]` exists (IMPLEMENTED, PR #179: refuses a worker that is active or BLOCKED, past its restart budget or inside its backoff, whose route no longer passes the dispatch gate, or whose prompt file or worktree is gone; the running loop applies the gate again). It was exercised in tests with fake launchers and once on a real failed worker (section 9: the worker started again, then ended on the same provider 503). `auto_restart` stays off, so nothing restarts without that command.
 - **Unattended operation**: nothing starts the next task by itself, and the route's reliability is not established.
 - Only small, precisely specified tasks have been tried (2 files at most, a prompt that names the exact change). Nothing says a free capability-2 model can do open-ended work.
 
@@ -130,3 +130,12 @@ The same route was unreliable in the first run and reliable in the third. The ca
 2. Supervisor: from `orchestrator/`, with `ANTHROPIC_BASE_URL` set to the worker gateway and a placeholder `ANTHROPIC_AUTH_TOKEN`, run `python -B -m dev_supervisor start --yes --no-main`.
 3. Route registry: `<state dir>/verified_routes.json` persists; it is not in the repository.
 4. A worker is assigned with `assign ... --allocation-role implementation --yes` and a prompt file that tells it to use single simple shell commands and to commit but not push.
+
+## 9. Later on 2026-11-24: first real restart, and what stopped T-DEV-056
+
+Labels as in section 7.
+
+- **Worker run 4 (T-DEV-056, `w-1c6bd827e3`), OBSERVED.** A two-file change taken from the Known limits list (preflight reads `git status` without optional locks). It was dispatched through `assign --allocation-role implementation`. It ended FAILED on a provider 503 ("high demand") after about two minutes, with no tool call and no change in its worktree.
+- **First real use of `restart`, OBSERVED.** The restart request was queued, and the long-running Supervisor loop answered `unknown op 'restart'`. That loop had been started at 07:33 local time (06:33 UTC), before the restart operation was merged, and a running loop does not load merged code. After the loop was stopped (REPORTED by Main from the process list and the worker list at that moment: no worker was running and Main was not attached) and started again from the merged checkout, `restart w-1c6bd827e3 --yes` queued, the loop restarted the worker, and it was RUNNING again within seconds (restart 1 of 3). The restarted run ended on the same 503 after about two minutes, again with no change. **Lesson:** merging code that the loop executes does not change a running loop; restart the loop after such a merge.
+- **No further retry.** The route was saturated twice in a row; the mission rule is not to hammer an unavailable provider, so the worker was left FAILED (restart budget used: 1 of 3). T-DEV-056 is NOT completed and no work of it exists. Its claim stays ACTIVE.
+- **Memory floor, REPORTED by Main from its own command output (not in the event log).** While free memory sat near 650 MB, `assign` was refused by the memory guard (`memory guard: 644 MB free, at least 1024 MB required`). The dispatch went through when free memory rose to about 1.5 GB. The refusal worked as designed; the cause of the low memory was other applications on the machine, which were not touched.
