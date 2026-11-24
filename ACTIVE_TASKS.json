@@ -300,7 +300,7 @@
       ]
     },
     "AGR-DEV-038-01": {
-      "description": "The dev_supervisor package and cli.py are owned by claude:repository-coordinator. The overnight mission (2026-11-24, Phase 3) directs Main to implement model-allocation rules and make the selection observable in worker records. Under that mandate T-DEV-038 may create model_allocation.py and its tests, and edit worker_spawner.py (optional roles and capability fields), lifecycle.py (an allocation field on the worker record) and cli.py (assign with a role), with their tests, only for that purpose. REPORTED: the mission text is the basis.",
+      "description": "The dev_supervisor package and cli.py are owned by claude:repository-coordinator. The overnight mission (2026-11-24, Phase 3) directs Main to implement model-allocation rules and make the selection observable in worker records. Under that mandate T-DEV-038 may create model_allocation.py and its tests, and edit worker_spawner.py (optional roles and capability fields), lifecycle.py (an allocation field on the worker record) and cli.py (assign with a role), with their tests, only for that purpose. REPORTED: the mission text is the basis. Ownership amendment 2026-11-24: workers.py added so the worker record can carry a structured, credential-free allocation field (additive, optional, backward compatible).",
       "task_ids": [
         "T-DEV-038"
       ],
@@ -312,7 +312,8 @@
         "orchestrator/dev_supervisor/lifecycle.py",
         "orchestrator/tests/test_dev_lifecycle.py",
         "orchestrator/dev_supervisor/cli.py",
-        "orchestrator/tests/test_dev_cli.py"
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/dev_supervisor/workers.py"
       ]
     },
     "AGR-DEV-039-01": {
@@ -2210,7 +2211,8 @@
         "orchestrator/dev_supervisor/lifecycle.py",
         "orchestrator/tests/test_dev_lifecycle.py",
         "orchestrator/dev_supervisor/cli.py",
-        "orchestrator/tests/test_dev_cli.py"
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/dev_supervisor/workers.py"
       ],
       "acceptance_criteria": [
         "allocation is deterministic and pure: the same registry and role give the same route",
@@ -2224,7 +2226,7 @@
         "affected suites: test_dev_worker_spawner, test_dev_lifecycle, test_dev_cli, test_dev_dispatch_routing",
         "full per-file validation on the exact head"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 3. NOT demonstrated: no route is verified and verified_routes.json does not exist, so no allocation can succeed in production yet; tests use fake registries. A route enters the registry only with recorded evidence of a full Claude Code prompt, tool-result and final-response round trip; this task does not create that evidence."
+      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 3. NOT demonstrated: no route is verified and verified_routes.json does not exist, so no allocation can succeed in production yet; tests use fake registries. A route enters the registry only with recorded evidence of a full Claude Code prompt, tool-result and final-response round trip; this task does not create that evidence. Ownership amendment 2026-11-24: workers.py added for an optional allocation field on the Worker record; its tests live in test_dev_lifecycle.py, already owned."
     },
     {
       "id": "T-DEV-039",
