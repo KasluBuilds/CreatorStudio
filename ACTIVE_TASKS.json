@@ -489,6 +489,16 @@
       "paths": [
         "orchestrator/tests/test_dev_cli.py"
       ]
+    },
+    "AGR-DEV-055-01": {
+      "description": "T-DEV-055 adds the module specdraft.py and its test file only; it reads PROJECT_STATUS.json and ACTIVE_TASKS.json and writes nothing in the repository.",
+      "task_ids": [
+        "T-DEV-055"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/specdraft.py",
+        "orchestrator/tests/test_dev_specdraft.py"
+      ]
     }
   },
   "tasks": [
@@ -2956,6 +2966,42 @@
       "lease": {
         "acquired": "2026-11-24T16:38:55+00:00",
         "expires": "2026-11-25T16:38:55+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-055",
+      "title": "dev_supervisor: draft a claim spec for a proposed milestone",
+      "description": "Phase 1 of the autonomy mission: Main still writes every task specification by hand. Add a read-only command that takes a milestone id from PROJECT_STATUS.json and prints a claim-spec draft for the claim command. It copies the milestone title and description verbatim, proposes the next free task id, branch, worktree and agreement id from the existing naming rules, and lists every field it cannot know (owned paths, acceptance criteria, agreement text) under missing instead of inventing it. A milestone with open questions or blockers is reported as needs_decision. The draft is never claimed or written to the registry by this command.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-055-spec-draft",
+      "worktree": "../CreatorStudio-worktrees/t-dev-055-spec-draft",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-055-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/specdraft.py",
+        "orchestrator/tests/test_dev_specdraft.py"
+      ],
+      "acceptance_criteria": [
+        "for an eligible milestone the output has id, title, description, branch, worktree and agreement_id filled by rule and a missing list naming owned_paths, acceptance_criteria and agreement",
+        "no field is invented: anything not derivable from the milestone record or the naming rules is absent and listed under missing",
+        "a milestone with open_questions or blockers, unknown id, or a done milestone is reported as needs_decision or refused with a reason",
+        "the command writes no file and runs no git or gh command",
+        "the next free task id and branch never collide with an existing task in ACTIVE_TASKS.json"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p test_dev_specdraft.py from orchestrator/",
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the long-running autonomy mission, phase 1 (automate task selection).",
+      "lease": {
+        "acquired": "2026-11-24T17:05:40+00:00",
+        "expires": "2026-11-25T17:05:40+00:00"
       }
     }
   ]
