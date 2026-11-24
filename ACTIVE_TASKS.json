@@ -387,6 +387,16 @@
         "orchestrator/dev_supervisor/claim.py",
         "orchestrator/tests/test_dev_claim.py"
       ]
+    },
+    "AGR-DEV-046-01": {
+      "description": "The dev_supervisor package is owned by claude:repository-coordinator. The second overnight mission (2026-11-24) directs Main to record provider and model verification evidence, the outstanding blockers and the exact next steps. Under that mandate T-DEV-046 may update WORKER_DISPATCH.md and WORKER_GATEWAY.md in dev_supervisor, documentation only. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-046"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ]
     }
   },
   "tasks": [
@@ -2534,6 +2544,40 @@
       "lease": {
         "acquired": "2026-11-24T07:06:24+00:00",
         "expires": "2026-11-25T07:06:24+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-046",
+      "title": "dev_supervisor: record the first dispatched worker run, its failure mode and the new loop tools",
+      "description": "Documentation of the first real worker run through the production dispatch path (2026-11-24): what the gate, the isolated worker gateway and the authority hook did, how the run ended (a provider 503 after a correct partial implementation; no automatic restart by design), who finished the task, and what that shows about the free route's reliability. Also documents the claim command, the extended preflight gates and the independent flag, states the answer to whether role allocation reduced general-purpose usage (it cannot be measured from one run), and lists the next steps. Documentation only.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-046-worker-run-record",
+      "worktree": "../CreatorStudio-worktrees/t-dev-046-worker-run-record",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-046-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ],
+      "acceptance_criteria": [
+        "the pages state, with evidence labels, what the first worker run showed and that the run ended FAILED on a provider 503 and was finished by Main, naming exactly which parts the worker wrote",
+        "they document the claim command, the two extra preflight gates and the independent flag as they are implemented, and say that no full worker-only task-to-merge cycle has been demonstrated",
+        "they answer whether role allocation reduced general-purpose usage honestly (not measurable from one run) and list the next steps",
+        "no credential or fragment appears; no code, test or launcher changes"
+      ],
+      "test_requirements": [
+        "python -B -m governance validate from orchestrator/",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command (first use). Evidence is the Supervisor event log and the worker stream, summarised in the page.",
+      "lease": {
+        "acquired": "2026-11-24T07:21:32+00:00",
+        "expires": "2026-11-25T07:21:32+00:00"
       }
     }
   ]
