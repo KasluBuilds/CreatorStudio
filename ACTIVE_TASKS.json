@@ -397,6 +397,16 @@
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
         "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
       ]
+    },
+    "AGR-DEV-047-01": {
+      "description": "claim.py belongs to the dev_supervisor package owned by claude:repository-coordinator and was added earlier in the second overnight mission. Under that mission's mandate to fix integration points of the task-to-merge loop, T-DEV-047 may edit claim.py and its test file, only to guard the read of the existing handoff. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-047"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/claim.py",
+        "orchestrator/tests/test_dev_claim.py"
+      ]
     }
   },
   "tasks": [
@@ -2450,7 +2460,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-043-review-independence",
       "worktree": "../CreatorStudio-worktrees/t-dev-043-review-independence",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2471,10 +2481,11 @@
         "python -B -I -m unittest discover -s tests -p test_dev_cli.py from orchestrator/",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Implemented by a dispatched worker on a verified zero-cost route when the dispatch record shows it; otherwise by Main, disclosed in the PR.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Implemented by a dispatched worker on a verified zero-cost route when the dispatch record shows it; otherwise by Main, disclosed in the PR. Completed 2026-11-24: merged as PR #160 (all eight gates PASS; independent review bound to diff 5da46b0e002c61cf after one round). Implemented by dispatched worker w-b88c568c18 on gemini/gemini-3.1-flash-lite (the field, its computation and the main test); the worker run ended FAILED on a provider 503 before running its tests; Main updated one existing test, ran the suites and added two tests. Run record: WORKER_GATEWAY.md section 7.",
       "lease": {
         "acquired": "2026-11-24T06:36:49+00:00",
-        "expires": "2026-11-25T06:36:49+00:00"
+        "expires": "2026-11-25T06:36:49+00:00",
+        "released": "2026-11-24T07:40:43+00:00"
       }
     },
     {
@@ -2579,6 +2590,38 @@
       "lease": {
         "acquired": "2026-11-24T07:21:32+00:00",
         "expires": "2026-11-25T07:21:32+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-047",
+      "title": "dev_supervisor: claim command reports an unreadable existing handoff instead of raising (second dispatched worker task)",
+      "description": "A review note on the claim command: claim() reads the existing SESSION_HANDOFF.md bytes before its try block, so an unreadable existing handoff raises OSError instead of returning a problem. Move that read inside the guarded section and report it as a problem with nothing written, and add a test. Small and self-contained; also the second task dispatched to a worker on the verified free route, with the prompt changes learned from the first run (single simple commands, run the tests from the repository root, commit before finishing).",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-047-claim-handoff-read",
+      "worktree": "../CreatorStudio-worktrees/t-dev-047-claim-handoff-read",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-047-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/claim.py",
+        "orchestrator/tests/test_dev_claim.py"
+      ],
+      "acceptance_criteria": [
+        "an unreadable existing SESSION_HANDOFF.md makes claim() return a problem and write nothing, with write=True, instead of raising",
+        "behaviour for a readable, a missing and a restored handoff is unchanged and all existing tests pass",
+        "no file outside the two owned paths changes"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s orchestrator/tests -p test_dev_claim.py from the repository root",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command. Intended for a dispatched worker; if the worker cannot finish, Main finishes it and the pull request says so.",
+      "lease": {
+        "acquired": "2026-11-24T07:37:08+00:00",
+        "expires": "2026-11-25T07:37:08+00:00"
       }
     }
   ]
