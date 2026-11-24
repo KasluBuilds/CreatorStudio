@@ -55,7 +55,53 @@ class TestAllocationChoice(unittest.TestCase):
         self.assertEqual(allocate("review", [a, b], author_route=("gemini", "auto/b")).model, "auto/a")
         only = allocate("review", [a], author_route=("gemini", "auto/a"))
         self.assertEqual(only.model, "auto/a")
-        self.assertIn("author's own route is the only fit", only.reason)
+        self.assertIn("the author's own route and no other route fits", only.reason)
+
+    def test_a_different_route_beats_the_authors_even_when_the_authors_is_cheaper(self):
+        """Independence comes first for review; capability only orders routes inside each group."""
+        a = route("auto/a", capability=3, roles=("review",))
+        b = route("auto/b", capability=4, roles=("review",))
+        got = allocate("review", [a, b], author_capability=3, author_route=("gemini", "auto/a"))
+        self.assertEqual(got.model, "auto/b")
+        self.assertNotIn("author's own", got.reason)
+        self.assertIn("2 route(s) fit", got.reason)
+
+    def test_the_author_route_is_compared_without_regard_to_case_or_padding(self):
+        a = route("auto/Coding", capability=3, roles=("review",))
+        b = route("auto/b", capability=3, roles=("review",))
+        self.assertEqual(allocate("review", [a, b], author_route=(" GEMINI ", "auto/CODING")).model, "auto/b")
+
+    def test_a_malformed_author_route_is_ignored_not_trusted(self):
+        a = route("auto/a", capability=3, roles=("review",))
+        for bad in (None, "gemini/auto/a", ("gemini",), ("gemini", 5), [1, 2], 7, ("a", "b", "c")):
+            with self.subTest(author_route=bad):
+                self.assertEqual(allocate("review", [a], author_route=bad).model, "auto/a")
+
+    def test_more_credential_shapes_in_evidence_or_model_make_a_route_unusable(self):
+        for evidence in ("gsk_" + "a" * 24, "AIza" + "B" * 35, "xoxb-" + "1" * 12, "Bearer " + "x" * 30):
+            with self.subTest(evidence=evidence[:6]), self.assertRaises(AllocationRefused):
+                allocate("implementation", [route(evidence=evidence, roles=ALL_ROLES)])
+        with self.assertRaises(AllocationRefused):
+            allocate("implementation", [route(model="sk-" + "a" * 20, roles=ALL_ROLES)])
+
+    def test_duplicate_pairs_are_merged_to_the_weakest_claim_whatever_the_order(self):
+        strong = route("auto/d", capability=5, roles=ALL_ROLES, evidence="e-strong")
+        weak = route("auto/d", capability=2, roles=("implementation",), evidence="e-weak")
+        for pair in ([strong, weak], [weak, strong]):
+            with self.subTest(order=[r.evidence for r in pair]):
+                with self.assertRaises(AllocationRefused):
+                    allocate("architecture", pair)                      # the weak entry does not cover it
+                self.assertEqual(allocate("implementation", pair).capability, 2)
+
+    def test_duplicate_pairs_keep_only_the_roles_every_entry_covers(self):
+        a = route("auto/d", capability=5, roles=("implementation",), evidence="e-a")
+        b = route("auto/d", capability=5, roles=("research",), evidence="e-b")
+        for pair in ([a, b], [b, a]):
+            for role in ("implementation", "research"):
+                with self.subTest(order=[r.evidence for r in pair], role=role), self.assertRaises(AllocationRefused):
+                    allocate(role, pair)
+        c = route("auto/d", capability=5, roles=("implementation", "research"), evidence="e-c")
+        self.assertEqual(allocate("implementation", [c, c]).model, "auto/d")      # identical entries merge to themselves
 
     def test_the_choice_is_deterministic_whatever_the_registry_order(self):
         routes = [route("auto/b", "groq", capability=2, roles=ALL_ROLES), route("auto/a", "gemini", capability=2, roles=ALL_ROLES),

@@ -499,9 +499,9 @@ class SupervisorLoop:
                 author_capability=p.get("author_capability") or 0,
                 author_route=tuple(route) if isinstance(route, list) and len(route) == 2 else None)
         except model_allocation.AllocationRefused as exc:
-            return None, "allocation refused: " + str(exc)
+            return None, "allocation refused: " + str(exc)[:200]
         if (alloc.provider, alloc.model) != (p.get("provider"), p.get("model")):
-            return None, "the requested provider and model differ from the allocation for role " + str(role)
+            return None, "the requested provider and model differ from the allocation for the requested role"
         return alloc, None
 
     def process_requests(self) -> List[Dict[str, Any]]:

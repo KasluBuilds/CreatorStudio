@@ -769,6 +769,41 @@ class CliTests(Offline):
         code, out = env.cli("workers", "--json")
         self.assertEqual(json.loads(out)["workers"], [])
 
+    def test_forged_author_fields_in_a_request_never_crash_the_loop_or_change_the_route(self):
+        env = Env(self)
+        self._allocation_registry(env)
+        base = {"role": "worker", "worktree": str(env.wt), "owner_stream": "s", "model": "auto/coding",
+                "provider": "gemini", "allocation_role": "implementation"}
+        forged = ({"author_capability": True}, {"author_capability": "9"}, {"author_capability": [5]},
+                  {"author_capability": 10 ** 40}, {"author_capability": -3}, {"author_route": "gemini/auto/big"},
+                  {"author_route": [1, 2]}, {"author_route": ["a"]}, {"author_route": {"x": 1}},
+                  {"allocation_role": ["implementation"]}, {"allocation_role": "x" * 5000})
+        for i, extra in enumerate(forged):
+            with self.subTest(extra=str(extra)[:40]):
+                cli.enqueue(env.store(), "assign", dict(base, task_id=f"T-F-{i}", branch=f"lane/f{i}",
+                                                        prompt_file=env.prompt_file(), **extra))
+                code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+                self.assertEqual(code, 0, out)                                 # the loop survives every forged request
+        from dev_supervisor.workers import WorkerRegistry
+        for w in WorkerRegistry(env.store()).list():
+            self.assertEqual((w.provider, w.model), ("gemini", "auto/coding"))   # never a different route
+        events = [e for e in env.store().read_events()[0] if e.get("kind") == "request_done"]
+        self.assertTrue(all(len(json.dumps(e)) < 2000 for e in events), "an event echoed untrusted request text")
+
+    def test_an_allocation_never_skips_the_dispatch_gate(self):
+        """A valid allocation with no gateway environment must still create no worker."""
+        env = Env(self)
+        self._allocation_registry(env)
+        env.svc.env = {"PATH": "p"}                                           # no gateway variables: the gate refuses
+        cli.enqueue(env.store(), "assign", {
+            "task_id": "T-X-9", "role": "worker", "branch": "lane/x9", "worktree": str(env.wt), "owner_stream": "s",
+            "model": "auto/coding", "provider": "gemini", "prompt_file": env.prompt_file(),
+            "allocation_role": "implementation"})
+        code, out = env.cli("start", "--yes", "--max-ticks", "1", "--no-main")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(env.worker_launcher.specs, [])
+        self.assertEqual(json.loads(env.cli("workers", "--json")[1])["workers"], [])
+
     def test_a_request_without_an_allocation_role_records_an_empty_allocation(self):
         from dev_supervisor.workers import WorkerRegistry
         env = Env(self)
