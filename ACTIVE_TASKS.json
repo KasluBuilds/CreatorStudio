@@ -298,6 +298,32 @@
         "orchestrator/dev_supervisor/context_monitor.py",
         "orchestrator/dev_supervisor/provider_env.py"
       ]
+    },
+    "AGR-DEV-038-01": {
+      "description": "The dev_supervisor package and cli.py are owned by claude:repository-coordinator. The overnight mission (2026-11-24, Phase 3) directs Main to implement model-allocation rules and make the selection observable in worker records. Under that mandate T-DEV-038 may create model_allocation.py and its tests, and edit worker_spawner.py (optional roles and capability fields), lifecycle.py (an allocation field on the worker record) and cli.py (assign with a role), with their tests, only for that purpose. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-038"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/model_allocation.py",
+        "orchestrator/tests/test_dev_model_allocation.py",
+        "orchestrator/dev_supervisor/worker_spawner.py",
+        "orchestrator/tests/test_dev_worker_spawner.py",
+        "orchestrator/dev_supervisor/lifecycle.py",
+        "orchestrator/tests/test_dev_lifecycle.py",
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/tests/test_dev_cli.py"
+      ]
+    },
+    "AGR-DEV-039-01": {
+      "description": "autonomy.py is part of the dev_supervisor package owned by claude:repository-coordinator. The overnight mission (2026-11-24, Phase 4) directs Main to investigate and fix autonomy next returning nothing and being unable to propose new work. Under that mandate T-DEV-039 may edit autonomy.py and its test file, only to add read-only milestone proposals. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-039"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/autonomy.py",
+        "orchestrator/tests/test_dev_autonomy.py"
+      ]
     }
   },
   "tasks": [
@@ -2156,6 +2182,83 @@
         "full per-file validation on the exact head"
       ],
       "integration_notes": "Merged as PR #133 (merge commit f37e9f7, head 3274e47, diff hash 2ec833da6fe0bdd2). Seven independent review rounds; the last approved the exact head. Per-file validation on the head: 3266 tests, no failures. 32 guard tests use fakes and stub SupervisorLoop methods. NOT demonstrated: a live attached-Main session (BLOCKED until a VS Code terminal is available); context pressure is not wired (None); the flag-off test exercises _guard_tick, not SupervisorLoop.tick. The guard is off unless CREATORSTUDIO_SUPERVISOR_GUARD is 1. SECURITY NOTE: the OmniRoute launcher credential held in the gitignored backup.ps1 was printed into two Claude Code session transcripts on this machine (one earlier session, one in the session that built this task). A scan found it in no tracked file on origin/main or the open PR branches and in no scratch file. Recommended: rotate it with a coordinated update of both the gateway and backup.ps1; do not rotate without that recovery plan."
+    },
+    {
+      "id": "T-DEV-038",
+      "title": "dev_supervisor: model allocation by role from the verified zero-cost route registry (observable, no silent fallback)",
+      "description": "Phase 3 of the overnight mission. A pure allocation policy picks the worker route for a role (implementation, research, test_writing, review, architecture) from the verified zero-cost route registry: the cheapest verified route whose recorded roles and capability fit the role, never a Claude model, never a silent fallback; an independent reviewer's capability is at least the author's. The registry gains optional roles and capability fields. The chosen route is recorded in the worker record (role, provider, model, capability, evidence id, reason) without any credential.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-038-model-allocation",
+      "worktree": "../CreatorStudio-worktrees/t-dev-038-model-allocation",
+      "status": "ACTIVE",
+      "depends_on": [
+        "T-DEV-032"
+      ],
+      "lease": {
+        "acquired": "2026-11-24T00:42:28+00:00",
+        "expires": "2026-11-25T00:42:28+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-038-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/model_allocation.py",
+        "orchestrator/tests/test_dev_model_allocation.py",
+        "orchestrator/dev_supervisor/worker_spawner.py",
+        "orchestrator/tests/test_dev_worker_spawner.py",
+        "orchestrator/dev_supervisor/lifecycle.py",
+        "orchestrator/tests/test_dev_lifecycle.py",
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/tests/test_dev_cli.py"
+      ],
+      "acceptance_criteria": [
+        "allocation is deterministic and pure: the same registry and role give the same route",
+        "a role never receives a Claude model, provider anthropic, a route without recorded zero cost, or a route whose recorded roles or capability do not fit; with no fitting route the result is a refusal with a reason, never a fallback",
+        "an independent reviewer route has capability at least the author's route capability; architecture takes the highest capability, other roles the lowest sufficient one",
+        "assign with a role chooses the route through the allocation and then the existing dispatch gate; a model or provider that disagrees with the allocation is refused",
+        "the worker record shows the allocation (role, provider, model, capability, evidence id, reason) and no credential"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_model_allocation.py' from orchestrator/",
+        "affected suites: test_dev_worker_spawner, test_dev_lifecycle, test_dev_cli, test_dev_dispatch_routing",
+        "full per-file validation on the exact head"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 3. NOT demonstrated: no route is verified and verified_routes.json does not exist, so no allocation can succeed in production yet; tests use fake registries. A route enters the registry only with recorded evidence of a full Claude Code prompt, tool-result and final-response round trip; this task does not create that evidence."
+    },
+    {
+      "id": "T-DEV-039",
+      "title": "dev_supervisor: autonomy next proposes eligible milestone work when nothing is registered",
+      "description": "Phase 4 of the overnight mission. autonomy next only lists registered tasks, steps, waves and workers, so with nothing registered it reports idle and never looks at the milestone plan. Add a read-only proposals list built from PROJECT_STATUS.json: milestones not yet implemented whose dependencies are implemented, with no registered task for them, labelled PROPOSED, with open questions flagged as needing a decision. Proposals never register anything and do not change items, the fingerprint or wait behaviour.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-039-autonomy-proposals",
+      "worktree": "../CreatorStudio-worktrees/t-dev-039-autonomy-proposals",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "lease": {
+        "acquired": "2026-11-24T00:42:28+00:00",
+        "expires": "2026-11-25T00:42:28+00:00"
+      },
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-039-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/autonomy.py",
+        "orchestrator/tests/test_dev_autonomy.py"
+      ],
+      "acceptance_criteria": [
+        "with no registered work, next lists eligible milestone proposals labelled PROPOSED and the idle reason names them",
+        "a milestone with an unmet dependency, an existing task, or a done state is not proposed; one with open questions or blockers is flagged as needing a decision",
+        "items, fingerprint and wait behaviour are unchanged; nothing is registered or written",
+        "an unreadable or malformed PROJECT_STATUS.json yields a warning and no proposals, never an exception"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p 'test_dev_autonomy.py' from orchestrator/",
+        "affected suites: test_dev_standing_autonomy, test_dev_live_autonomy, test_dev_acceptance",
+        "full per-file validation on the exact head"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the overnight mission, Phase 4. Finding: the idle report 1 step IN_PROGRESS is correct (T-RSV-002 is another stream's active task); the gap is that nothing reads the milestone plan. Proposals are advice for Main, not registrations, and video-production milestones are not prioritised over infrastructure."
     }
   ]
 }
