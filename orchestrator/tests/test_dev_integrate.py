@@ -882,14 +882,21 @@ class Cli(unittest.TestCase):
 class PreGit(FakeGit):
     """FakeGit that also answers the extra reads preflight makes: the branch name and the working-tree status."""
 
-    def __init__(self, branch=TASK_BRANCH, dirty="", boom=None, status_rc=0, **kw):
+    def __init__(self, branch=TASK_BRANCH, dirty="", boom=None, status_rc=0, handoff="fresh", **kw):
         super().__init__(**kw)
-        self.branch, self.dirty, self.boom, self.status_rc = branch, dirty, boom, status_rc
+        self.branch, self.dirty, self.boom, self.status_rc, self.handoff = branch, dirty, boom, status_rc, handoff
 
     def __call__(self, args):
         a = list(args)
         if self.boom and a[0] == self.boom:
             raise RuntimeError("synthetic git failure")
+        if a[0] == "show" and a[1] == "HEAD:PROJECT_STATUS.json":
+            self.calls.append(a)
+            return 0, b"{}"
+        if a[0] == "show" and a[1] == "HEAD:SESSION_HANDOFF.md":
+            self.calls.append(a)
+            return {"fresh": (0, RENDERED.encode()), "crlf": (0, RENDERED.replace("\n", "\r\n").encode()),
+                    "stale": (0, b"an old handoff\n"), "missing": (1, b"")}[self.handoff]
         if a[:2] == ["rev-parse", "--abbrev-ref"]:
             self.calls.append(a)
             return 0, self.branch.encode()
@@ -899,6 +906,9 @@ class PreGit(FakeGit):
         return super().__call__(args)
 
 
+RENDERED = "# handoff\nrendered text\n"
+
+
 def pre(git=None, **kw):
     git = git or PreGit(**kw)
     gates, info = I.preflight(git)
@@ -906,11 +916,17 @@ def pre(git=None, **kw):
 
 
 class Preflight(unittest.TestCase):
+    def setUp(self):
+        from unittest import mock
+        patcher = mock.patch("governance.handoff.render", return_value=RENDERED)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_a_clean_branch_passes_the_four_offline_gates_and_reports_the_diff_hash(self):
         gates, info, _ = pre()
         self.assertEqual([(g.num, g.name, g.status) for g in gates],
-                         [(4, "scope", I.PASS), (6, "secrets", I.PASS), (7, "forbidden_files", I.PASS),
-                          (8, "reserved", I.PASS)])
+                         [(1, "branch_name", I.PASS), (2, "handoff_current", I.PASS), (4, "scope", I.PASS),
+                          (6, "secrets", I.PASS), (7, "forbidden_files", I.PASS), (8, "reserved", I.PASS)])
         self.assertEqual((info["head"], info["branch"], info["diff_sha"], info["dirty"]), (HEAD, TASK_BRANCH, DHASH, False))
 
     def test_it_reads_the_local_head_not_the_remote_branch_and_only_reads(self):
@@ -940,6 +956,8 @@ class Preflight(unittest.TestCase):
                 real, _ = I.evaluate(7, FakeGh(), FakeGit(**kw))
                 self.assertFalse(all(g.status == I.PASS for g in gates), "the case must fail somewhere")
                 for g in gates:
+                    if g.name in ("branch_name", "handoff_current"):
+                        continue          # no counterpart in a real evaluation; covered by their own tests
                     r = next(x for x in real if x.name == g.name)
                     self.assertEqual((g.status, g.detail), (r.status, r.detail), g.name)
 
@@ -947,6 +965,8 @@ class Preflight(unittest.TestCase):
         gates, _, _ = pre()
         real, _ = I.evaluate(7, FakeGh(), FakeGit())
         for g in gates:
+            if g.name in ("branch_name", "handoff_current"):
+                continue
             r = next(x for x in real if x.name == g.name)
             self.assertEqual((g.status, g.detail), (r.status, r.detail), g.name)
 
@@ -966,14 +986,15 @@ class Preflight(unittest.TestCase):
                           ("git raises", dict(boom="fetch")), ("git raises on rev-parse", dict(boom="rev-parse"))):
             with self.subTest(case=label):
                 gates, _, _ = pre(**kw)
-                self.assertEqual([g.num for g in gates], [4, 6, 7, 8])
+                self.assertEqual([g.num for g in gates], [1, 2, 4, 6, 7, 8])
                 self.assertTrue(all(g.status == I.UNKNOWN for g in gates), [(g.name, g.status) for g in gates])
 
     def test_an_exception_inside_one_gate_makes_that_gate_unknown_and_leaves_the_others(self):
         from unittest import mock
         with mock.patch.object(I, "_gate_secrets", side_effect=RuntimeError("synthetic gate failure")):
             gates, _, _ = pre()
-        self.assertEqual([(g.name, g.status) for g in gates], [("scope", I.PASS), ("secrets", I.UNKNOWN),
+        self.assertEqual([(g.name, g.status) for g in gates], [("branch_name", I.PASS), ("handoff_current", I.PASS),
+                                                               ("scope", I.PASS), ("secrets", I.UNKNOWN),
                                                                ("forbidden_files", I.PASS), ("reserved", I.PASS)])
         self.assertIn("RuntimeError", next(g for g in gates if g.name == "secrets").detail)
 
@@ -1031,6 +1052,75 @@ class Preflight(unittest.TestCase):
         from governance import waves
         self.assertEqual(waves.SECRET.pattern, found[0])
         self.assertEqual(I._FALLBACK_SECRET.pattern, found[0])
+
+
+class PreflightBranchAndHandoff(unittest.TestCase):
+    """T-DEV-044: the two checks CI or the real pr_state gate would otherwise make only after a push."""
+
+    def setUp(self):
+        from unittest import mock
+        patcher = mock.patch("governance.handoff.render", return_value=RENDERED)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_allowed_branch_prefixes_pass_and_others_fail_like_the_real_pr_state_gate(self):
+        for branch in ("task/x", "wave/w1-l1", "chatgpt/x", "claim/x", "main", "feature/y", "tasks/x", ""):
+            with self.subTest(branch=branch):
+                gates, _, _ = pre(branch=branch) if branch else pre(branch="x")
+                got = next(g for g in gates if g.name == "branch_name")
+                ctx = I._Ctx(pr={"state": "OPEN", "isDraft": False, "baseRefName": "main",
+                                 "headRefName": branch if branch else "x"}, base="main")
+                real = I._gate_pr_state(ctx)
+                self.assertEqual(got.status, real.status)
+                if got.status == I.FAIL:
+                    for prefix in I.BRANCH_PREFIXES:
+                        self.assertIn(prefix, got.detail)
+
+    def test_a_fresh_handoff_passes_and_line_endings_do_not_matter(self):
+        for mode in ("fresh", "crlf"):
+            with self.subTest(mode=mode):
+                gates, _, _ = pre(handoff=mode)
+                self.assertEqual(status(gates, "handoff_current"), I.PASS)
+
+    def test_a_stale_handoff_fails_and_names_the_command_that_fixes_it(self):
+        gates, _, _ = pre(handoff="stale")
+        g = next(x for x in gates if x.name == "handoff_current")
+        self.assertEqual(g.status, I.FAIL)
+        self.assertIn("governance handoff --write", g.detail)
+
+    def test_an_unreadable_or_unrenderable_handoff_is_unknown_never_pass(self):
+        from unittest import mock
+        gates, _, _ = pre(handoff="missing")
+        self.assertEqual(status(gates, "handoff_current"), I.UNKNOWN)
+        with mock.patch("governance.handoff.render", side_effect=KeyError("title")):
+            gates, _, _ = pre()
+        g = next(x for x in gates if x.name == "handoff_current")
+        self.assertEqual(g.status, I.UNKNOWN)
+        self.assertIn("KeyError", g.detail)
+
+    def test_the_cli_exits_one_and_reports_the_stale_handoff_and_a_bad_branch(self):
+        buf = io.StringIO()
+        rc = I.main(["--preflight"], git=PreGit(handoff="stale", branch="claim/x"), out=buf)
+        text = buf.getvalue()
+        self.assertEqual(rc, 1)
+        self.assertIn("| 1 | branch_name | FAIL |", text)
+        self.assertIn("| 2 | handoff_current | FAIL |", text)
+        self.assertIn("PREFLIGHT_FAIL", text)
+
+    def test_the_new_gates_only_read_git(self):
+        _, _, git = pre()
+        shown = [c for c in git.calls if c[0] == "show" and c[1].startswith("HEAD:")]
+        self.assertTrue({"HEAD:PROJECT_STATUS.json", "HEAD:ACTIVE_TASKS.json", "HEAD:SESSION_HANDOFF.md"} <= {c[1] for c in shown})
+        self.assertLessEqual({c[0] for c in git.calls}, {"fetch", "rev-parse", "status", "merge-base", "diff", "show", "log"})
+
+
+class PreflightHandoffOnTheRealRepository(unittest.TestCase):
+    def test_the_gate_agrees_with_what_governance_would_render_from_the_committed_files(self):
+        root = Path(__file__).resolve().parents[2]
+        gate = I._gate_handoff_current(I.real_git_runner(root))
+        if gate.status == I.UNKNOWN:
+            self.skipTest("the repository history is not readable here: " + gate.detail)
+        self.assertEqual(gate.status, I.PASS, gate.detail)
 
 
 if __name__ == "__main__":
