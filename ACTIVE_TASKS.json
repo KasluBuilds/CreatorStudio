@@ -2565,7 +2565,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-046-worker-run-record",
       "worktree": "../CreatorStudio-worktrees/t-dev-046-worker-run-record",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -2586,10 +2586,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command (first use). Evidence is the Supervisor event log and the worker stream, summarised in the page.",
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission with the claim command (first use). Evidence is the Supervisor event log and the worker stream, summarised in the page. Completed 2026-11-24: merged as PR #162 (all eight gates PASS; independent review bound to diff 54e67a140d3fe28a after one round of wording corrections). Documentation only; the run record is WORKER_GATEWAY.md section 7.",
       "lease": {
         "acquired": "2026-11-24T07:21:32+00:00",
-        "expires": "2026-11-25T07:21:32+00:00"
+        "expires": "2026-11-25T07:21:32+00:00",
+        "released": "2026-11-24T07:44:09+00:00"
       }
     },
     {
