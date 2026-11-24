@@ -357,6 +357,26 @@
         "orchestrator/dev_supervisor/WORKER_GATEWAY.md",
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md"
       ]
+    },
+    "AGR-DEV-043-01": {
+      "description": "model_allocation.py belongs to the dev_supervisor package owned by claude:repository-coordinator and was added by T-DEV-038. The second overnight mission (2026-11-24, Priority 4) directs Main to investigate machine-readable reviewer independence. Under that mandate T-DEV-043 may edit model_allocation.py and its test file, only to add the independent field. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-043"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/model_allocation.py",
+        "orchestrator/tests/test_dev_model_allocation.py"
+      ]
+    },
+    "AGR-DEV-044-01": {
+      "description": "integrate.py is part of the dev_supervisor package owned by claude:repository-coordinator. The second overnight mission (2026-11-24, Priority 4) directs Main to identify and fix missing integration points in the task-to-merge loop. Under that mandate T-DEV-044 may edit integrate.py and its test file, only to extend the read-only preflight. REPORTED: the mission text is the basis.",
+      "task_ids": [
+        "T-DEV-044"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/integrate.py",
+        "orchestrator/tests/test_dev_integrate.py"
+      ]
     }
   },
   "tasks": [
@@ -2400,6 +2420,74 @@
       "lease": {
         "acquired": "2026-11-24T06:28:37+00:00",
         "expires": "2026-11-25T06:28:37+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-043",
+      "title": "dev_supervisor: machine-readable independent flag on review allocations (first task run by a dispatched worker)",
+      "description": "WORKER_DISPATCH.md lists as a known limit that a review allocation has no machine-readable independent flag: self-review is disclosed only in the reason text. Add Allocation.independent (True when the chosen review route is not the author's route, False when it is, None when the role is not review or the author's route was not given), with tests. Selection logic and refusal messages do not change. This is also the first task intended to run through the production worker dispatch path on a verified zero-cost route; if the worker cannot finish it, Main finishes it and the record says so.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-043-review-independence",
+      "worktree": "../CreatorStudio-worktrees/t-dev-043-review-independence",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-043-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/model_allocation.py",
+        "orchestrator/tests/test_dev_model_allocation.py"
+      ],
+      "acceptance_criteria": [
+        "Allocation has an independent field: True for a review whose chosen route differs from the given author route, False for a review that had to use the author's own route, None for any other role or when no author route was given",
+        "selection order, reasons and refusal messages are unchanged and all existing tests pass",
+        "to_dict includes the new key and no other new key",
+        "no file outside the two owned paths changes"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p test_dev_model_allocation.py from orchestrator/",
+        "python -B -I -m unittest discover -s tests -p test_dev_cli.py from orchestrator/",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Implemented by a dispatched worker on a verified zero-cost route when the dispatch record shows it; otherwise by Main, disclosed in the PR.",
+      "lease": {
+        "acquired": "2026-11-24T06:35:21+00:00",
+        "expires": "2026-11-25T06:35:21+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-044",
+      "title": "dev_supervisor: preflight also checks the branch name and that SESSION_HANDOFF.md is current",
+      "description": "The T-DEV-042 claim PR failed twice for reasons the merge preflight did not report: the head branch used a prefix the pr_state gate refuses, and ACTIVE_TASKS.json changed without regenerating SESSION_HANDOFF.md (CI's handoff --check). Both are decidable offline. Extend the preflight with a branch-name check (the same prefix rule as the real pr_state gate) and a handoff-current check (the same check CI runs), reported as gates 1 and 2 of the preflight table, so the failures cost no push and no CI run.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-044-preflight-handoff",
+      "worktree": "../CreatorStudio-worktrees/t-dev-044-preflight-handoff",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-044-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/integrate.py",
+        "orchestrator/tests/test_dev_integrate.py"
+      ],
+      "acceptance_criteria": [
+        "preflight reports a branch_name gate that fails for a head branch outside the real gate's prefixes and passes for the allowed ones, using the same constant as the real pr_state gate",
+        "preflight reports a handoff_current gate that fails when the committed registry or status changed and SESSION_HANDOFF.md is stale, using the same check CI runs; an unreadable state is UNKNOWN, never PASS",
+        "the existing preflight gates, the real evaluation and exit codes are unchanged",
+        "the preflight stays read-only: no write, no lock, no network"
+      ],
+      "test_requirements": [
+        "python -B -I -m unittest discover -s tests -p test_dev_integrate.py from orchestrator/",
+        "affected suites: test_dev_review, test_dev_standing_autonomy",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-24 under the second overnight mission. Evidence for the need: PR #149 (closed, replaced by #150) used a refused head-branch prefix and lacked the regenerated SESSION_HANDOFF.md; the preflight run on it before the push reported PREFLIGHT_PASS.",
+      "lease": {
+        "acquired": "2026-11-24T06:35:23+00:00",
+        "expires": "2026-11-25T06:35:23+00:00"
       }
     }
   ]
