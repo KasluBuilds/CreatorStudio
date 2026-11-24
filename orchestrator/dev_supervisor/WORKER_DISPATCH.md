@@ -7,14 +7,14 @@ Written 2026-11-24 for the overnight mission (tasks T-DEV-032, T-DEV-038, T-DEV-
 
 | Capability | Status |
 |---|---|
-| A worker can start only through one gate, with a verified zero-cost route and an isolated gateway-only environment | IMPLEMENTED (PR #124); unit tests plus a real-subprocess environment test |
+| The supervisor's dispatch path starts workers only through one gate, with a verified zero-cost route and an isolated gateway-only environment | IMPLEMENTED (PR #124); unit tests plus a real-subprocess environment test. `worker_spawner.spawn_worker` (called only by tests) and the live-autonomy harness start `claude` separately and check the verified registry on their own |
 | A worker record carries the route chosen by role (role, provider, model, capability, evidence id, reason) | IMPLEMENTED (PR #139) |
-| `autonomy next` proposes eligible milestone work when nothing is registered | IMPLEMENTED (PR #137) |
+| `autonomy next` proposes eligible milestone work when nothing is actionable | IMPLEMENTED (PR #137) |
 | `integrate --preflight` checks the offline merge gates before pushing | IMPLEMENTED (PR #144) |
 | A worker running a real task through the OmniRoute gateway | **NOT DEMONSTRATED** |
 | Any route listed as verified | **NOT DEMONSTRATED**: `verified_routes.json` does not exist, so every dispatch is refused |
 
-Last route check (OBSERVED, 2026-11-24, one attempt per route, not repeated): a headless Claude Code tool round trip through the gateway on `gemini/gemini-2.5-flash` and `gemini/gemini-2.5-flash-lite` reached the gateway and authenticated, then returned HTTP 429 "All credentials for model ... are cooling down" (free-tier capacity). Earlier notes: Gemini 3.x routes break Claude Code tool turns (`thought_signature`); Groq returned auth errors.
+Last route check (OBSERVED, 2026-11-24, one attempt per route, not repeated): a headless Claude Code tool round trip through the gateway on `gemini/gemini-2.5-flash` and `gemini/gemini-2.5-flash-lite` reached the gateway and authenticated, then returned HTTP 429 "All credentials for model ... are cooling down" (free-tier capacity). It is recorded in the `integration_notes` of T-DEV-038 in `ACTIVE_TASKS.json`; there is no separate repository file for it. Earlier observations: `OMNIROUTE_BENCHMARK.md` (2026-11-17, text-only) records `not_found` then `rate_limited` for the 2.5 routes and Groq `auth_error`; the report that Gemini 3.x routes break Claude Code tool turns (`thought_signature`) comes from earlier Main sessions (REPORTED, not recorded in a repository file).
 
 ## How a worker starts
 
@@ -29,7 +29,7 @@ A worker is assigned only when all of these hold; every refusal names the failed
 
 - the provider is not `anthropic` and the model is not a Claude model (any Claude alias or id, any prefix, non-ASCII refused);
 - the exact (provider, model) pair is in `<state dir>/verified_routes.json` with `cost_zero` exactly `true` (a missing or unreadable file means nothing is dispatched);
-- the supervisor's environment carries the gateway variables (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`) and `provider_env.worker_env` accepts it: no API key, no OAuth or login variable, no `CLAUDE_CODE_*` variable passes through, a worker-owned config directory is created;
+- the supervisor's environment carries the gateway variables (`ANTHROPIC_BASE_URL`, a plain local http(s) URL, and `ANTHROPIC_AUTH_TOKEN`) and `provider_env.worker_env` accepts it: no API key, no OAuth or login variable, and no inherited `CLAUDE_CODE_*` variable passes through (the gateway flags it needs are set by `worker_env` itself); `worker_env` points `CLAUDE_CONFIG_DIR` at a worker-owned directory, which the launcher's environment builder creates at launch;
 - at most one worker is assigned or live (a LOST worker still counts).
 
 Worker `claude` processes also get `--setting-sources project` (`project,local` once the authority policy is installed), never the user's settings. `LaunchSpec.env` may only add `CS_AUTHORITY_*` variables. The only production `ClaudeCliLauncher` is built in `dispatch_routing`; a test (`LaunchPathAudit`) fails if a new way to start `claude` appears. Main still runs on the Claude login by design; that path is unchanged.
@@ -40,14 +40,15 @@ Worker `claude` processes also get `--setting-sources project` (`project,local` 
 
 ```json
 {"routes": [
-  {"model": "<gateway model id>", "provider": "gemini", "evidence": "<where the verification is recorded>",
+  {"model": "<gateway model id, e.g. auto/coding>", "provider": "gemini", "evidence": "<where the verification is recorded>",
    "cost_zero": true, "roles": ["implementation", "research"], "capability": 2}
 ]}
 ```
 
 - `provider` must be `gemini` or `groq`. `evidence` is a reference (PR, run id, note), never a secret; for allocation by role, evidence or a model name that looks like a credential makes the route unusable.
 - `roles` and `capability` (1 weakest to 5 strongest) are optional. They state what the recorded evidence covers. A wrong type means "not recorded". An entry without them stays valid for an explicit dispatch but is never chosen by role.
-- Duplicate (provider, model) entries are merged to the weakest claim: the lowest capability and only the roles every entry covers.
+- A model id is written as the gateway lists it; `worker_spawner.spawn_worker` refuses an id that is not `provider/model`.
+- For allocation by role, duplicate (provider, model) entries are merged to the weakest claim: the lowest capability and only the roles every entry covers (an explicit dispatch checks the pair as written).
 - **No tool creates this file.** An entry may be added only after a real Claude Code prompt, tool-result and final-response round trip through the gateway on that exact model has been observed and its evidence recorded. Do not add an entry from a text-only benchmark.
 
 ## Allocation by role (`model_allocation.py`)
@@ -63,7 +64,7 @@ No fitting route is a refusal with a reason: never a fallback, never a Claude mo
 ## Autonomy proposals and the merge preflight
 
 - `python -B -m dev_supervisor.autonomy next` lists registered work first. When nothing is actionable it also lists `PROPOSED` milestones from `PROJECT_STATUS.json`: not started, every dependency implemented, no open task mentions them; milestones with open questions are flagged as needing a decision. Proposals never register anything.
-- `python -B -m dev_supervisor.integrate --preflight [--repo ..]` evaluates scope, secrets, forbidden files and reserved paths on the committed HEAD against `origin/main`, with no pull request, and prints the content diff hash a review must bind to. Run it before pushing. It does not check CI, merge state or review. A registry-only PR may change only the record of the task whose registered branch it is on.
+- `python -B -m dev_supervisor.integrate --preflight [--repo ..]` evaluates scope, secrets, forbidden files and reserved paths on the committed HEAD against `origin/main`, with no pull request, and prints the content diff hash a review must bind to. Run it before pushing. It does not check CI, merge state or review. A registry-only PR may add its own new task, step and agreement records and update the records of the task whose registered branch it is on; nothing else.
 - Merge with `python -B -m dev_supervisor.integrate <PR> --yes` (it re-evaluates every gate under a lock and merges pinned to the evaluated head).
 
 ## What now refuses (and why old documents may disagree)
