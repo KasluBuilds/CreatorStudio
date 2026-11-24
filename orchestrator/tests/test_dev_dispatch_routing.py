@@ -266,6 +266,39 @@ class LaunchPathAudit(unittest.TestCase):
                     out["imports"].setdefault(f.name, []).append(n.lineno)
         return out
 
+    @classmethod
+    def scan_source(cls, text):
+        """Flags launch forms in one source text: aliased subprocess, from-imported subprocess functions, subprocess calls
+        that carry a claude argv, os.system/startfile/exec/spawn, and aliased imports of the launcher or child_env."""
+        hits = []
+        tree = ast.parse(text)
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Import) and any(a.name == "subprocess" and a.asname for a in n.names):
+                hits.append("aliased subprocess import")
+            if isinstance(n, ast.ImportFrom):
+                if n.module == "subprocess" and any(a.name in ("Popen", "run", "call", "check_call", "check_output")
+                                                    for a in n.names):
+                    hits.append("from-imported subprocess function")
+                if any(a.name in ("ClaudeCliLauncher", "child_env") and a.asname for a in n.names):
+                    hits.append("aliased launcher or child_env import")
+            if isinstance(n, ast.Call):
+                fn = n.func
+                full = (ast.unparse(fn.value) + "." + fn.attr) if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+                if full in ("os.system", "os.startfile") or full.startswith(("os.exec", "os.spawn")):
+                    hits.append(full)
+                if full in ("subprocess.run", "subprocess.call", "subprocess.check_call", "subprocess.check_output") \
+                        and n.args and "claude" in ast.unparse(n.args[0]).lower():
+                    hits.append("subprocess call carrying claude")
+        return hits
+
+    def test_no_production_module_contains_a_flagged_launch_form(self):
+        flagged = {}
+        for f in sorted(PKG.glob("*.py")):
+            hits = self.scan_source(f.read_text(encoding="utf-8"))
+            if hits:
+                flagged[f.name] = hits
+        self.assertEqual(flagged, {})
+
     def test_only_reviewed_modules_call_popen_directly(self):
         self.assertEqual(sorted(self.calls()["popen"]), ["live_autonomy.py", "worker_spawner.py"])
 
@@ -445,6 +478,73 @@ class ReviewRound2Tests(Base):
         from dev_supervisor import session_policy
         for key in ("gcpAuthRefresh", "forceLoginMethod", "forceLoginOrgUUID", "modelOverrides", "env", "apiKeyHelper"):
             self.assertIn(key, session_policy.FORBIDDEN_PROJECT_KEYS)
+
+
+class ReviewRound3Tests(Base):
+    def spec_for(self, model, provider="gemini"):
+        prompt = self.state / "prompt.md"
+        prompt.write_text("x", encoding="utf-8")
+        return LaunchSpec(argv=build_claude_argv(model, "00000000-0000-4000-8000-000000000004"), cwd=str(self.state),
+                          stdin_path=str(prompt), stdout_path=str(self.state / "o"), stderr_path=str(self.state / "e"),
+                          max_runtime_s=1, provider=provider)
+
+    def test_a_claude_named_route_in_the_registry_is_still_refused_at_launch(self):
+        """The loader does not reject Claude names, so the launch gate must (a mutation check removes it)."""
+        write_registry(self.state, [route(model="gemini/claude-x", provider="gemini")])
+        with self.assertRaises(LifecycleError):
+            dr.make_worker_env_builder(self.state, dict(GATEWAY))(self.spec_for("gemini/claude-x"))
+        self.assertFalse(self.decide(model="gemini/claude-x").allowed)
+
+    def test_credential_style_variables_never_reach_a_worker_and_gate_and_launch_agree(self):
+        write_registry(self.state, [route()])
+        env = dict(GATEWAY, GEMINI_API_KEY="g-key", OPENAI_API_KEY="o-key", CLAUDE_CODE_OAUTH_REFRESH_TOKEN="r",
+                   CLAUDE_CODE_SOMETHING_NEW="x", SOME_OAUTH_TOKEN="t", HARMLESS="keep")
+        d = self.decide(base_env=env)
+        self.assertTrue(d.allowed, d.reason)
+        built = dr.make_worker_env_builder(self.state, env)(self.spec_for("auto/coding"))
+        for name in ("GEMINI_API_KEY", "OPENAI_API_KEY", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "CLAUDE_CODE_SOMETHING_NEW",
+                     "SOME_OAUTH_TOKEN"):
+            self.assertNotIn(name, built)
+        self.assertEqual(built["HARMLESS"], "keep")
+        self.assertIn("ANTHROPIC_AUTH_TOKEN", built)
+        self.assertEqual(built["CLAUDE_CODE_DISABLE_REASONING_EFFORT"], "1")
+
+    def test_harness_needs_a_verified_registry_that_lists_the_model(self):
+        reg = self.state / "routes.json"
+        write_registry(self.state, [route()])
+        (self.state / dr.REGISTRY_FILE).replace(reg)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(live_autonomy.HarnessRefused):
+                live_autonomy.refuse_claude_model("auto/coding")            # no registry configured
+        with mock.patch.dict(os.environ, {live_autonomy.ENV_ROUTES: str(self.state / "missing.json")}, clear=True):
+            with self.assertRaises(live_autonomy.HarnessRefused):
+                live_autonomy.refuse_claude_model("auto/coding")
+        with mock.patch.dict(os.environ, {live_autonomy.ENV_ROUTES: str(reg)}, clear=True):
+            live_autonomy.refuse_claude_model("auto/coding")                 # listed: allowed
+            for bad in ("auto/other", "sonnet", "haiku", "auto/claude-sonnet"):
+                with self.subTest(model=bad), self.assertRaises(live_autonomy.HarnessRefused):
+                    live_autonomy.refuse_claude_model(bad)
+
+    def test_harness_registry_entry_with_non_true_cost_is_not_listed(self):
+        reg = self.state / "routes.json"
+        reg.write_text(json.dumps({"routes": [route(cost_zero="yes")]}), encoding="utf-8")
+        with mock.patch.dict(os.environ, {live_autonomy.ENV_ROUTES: str(reg)}, clear=True):
+            with self.assertRaises(live_autonomy.HarnessRefused):
+                live_autonomy.refuse_claude_model("auto/coding")
+
+    def test_audit_catches_more_launch_forms(self):
+        """The audit itself, run on sources that contain forms the earlier version missed."""
+        sources = {
+            "a.py": "import subprocess as sp\nsp.Popen(['x'])\n",
+            "b.py": "from subprocess import run\nrun(['x'])\n",
+            "c.py": "import subprocess\nsubprocess.run(['claude', '-p'])\n",
+            "d.py": "import os\nos.system('claude')\nos.startfile('x')\n",
+            "e.py": "from .lifecycle import ClaudeCliLauncher as L\nL('claude')\n",
+        }
+        found = {name: LaunchPathAudit.scan_source(src) for name, src in sources.items()}
+        for name, hits in found.items():
+            with self.subTest(source=name):
+                self.assertTrue(hits, "the audit must flag %s" % name)
 
 
 if __name__ == "__main__":

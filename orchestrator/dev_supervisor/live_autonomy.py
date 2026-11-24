@@ -50,9 +50,23 @@ class HarnessRefused(RuntimeError):
     """The harness will not start a real claude process without an isolated, gateway-only environment."""
 
 
+ENV_ROUTES = "CREATORSTUDIO_VERIFIED_ROUTES"      # path of a verified zero-cost route registry (worker_spawner format)
+
+
 def refuse_claude_model(model: str) -> None:
+    """The harness starts a real claude only for a model that is in a verified zero-cost registry. It has no provider
+    argument, so the check is on the model (any provider); an alias that is not listed is refused."""
     if worker_spawner.is_claude_model(model):
         raise HarnessRefused("the harness never runs a Claude model; use a verified gateway route")
+    path = os.environ.get(ENV_ROUTES, "")
+    if not path:
+        raise HarnessRefused("no verified route registry: set " + ENV_ROUTES + " to a verified zero-cost registry")
+    try:
+        routes = worker_spawner.load_verified_routes(Path(path))
+    except worker_spawner.SpawnRefused as exc:
+        raise HarnessRefused("verified route registry unavailable: " + str(exc)) from None
+    if not any(r.model == model and r.cost_zero is True for r in routes):
+        raise HarnessRefused("the model is not a verified zero-cost route")
 
 
 def harness_env(lay: "Layout") -> Dict[str, str]:
@@ -856,10 +870,8 @@ def _wait_until(pred: Callable[[], bool], timeout: float, step: float = 2.0) -> 
 
 
 def run_live(lay: Layout, a: argparse.Namespace) -> int:  # pragma: no cover - needs real claude processes
-    if worker_spawner.is_claude_model(a.model):
-        sys.stderr.write("refused: the harness never runs a Claude model; use a verified gateway route\n")
-        return 2
     try:
+        refuse_claude_model(a.model)
         harness_env(lay)
     except HarnessRefused as exc:
         sys.stderr.write(f"refused: {exc}\n")

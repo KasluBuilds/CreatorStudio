@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 
 from . import provider_env, worker_spawner
-from .lifecycle import ClaudeCliLauncher, LaunchSpec, LifecycleError
+from .lifecycle import ClaudeCliLauncher, LaunchSpec, LifecycleError, forbidden_worker_env
 
 MAX_ACTIVE_WORKERS = 1
 REGISTRY_FILE = "verified_routes.json"
@@ -88,9 +88,11 @@ def decide_worker_dispatch(*, provider: Any, model: Any, active_workers: int, st
     if route is None:
         return _refuse(why)
     try:
-        provider_env.worker_env(str(worker_config_dir(state_dir)), base_env)
+        env = provider_env.worker_env(str(worker_config_dir(state_dir)), base_env)
     except provider_env.WorkerEnvError as exc:
         return _refuse("worker environment is not safe: " + str(exc))
+    if any(forbidden_worker_env(k) for k in env):          # the same rule the launcher applies: gate and launch agree
+        return _refuse("worker environment is not safe: it carries a credential variable")
     return Dispatch(True, route.provider, route.model, route.model,
                     f"verified zero-cost route {route.provider}/{route.model} (evidence: {route.evidence})")
 

@@ -187,7 +187,7 @@ def build_claude_argv(model: str, session_id: str, executable: str = "claude",
 _FORBIDDEN_WORKER_ENV = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
 
 
-def _forbidden_worker_env(name: str) -> bool:
+def forbidden_worker_env(name: str) -> bool:
     """A direct Anthropic credential or login variable: never allowed in a worker environment, in any spelling."""
     up = name.upper()
     return (up in _FORBIDDEN_WORKER_ENV or "OAUTH" in up or up.endswith("API_KEY") or up.endswith("_API_KEY_FILE_DESCRIPTOR")
@@ -228,7 +228,7 @@ class ClaudeCliLauncher:
         if not spec.argv or any(not isinstance(a, str) for a in spec.argv):
             raise LifecycleError("argv must be a non-empty list of strings")
         env = self._env_builder(spec)              # fail closed: the default builder raises
-        if not isinstance(env, dict) or any(_forbidden_worker_env(k) for k in env):
+        if not isinstance(env, dict) or any(forbidden_worker_env(k) for k in env):
             raise LifecycleError("worker environment carries a direct Anthropic credential: refusing to launch")
         for k in spec.env:                         # only the authority-policy variables may be added, never overridden
             if not isinstance(k, str) or not k.upper().startswith("CS_AUTHORITY_"):

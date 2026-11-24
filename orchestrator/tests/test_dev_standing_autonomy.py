@@ -900,6 +900,14 @@ class ReviewRound1Settings(Base):
                                    user_settings=self.tmp / "n.json")
                     self.assertIn(key, str(cm.exception))
 
+    def test_main_is_exempt_from_the_strict_project_keys(self):
+        """Main runs on the Claude login by design; only workers are refused for env or credential helpers."""
+        proj = self.project("settings.json", {"env": {"X": "1"}, "apiKeyHelper": "helper"})
+        inst = sp.install(self.tmp / "state", SID, "main", proj, run=_fake_run, user_settings=self.tmp / "n.json")
+        sp.argv_with_policy(["claude"], inst)                          # no refusal for role main
+        with self.assertRaises(sp.PolicyInstallError):
+            sp.install(self.tmp / "state", SID, "worker", proj, run=_fake_run, user_settings=self.tmp / "n.json")
+
     def test_credential_keys_appearing_after_install_are_refused_at_launch(self):
         proj = self.project("settings.local.json", {"enableAllProjectMcpServers": True})
         inst = sp.install(self.tmp / "state", SID, "worker", proj, run=_fake_run, user_settings=self.tmp / "n.json")
