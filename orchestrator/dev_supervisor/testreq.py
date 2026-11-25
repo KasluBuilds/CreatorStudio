@@ -30,6 +30,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -38,7 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from dev_supervisor.state_store import StateStore, StoreError, default_directory, scrub, utc_iso
+from dev_supervisor.state_store import StateStore, StoreError, decode_envelope, default_directory, scrub, utc_iso
 
 __all__ = ["Req", "classify", "classify_all", "reqs_hash", "EvidenceStore", "run_requirements", "check_evidence",
            "gate_verdict", "evidence_name", "main"]
@@ -187,21 +188,40 @@ def _sealed(record: Dict[str, Any]) -> bool:
 
 class EvidenceStore:
     """Evidence records in the ``test_evidence`` subdirectory of the supervisor state directory (never inside the repository).
-    A subdirectory of its own, so that opening it never touches the Supervisor's own files or their temporary files."""
+    A subdirectory of its own, so that the Supervisor's files and their temporary files are never touched. Reading is
+    pure (no directory is created, no temp file removed, no damaged file quarantined or rewritten); only ``save`` opens
+    the state store."""
 
-    def __init__(self, directory: Optional[os.PathLike] = None, *, create: bool = True, clock: Callable[[], float] = time.time):
+    def __init__(self, directory: Optional[os.PathLike] = None, *, clock: Callable[[], float] = time.time):
         self.directory = Path(os.path.abspath(str(directory if directory is not None else default_directory()))) / "test_evidence"
-        self.store = StateStore(self.directory, create=create, clock=clock)
+        self._clock = clock
+        self._store: Optional[StateStore] = None
+
+    @property
+    def store(self) -> StateStore:
+        if self._store is None:
+            self._store = StateStore(self.directory, create=True, clock=self._clock)
+        return self._store
 
     def load(self, task_id: str, head: str) -> Tuple[Optional[Dict[str, Any]], str]:
-        """(record, "") or (None, reason). A missing record and an unreadable one are different reasons."""
-        try:
-            data = self.store.read(evidence_name(task_id, head))
-        except (StoreError, OSError, ValueError) as e:
-            return None, f"unreadable ({type(e).__name__})"
-        if data is None:
-            return None, "missing"
-        return (data, "") if isinstance(data, dict) else (None, "not a record")
+        """(record, "") or (None, reason). The record file is tried first, then its backup; nothing is written."""
+        name = evidence_name(task_id, head)
+        problems: List[str] = []
+        for path in (self.directory / f"{name}.json", self.directory / f"{name}.json.bak"):
+            try:
+                raw = path.read_bytes()
+            except FileNotFoundError:
+                continue
+            except OSError as e:
+                problems.append(type(e).__name__)
+                continue
+            try:
+                data = decode_envelope(raw, name)
+            except (ValueError, StoreError):
+                problems.append("damaged")
+                continue
+            return (data, "") if isinstance(data, dict) else (None, "not a record")
+        return None, (f"unreadable ({', '.join(problems)})" if problems else "missing")
 
     def save(self, record: Dict[str, Any]) -> Dict[str, Any]:
         clean = _seal(scrub(record))
@@ -267,7 +287,8 @@ def gate_verdict(tc: Optional[Dict[str, Any]], head: str, diff_sha: str, evstore
     if not tc or not head or not diff_sha:
         return UNKNOWN, "the pull request facts could not be read"
     if tc.get("wave"):
-        return PASS, "wave branch: lane tests are verified by the wave workflow, not by this check"
+        return FAIL, ("wave pull request: test evidence for lane tasks is not supported yet, so the merge is refused here; "
+                      "a wave merge needs an explicit decision (see TEST_EVIDENCE.md)")
     if tc.get("reg_only"):
         return PASS, "registry-only record: no code to test"
     registry = tc.get("registry")
@@ -303,7 +324,7 @@ def _kill_tree(proc: "subprocess.Popen[bytes]") -> None:
         if os.name == "nt":
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=30)
         else:
-            proc.kill()
+            os.killpg(proc.pid, signal.SIGKILL)       # the child leads its own session (see _execute)
     except Exception:
         try:
             proc.kill()
@@ -320,7 +341,7 @@ def _execute(argv: Sequence[str], cwd: str, env: Dict[str, str], timeout: float,
     with open(out_path, "wb") as fh:
         try:
             proc = subprocess.Popen(list(argv), cwd=cwd, env=env, stdout=fh, stderr=subprocess.STDOUT,
-                                    stdin=subprocess.DEVNULL)
+                                    stdin=subprocess.DEVNULL, **({} if os.name == "nt" else {"start_new_session": True}))
         except OSError as e:
             return None, False, f"cannot start: {type(e).__name__}"
         try:
@@ -335,7 +356,7 @@ def _execute(argv: Sequence[str], cwd: str, env: Dict[str, str], timeout: float,
 
 _RAN = re.compile(r"(?m)^Ran (\d+) tests? in ")
 _SKIPPED = re.compile(r"skipped=(\d+)")
-_NODE = re.compile(r"(?m)^# (tests|skip) (\d+)\s*$")
+_NODE = re.compile(r"(?m)^(?:#|\u2139) (tests|skip|skipped) (\d+)\s*$")     # TAP ('# tests 2') and the spec reporter
 _FAILLINE = re.compile(r"(?m)^(?:FAIL|ERROR): .+$")
 
 
@@ -347,7 +368,7 @@ def parse_counts(output: str) -> Tuple[Optional[int], Optional[int]]:
         return int(ran[-1]), int(sk[-1]) if sk else 0
     node = {k: int(v) for k, v in _NODE.findall(output)}
     if "tests" in node:
-        return node["tests"], node.get("skip", 0)
+        return node["tests"], node.get("skip", node.get("skipped", 0))
     return None, None
 
 
@@ -361,6 +382,7 @@ def _tail(path: str) -> Tuple[str, str]:
             text = fh.read().decode("utf-8", "replace")
     except OSError:
         return "", ""
+    text = scrub(text)                      # scrub the whole window first: a cut must not leave half a credential
     return text[-TAIL_CHARS:], text
 
 
@@ -402,7 +424,8 @@ def run_requirements(root: Path, task_id: str, branch: str, texts: Sequence[str]
                      resume: bool = False, timeout: float = DEFAULT_TIMEOUT, base: str = "origin/main",
                      clock: Callable[[], float] = time.time, executor: Callable = _execute,
                      which: Callable[[str], Optional[str]] = shutil.which,
-                     pid_alive: Callable[[int], bool] = _pid_alive, pid: Optional[int] = None) -> Dict[str, Any]:
+                     pid_alive: Callable[[int], bool] = _pid_alive, pid: Optional[int] = None,
+                     force: bool = False) -> Dict[str, Any]:
     """Run the command requirements in ``root`` and store the record. Raises TestReqError when nothing can be run safely."""
     from dev_supervisor import integrate
     reqs = classify_all(list(texts))
@@ -413,8 +436,9 @@ def run_requirements(root: Path, task_id: str, branch: str, texts: Sequence[str]
     head = start[0]
     prev, _ = evstore.load(task_id, head)
     me = os.getpid() if pid is None else pid
-    if prev and prev.get("state") == "running" and prev.get("pid") != me and pid_alive(prev.get("pid")):
-        raise TestReqError("another test run for this head is in progress")
+    if (prev and prev.get("state") == "running" and prev.get("pid") != me and pid_alive(prev.get("pid")) and not force):
+        raise TestReqError("another test run for this head is in progress (a reused process id looks the same; "
+                           "if you know it is dead, run again with --ignore-running)")
     keep: Dict[int, Dict[str, Any]] = {}
     if resume and prev and _sealed(prev) and all(prev.get(k) == v for k, v in (
             ("schema", SCHEMA), ("task", task_id), ("head", head), ("diff_sha256", diff), ("reqs_sha256", reqs_hash(texts)))):
@@ -575,6 +599,8 @@ def main(argv: Optional[Sequence[str]] = None, *, git: Optional[Callable] = None
     ap.add_argument("--base", default="origin/main")
     ap.add_argument("--state-dir", default=None)
     ap.add_argument("--resume", action="store_true", help="keep results that already passed for this exact head")
+    ap.add_argument("--ignore-running", action="store_true",
+                    help="start even though the record says a run is in progress (use only when that process is known to be dead)")
     ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="seconds per requirement (default 1800)")
     a = ap.parse_args(argv)
     out = out or sys.stdout
@@ -589,11 +615,11 @@ def main(argv: Optional[Sequence[str]] = None, *, git: Optional[Callable] = None
         if a.action == "plan":
             _print_plan(reqs, out)
             return 1 if any(r.kind == "manual" for r in reqs) else 0
-        ev = EvidenceStore(a.state_dir, create=a.action == "run")
+        ev = EvidenceStore(a.state_dir)
         if a.action == "run":
             _print_plan(reqs, out)
             rec = run_requirements(root, tid, branch, texts, git, ev, resume=a.resume, timeout=a.timeout, base=a.base,
-                                   executor=executor)
+                                   executor=executor, force=a.ignore_running)
             _print_record(rec, out)
             return 0 if rec["verdict"] == "passed" else 1
         from dev_supervisor import integrate
@@ -611,8 +637,8 @@ def main(argv: Optional[Sequence[str]] = None, *, git: Optional[Callable] = None
         status, detail = check_evidence(reqs, texts, rec, why, task_id=tid, head=head, diff_sha=diff)
         print(f"tests check: {status} - {detail}", file=out)
         return 0 if status == PASS else 1
-    except TestReqError as e:
-        print(f"refused: {e}", file=out)
+    except (TestReqError, StoreError, OSError) as e:
+        print(f"refused: {e if isinstance(e, TestReqError) else type(e).__name__ + ' while using the evidence store'}", file=out)
         return 2
     except KeyboardInterrupt:
         print("interrupted: the evidence record says so; re-run with --resume", file=out)

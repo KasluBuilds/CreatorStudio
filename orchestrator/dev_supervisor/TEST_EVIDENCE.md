@@ -30,7 +30,7 @@ The command grammar (anything outside it is `manual`):
 - The directory is `cd orchestrator &&`, `cd dashboard/desktop &&`, a trailing `from orchestrator/`, or `from the repository root`. An optional leading `focused: ` is ignored.
 - Pipes, `&&` chains, redirects, `;`, `$`, backticks, parentheses, extra flags and other programs make the string `manual`.
 
-`unittest` and `node --test` requirements must show at least one executed test: exit 0 with zero tests, no summary line, or every test
+`unittest` and `node --test` requirements must show at least one executed test (node's TAP and default spec reporter lines are both read; OBSERVED on node v24): exit 0 with zero tests, no summary line, or every test
 skipped is a **failure**. In the registry at the time of writing, 212 of 269 strings are commands, 45 are gate prose and 12 are manual
 (OBSERVED by running the classifier over `ACTIVE_TASKS.json`); the 12 are historical, completed tasks.
 
@@ -57,10 +57,11 @@ A run refuses or fails as follows:
 | runner (`node`) not found, process cannot start, directory missing | `blocked`, with the reason |
 | non-zero exit | `failed`; the record keeps the exit code, the failing test names and the last 4000 characters of output |
 | no tests ran, or all skipped | `failed` |
-| timeout (default 1800 s per requirement, `--timeout`) | `failed`, the child process tree is killed |
+| timeout (default 1800 s per requirement, `--timeout`) | `failed`, the child process tree is killed (`taskkill /T` on Windows, OBSERVED to work; a process group kill on POSIX, written but NOT TESTED) |
 | the command changed the worktree, or the head moved | `failed`; the remaining commands are `not_run` |
 | Ctrl+C | record state `interrupted`, the rest `not_run`; exit 130 |
 | the process dies mid-run | record stays `running`; the next check sees a dead pid and reports it as interrupted |
+| a second `run` while the record says `running` and that pid is alive | refused; a reused process id looks the same, so `--ignore-running` overrides it when you know the old run is dead (there is no lock: two simultaneous starts can both begin, and both outcomes fail closed) |
 
 The child gets a minimal environment (no tokens or API keys, no inherited supervisor directory: `CREATORSTUDIO_DEV_SUPERVISOR_DIR` points to a
 throw-away directory that is deleted afterwards) and `PYTHONDONTWRITEBYTECODE=1`. Output is scrubbed for credential patterns before it is stored.
@@ -73,12 +74,13 @@ the runner pid, and per requirement: index, text, kind, argv, directory, start a
 (`passed failed skipped blocked not_run`), reason and output tail. A SHA-256 checksum over the whole record is stored in it.
 
 It is accepted only if the checksum is intact and task, head, diff hash and requirement-list hash all equal what is being merged now.
-A new commit, a merge of `main` into the branch, an edited requirement or a different diff therefore makes it unusable. Re-running writes a new
+A new commit, a merge of `main` into the branch, an edited requirement or a different diff therefore makes it unusable. Reading is pure: nothing is created, no temp file is removed and a damaged file is neither quarantined nor rewritten (the backup is read instead).
+Re-running writes a new
 attempt for the same head and keeps the previous version as the state store's `.bak`. `--resume` reuses only results that passed for the same head,
 diff and requirement list.
 
-Limits, stated plainly: the checksum detects damage and casual edits, not a deliberate forger with access to the state directory (who could also
-write a review marker). The record says what was run on this machine; it is not a CI substitute and it does not prove the tests are good tests.
+Limits, stated plainly: the checksum is not keyed. It detects damage and casual edits, not a deliberate forger with access to the state directory (who could also
+write a review marker). The tests being run are the branch's own code and keep `LOCALAPPDATA`/`USERPROFILE`, so a malicious test could compute the evidence path and write a valid-looking record; the independent review of the diff is what guards against that. The record says what was run on this machine; it is not a CI substitute and it does not prove the tests are good tests.
 
 ## The `tests` check in `integrate`
 
@@ -89,7 +91,7 @@ wording is for Lukas to amend.
 | pull request | result |
 |---|---|
 | registry-only record | PASS: no code to test |
-| head branch `wave/...` | PASS, stated as not applicable: lane tests are verified by the wave workflow |
+| head branch `wave/...` | **FAIL**: lane test evidence is not supported yet, so a wave merge through `integrate` needs an explicit decision (a branch name alone never earns a pass) |
 | code | needs exactly one active task for the branch; every requirement must be a command or gate prose; every command needs a passed result in a complete record for this exact head and diff |
 | anything unreadable | UNKNOWN (blocks) |
 
@@ -110,9 +112,12 @@ If a task's requirement is prose that is not in the table, rewrite it in the cla
 - It does not choose which tests a task needs: the requirement list is the task author's decision. A task that lists only `governance validate` is satisfied by that.
 - It does not run when nobody calls it. Nothing triggers `testreq run` automatically yet, and `cycle` still reports `ready_to_merge` on the eight gates; the merge is then refused by the ninth.
 - `integrate --preflight` and `claim` do not check requirements yet (a claim with a prose requirement is accepted and then fails at merge).
-- Wave pull requests are not covered. Full-suite requirements are expensive; write targeted ones.
+- Wave pull requests are refused by this check, not covered by it (no wave is open today). Full-suite requirements are expensive; write targeted ones.
 
 ## Observed use
 
-OBSERVED on the pull request that introduced it (T-DEV-065): the task's own requirements were run with `testreq run` before merge; the result is in
-the pull request and in `SESSION_HANDOFF.md`'s record of the task.
+OBSERVED while this was built: the task's own requirements were run with `testreq run` on the head before review (4 commands, all passed, evidence recorded);
+the classifier found 212 commands, 45 gate prose and 12 manual requirements in the registry; running the requirements from `orchestrator/` exposed a
+wrong working directory, which was fixed; the full `test_dev_*` run and CI both exposed one launch-path audit test (fixed by T-DEV-068); and the independent
+review of the first head found a wave exemption, a node reporter mismatch and a read path that was not pure, all fixed before merge. The first merge decided with the
+ninth row active was T-DEV-068 (PR #225), using this branch's code before it was merged itself. The result for this task is in its pull request description.

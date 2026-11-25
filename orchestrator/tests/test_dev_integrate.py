@@ -723,6 +723,19 @@ class TestsCheck(unittest.TestCase):
         self.assertEqual((res.outcome, gh.merges(), len(calls)), ("REFUSED", [], 2))
         self.assertEqual(res.note, "gates changed before merge")
 
+    def test_a_wave_pull_request_needs_a_decision_it_is_not_exempt(self):
+        _, info = run_eval(gh=FakeGh(pr=pr_json(headRefName="wave/w-1")))
+        gate = REAL_TESTS_GATE({"tests": info["tests"], "head": HEAD, "diff_sha": DHASH}, self.state)
+        self.assertEqual(gate.status, I.FAIL)
+        self.assertIn("wave pull request", gate.detail)
+
+    def test_an_error_inside_the_check_is_unknown_not_pass(self):
+        _, info = run_eval(git=self.git())
+        with mock.patch.object(TR, "gate_verdict", side_effect=RuntimeError("boom")):
+            gate = REAL_TESTS_GATE({"tests": info["tests"], "head": HEAD, "diff_sha": DHASH}, self.state)
+        self.assertEqual((gate.num, gate.status), (9, I.UNKNOWN))
+        self.assertIn("RuntimeError", gate.detail)
+
     def test_a_crashing_check_is_unknown_and_blocks(self):
         def boom(info):
             raise RuntimeError("disk on fire")

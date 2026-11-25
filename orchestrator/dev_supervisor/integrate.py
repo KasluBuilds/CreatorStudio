@@ -773,7 +773,7 @@ def tests_gate(info: Dict[str, Any], state_dir: Optional[os.PathLike] = None,
     """The ninth check: the task's test_requirements must have passing evidence for exactly this head and diff.
     Reads the evidence from the supervisor state directory without creating it. Never raises."""
     try:
-        ev = _testreq.EvidenceStore(state_dir, create=False)
+        ev = _testreq.EvidenceStore(state_dir)
         status, detail = _testreq.gate_verdict(info.get("tests"), str(info.get("head") or ""), str(info.get("diff_sha") or ""), ev,
                                                **({"pid_alive": pid_alive} if pid_alive else {}))
     except Exception as e:

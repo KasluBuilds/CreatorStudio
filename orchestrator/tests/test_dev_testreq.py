@@ -207,6 +207,8 @@ class Classification(unittest.TestCase):
         self.assertEqual(T.parse_counts("Ran 1 test in 0.0s\n\nOK (skipped=1)\n"), (1, 1))
         self.assertEqual(T.parse_counts("Ran 0 tests in 0.0s\n\nNO TESTS RAN\n"), (0, 0))
         self.assertEqual(T.parse_counts("# tests 5\n# pass 4\n# skip 1\n"), (5, 1))
+        spec = "\u2139 tests 2\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 1\n"
+        self.assertEqual(T.parse_counts(spec), (2, 1))                   # node's default reporter, as printed by v24
         self.assertEqual(T.parse_counts("no summary at all"), (None, None))
 
 
@@ -336,6 +338,14 @@ class Execution(Base):
         self.assertNotIn("A" * 24, stored)
         self.assertIn("[REDACTED]", stored)
 
+    def test_a_credential_split_by_the_tail_cut_leaves_no_fragment(self):
+        secret = "gh" + "p_" + "B" * 24
+        text = secret + "z" * (T.TAIL_CHARS - 10) + "\n" + OKTXT          # the 4000-character cut falls inside the secret
+        x = self.run_all([UNIT.format("test_a.py")], executor=ok_exec(text=text))["results"][0]
+        self.assertNotIn("BBBB", x["output_tail"])
+        stored = (self.ev.directory / f"{T.evidence_name(TID, self.git.head)}.json").read_text(encoding="utf-8")
+        self.assertNotIn("BBBB", stored)
+
     def test_an_unclassifiable_requirement_is_blocked_and_fails_the_verdict(self):
         reqs = [UNIT.format("test_a.py"), "full suite before merge"]
         rec = self.run_all(reqs)
@@ -422,6 +432,24 @@ class Binding(Base):
         self.assertTrue(why.startswith("unreadable"))
         self.assertEqual(self.verdict(self.REQS)[0], "FAIL")
 
+    def test_reading_evidence_changes_nothing_on_disk(self):
+        self.run_all(self.REQS)
+        name = T.evidence_name(TID, self.git.head)
+        (self.ev.directory / f"{name}.json").write_text("{not json", encoding="utf-8")     # damaged, with a backup beside it
+        stale_tmp = self.ev.directory / ".left_over.tmp"
+        stale_tmp.write_text("x", encoding="utf-8")                                         # another writer's in-flight file
+        before = {p.name: p.read_bytes() for p in self.ev.directory.iterdir()}
+        fresh = T.EvidenceStore(self.state)
+        rec, why = fresh.load(TID, self.git.head)
+        self.assertEqual((why, rec is not None), ("", True))
+        T.gate_verdict({"branch": BRANCH, "wave": False, "reg_only": False, "registry": {"tasks": []}}, self.git.head,
+                       self.git.diff_hash(), fresh)
+        self.assertEqual({p.name: p.read_bytes() for p in self.ev.directory.iterdir()}, before)    # no quarantine, no rewrite
+        self.assertFalse((self.ev.directory / "events.jsonl").exists())
+        missing = T.EvidenceStore(self.tmp / "never_created")
+        self.assertEqual(missing.load(TID, self.git.head), (None, "missing"))
+        self.assertFalse((self.tmp / "never_created").exists())
+
     def test_a_damaged_record_falls_back_to_its_sealed_backup_which_is_never_better_than_the_truth(self):
         self.run_all(self.REQS)                                    # every save keeps the previous version as the backup
         name = T.evidence_name(TID, self.git.head)
@@ -487,6 +515,15 @@ class Recovery(Base):
         rec = self.run_all(self.REQS, pid=7, pid_alive=lambda p: False)       # the crashed owner is gone: a new run takes over
         self.assertEqual(rec["verdict"], "passed")
 
+    def test_ignore_running_is_the_explicit_way_past_a_reused_process_id(self):
+        with self.assertRaises(self.Crash):
+            self.run_all(self.REQS, executor=self.crash_on_second([]), pid=4242)
+        with self.assertRaises(T.TestReqError) as cm:
+            self.run_all(self.REQS, pid=7, pid_alive=lambda p: True)
+        self.assertIn("--ignore-running", str(cm.exception))
+        rec = self.run_all(self.REQS, pid=7, pid_alive=lambda p: True, force=True)
+        self.assertEqual(rec["verdict"], "passed")
+
     def test_resume_reuses_what_passed_for_the_same_head_and_runs_the_rest(self):
         with self.assertRaises(self.Crash):
             self.run_all(self.REQS, executor=self.crash_on_second([]))
@@ -542,9 +579,13 @@ class GateVerdict(Base):
         rec.update(kw)
         return rec
 
-    def test_not_applicable_cases_are_explicit_passes(self):
+    def test_a_wave_pull_request_is_refused_not_exempted(self):
         status, detail = self.verdict_of(self.tc([], wave=True))
-        self.assertEqual((status, "wave" in detail), ("PASS", True))
+        self.assertEqual((status, "wave pull request" in detail, "not supported yet" in detail), ("FAIL", True, True))
+        # a branch merely named wave/... with a code diff cannot buy a pass
+        self.assertEqual(self.verdict_of(self.tc(["python -B -m governance validate from orchestrator/"], wave=True))[0], "FAIL")
+
+    def test_a_registry_only_record_passes_explicitly(self):
         status, detail = self.verdict_of(self.tc([], reg_only=True))
         self.assertEqual((status, "registry-only" in detail), ("PASS", True))
 
@@ -660,6 +701,12 @@ class Cli(Base):
         self.assertIn("output tail of requirement 1", text)
         self.assertIn("AssertionError: nope", text)
 
+    def test_a_state_store_failure_is_a_refusal_not_a_traceback(self):
+        with mock.patch.object(T.EvidenceStore, "save", side_effect=T.StoreError("disk full")):
+            code, text = self.go("run", executor=ok_exec())
+        self.assertEqual(code, 2)
+        self.assertIn("refused", text)
+
     def test_manual_requirement_makes_plan_and_run_fail(self):
         self.git.registry["tasks"][0]["test_requirements"] = ["full suite before merge"]
         code, text = self.go("plan")
@@ -746,6 +793,22 @@ class RealRepository(unittest.TestCase):
         # the repeated run left the worktree untouched
         out = subprocess.run(["git", "status", "--porcelain"], cwd=self.root, capture_output=True, text=True).stdout
         self.assertEqual(out.strip(), "")
+
+    @unittest.skipUnless(shutil.which("node"), "node is not installed")
+    def test_real_node_counts_tests_and_a_failing_node_test_fails(self):
+        tests = self.root / "dashboard" / "desktop" / "tests"
+        tests.mkdir(parents=True)
+        (tests / "a.test.js").write_text("const test = require('node:test');\ntest('a', () => {});\n", encoding="utf-8")
+        self.sh(self.root, "add", "dashboard")
+        self.sh(self.root, "commit", "-q", "-m", "node tests")
+        req = ['cd dashboard/desktop && node --test "tests/*.test.js"']
+        x = self.run_all(req)["results"][0]
+        self.assertEqual((x["status"], x["tests_run"]), ("passed", 1), (x.get("reason"), x.get("output_tail")))
+        (tests / "b.test.js").write_text("const test = require('node:test');\ntest('b', () => { throw new Error('no'); });\n", encoding="utf-8")
+        self.sh(self.root, "add", "dashboard")
+        self.sh(self.root, "commit", "-q", "-m", "failing node test")
+        x = self.run_all(req)["results"][0]
+        self.assertEqual(x["status"], "failed")
 
     def test_timeout_really_kills_the_child(self):
         self.commit({"test_slow.py": SLOW_TEST})
