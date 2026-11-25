@@ -783,8 +783,14 @@ class RealRepository(unittest.TestCase):
         self.commit({"test_more.py": OK_TEST}, "another commit")
         code, text = go("check")
         self.assertEqual((code, "tests check: FAIL" in text), (1, True))
-        self.assertEqual(go("run")[0], 0)
+        # called from a subdirectory (as Main does from orchestrator/), the root is still the worktree top level
+        out = io.StringIO()
+        code = T.main(["run", "--repo", str(self.root / "orchestrator"), "--state-dir", str(self.state)], out=out)
+        self.assertEqual(code, 0, out.getvalue())
         self.assertEqual(go("check")[0], 0)
+        out = io.StringIO()
+        self.assertEqual(T.main(["plan", "--repo", str(self.root.parent)], out=out), 2)      # not a worktree
+        self.assertIn("not inside a git worktree", out.getvalue())
 
 
 if __name__ == "__main__":

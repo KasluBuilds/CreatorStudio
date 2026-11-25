@@ -513,6 +513,16 @@ def run_requirements(root: Path, task_id: str, branch: str, texts: Sequence[str]
 
 # ------------------------------------------------------------------ CLI
 
+def _toplevel(path: Path) -> Path:
+    try:
+        r = subprocess.run(["git", "-C", str(path), "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise TestReqError(f"cannot run git: {type(e).__name__}") from None
+    if r.returncode != 0 or not r.stdout.strip():
+        raise TestReqError(f"{path} is not inside a git worktree")
+    return Path(r.stdout.strip()).resolve()
+
+
 def _git_runner(root: Path) -> Callable:
     from dev_supervisor import integrate
     return integrate.real_git_runner(root)
@@ -569,8 +579,10 @@ def main(argv: Optional[Sequence[str]] = None, *, git: Optional[Callable] = None
     a = ap.parse_args(argv)
     out = out or sys.stdout
     root = Path(a.repo).resolve()
-    git = git or _git_runner(root)
     try:
+        if git is None:
+            root = _toplevel(root)      # requirement directories are relative to the worktree root, not to where it was called
+            git = _git_runner(root)
         tid, branch, texts = _resolve(root, git, a.task, a.base)
         reqs = classify_all(texts)
         print(f"{tid} on {branch}: {len(reqs)} requirement(s)", file=out)
