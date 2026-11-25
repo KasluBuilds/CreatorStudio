@@ -698,6 +698,16 @@
         "orchestrator/tests/test_dev_autonomy.py",
         "orchestrator/tests/test_dev_cycle.py"
       ]
+    },
+    "AGR-DEV-075-01": {
+      "description": "T-DEV-075 adds dev_supervisor/task_select.py and its test file only.",
+      "task_ids": [
+        "T-DEV-075"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/task_select.py",
+        "orchestrator/tests/test_dev_task_select.py"
+      ]
     }
   },
   "tasks": [
@@ -3905,6 +3915,44 @@
       "lease": {
         "acquired": "2026-11-25T14:58:07+00:00",
         "expires": "2026-11-26T14:58:07+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-075",
+      "title": "dev_supervisor: task_select picks the next dispatchable PLANNED task and records why",
+      "description": "A new read-mostly command, python -B -m dev_supervisor.task_select [--json] [--record], reads the registry, walks the PLANNED tasks in registry order and gives every one a verdict: selected, or the list of reasons it is rejected. Reasons: an unmet or unknown dependency, an owned path held by an ACTIVE or UNDER_REVIEW task (shared files excluded), a worker already running for it, a record that is not dispatch ready (empty owned_paths or acceptance_criteria, a manual test requirement), no branch or worktree registered, no command test requirement (only gate wording: nothing could be run), no independent review path (no authoritative Main session and no review-role route of capability 3 or more), free memory below the floor, no implementation route that the allocation accepts. The first task with no reason is selected. With --record the verdicts are appended to the event log as task_selected or task_selection_none and kept as the last selection in a selection state document; without it nothing is written. The command never claims, activates, creates a worktree, writes a prompt or queues an assignment; it prints those next steps. It never invents an owned path or an acceptance criterion.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-075-task-select",
+      "worktree": "../CreatorStudio-worktrees/t-dev-075-task-select",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-075-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/task_select.py",
+        "orchestrator/tests/test_dev_task_select.py"
+      ],
+      "acceptance_criteria": [
+        "every PLANNED task gets a verdict; a task that is not PLANNED (ACTIVE, UNDER_REVIEW, COMPLETED, RELEASED, BLOCKED) is not a candidate and is not listed as selected",
+        "each rejection reason above is produced for a synthetic registry that has exactly that defect, and a record without it is selected; the first task in registry order with no reason is the one selected",
+        "no independent review path, memory below the floor, an unreadable memory value or no accepted implementation route rejects every task with that reason",
+        "without --record nothing is written (no event, no document); with --record one event and the selection document are written, naming the selected task or none, the candidates and the reasons; repeating the same selection appends no second event",
+        "the command never edits ACTIVE_TASKS.json, never runs git commit, push or gh, never creates a worktree or a prompt and never queues an assignment; the printed next steps name the claim, worktree, prompt, dry-run assignment and review commands",
+        "an unreadable registry or state directory is a refusal with a reason, not a selection"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_task_select.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_dispatch_routing.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 3: the smallest complete component towards unattended selection. Activation of a PLANNED record, the worktree, the prompt and the queued assignment stay separate steps; the registry holds no PLANNED task today.",
+      "lease": {
+        "acquired": "2026-11-25T15:12:39+00:00",
+        "expires": "2026-11-26T15:12:39+00:00"
       }
     }
   ]
