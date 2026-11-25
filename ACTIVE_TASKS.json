@@ -3840,7 +3840,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-073-worker-tests-core",
       "worktree": "../CreatorStudio-worktrees/t-dev-073-worker-tests-core",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3869,10 +3869,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 2 (first of two tasks; the second wires scan() into the Supervisor loop and surfaces the state).",
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 2 (first of two tasks; the second wires scan() into the Supervisor loop and surfaces the state). Merged as PR #247 (independent review of diff 875b74699d3be2fd).",
       "lease": {
         "acquired": "2026-11-25T14:39:37+00:00",
-        "expires": "2026-11-26T14:39:37+00:00"
+        "expires": "2026-11-26T14:39:37+00:00",
+        "released": "2026-11-25T16:18:50+00:00"
       }
     },
     {
