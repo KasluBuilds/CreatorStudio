@@ -603,6 +603,15 @@
         "orchestrator/tests/test_dev_testreq.py",
         "orchestrator/tests/test_dev_integrate.py"
       ]
+    },
+    "AGR-DEV-068-01": {
+      "description": "T-DEV-068 edits tests/test_dev_dispatch_routing.py only.",
+      "task_ids": [
+        "T-DEV-068"
+      ],
+      "paths": [
+        "orchestrator/tests/test_dev_dispatch_routing.py"
+      ]
     }
   },
   "tasks": [
@@ -3471,6 +3480,39 @@
       "lease": {
         "acquired": "2026-11-25T05:14:48+00:00",
         "expires": "2026-11-26T05:14:48+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-068",
+      "title": "dev_supervisor: list testreq.py as a reviewed Popen user in the launch-path audit",
+      "description": "test_dev_dispatch_routing.LaunchPathAudit pins the modules that call subprocess.Popen directly. dev_supervisor/testreq.py (T-DEV-065, in review) runs a task's test commands through Popen so that it can kill the child process tree on a timeout; it only ever starts python or node from a fixed grammar, never claude. Make the audit list testreq.py as a reviewed Popen user, tolerating its absence so that the audit passes before and after T-DEV-065 merges, and assert that testreq.py is the only module besides the two already listed.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-068-popen-audit-testreq",
+      "worktree": "../CreatorStudio-worktrees/t-dev-068-popen-audit-testreq",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-068-01"
+      ],
+      "owned_paths": [
+        "orchestrator/tests/test_dev_dispatch_routing.py"
+      ],
+      "acceptance_criteria": [
+        "test_only_reviewed_modules_call_popen_directly expects live_autonomy.py and worker_spawner.py, plus testreq.py when orchestrator/dev_supervisor/testreq.py exists, and fails on any other module",
+        "the test passes on current main and on a tree that contains testreq.py",
+        "no other test in the file changes"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_dispatch_routing.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission; found by the full test_dev_* run on the T-DEV-065 branch.",
+      "lease": {
+        "acquired": "2026-11-25T05:55:16+00:00",
+        "expires": "2026-11-26T05:55:16+00:00"
       }
     }
   ]
