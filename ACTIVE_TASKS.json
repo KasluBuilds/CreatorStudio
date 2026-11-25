@@ -672,6 +672,18 @@
         "orchestrator/dev_supervisor/autonomy.py",
         "orchestrator/tests/test_dev_autonomy.py"
       ]
+    },
+    "AGR-DEV-073-01": {
+      "description": "T-DEV-073 adds dev_supervisor/worker_tests.py, a spawn_run function in dev_supervisor/testreq.py and their test files only.",
+      "task_ids": [
+        "T-DEV-073"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/worker_tests.py",
+        "orchestrator/dev_supervisor/testreq.py",
+        "orchestrator/tests/test_dev_worker_tests.py",
+        "orchestrator/tests/test_dev_testreq.py"
+      ]
     }
   },
   "tasks": [
@@ -3795,6 +3807,48 @@
         "acquired": "2026-11-25T14:31:26+00:00",
         "expires": "2026-11-26T14:31:26+00:00",
         "released": "2026-11-25T14:44:49+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-073",
+      "title": "dev_supervisor: worker_tests module runs a finished worker's task requirements and keeps the progress in state",
+      "description": "Build the core of Supervisor-triggered testing. A new module dev_supervisor/worker_tests.py provides one pass, scan(), that finds workers which exited 0 on their task/ branch after the feature was first enabled, resolves the task's test_requirements from origin/main, checks the worktree (clean, on the registered branch, at least one commit ahead of origin/main, no manual requirement), and starts the existing testreq runner as a child process through a new testreq.spawn_run. It never runs a command itself. Progress is kept in the state document worker_tests (per worker: task, head, diff hash, state PENDING/RUNNING/PASSED/FAILED/BLOCKED, attempts, runner pid, detail), written before and after each launch so a restart or a duplicate pass adopts a live run instead of starting another. The verdict comes only from the sealed testreq evidence record bound to the exact head, diff and requirement list (testreq.check_evidence); a record for another head or diff is never used. One run at a time, a memory floor check before each launch, an interrupted run (dead runner, record not complete) is relaunched with --resume up to three attempts and then BLOCKED. Events worker_tests_started/passed/failed/blocked/interrupted are appended once per state change. Nothing is published, reviewed or merged. The manual testreq command is unchanged. Wiring into the Supervisor loop, autonomy next, cycle and the documentation are separate later tasks.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-073-worker-tests-core",
+      "worktree": "../CreatorStudio-worktrees/t-dev-073-worker-tests-core",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-073-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/worker_tests.py",
+        "orchestrator/dev_supervisor/testreq.py",
+        "orchestrator/tests/test_dev_worker_tests.py",
+        "orchestrator/tests/test_dev_testreq.py"
+      ],
+      "acceptance_criteria": [
+        "scan() starts the testreq runner for a worker with status EXITED, exit code 0, role worker and a task/ branch, whose task is ACTIVE or UNDER_REVIEW on origin/main, whose worktree is clean, on the registered branch and at least one commit ahead of origin/main; a worker that failed, was stopped, is a reviewer, ended before the feature was first enabled, or belongs to a finished task is never tested",
+        "a missing task, empty test_requirements, a manual requirement, a dirty worktree, a wrong branch or no commit ahead of the base gives state BLOCKED with the reason and starts nothing; the cause clearing lets a later pass proceed",
+        "the verdict is taken only from the sealed evidence record for the current head, diff hash and requirement list: a complete passing record gives PASSED, a complete record with a failed, blocked or not_run command gives FAILED with the failing requirement, its reason and the command to show it; a record for another head or diff, or a damaged record, is never reused; skipped is never passed",
+        "a second pass while the run is alive, or after the Supervisor restarted, starts no second runner; a live run recorded in the evidence store by another process is adopted; a dead runner with a record that is not complete is relaunched with --resume, at most three attempts, then BLOCKED",
+        "one runner at a time and no launch below the memory floor; the launch is recorded in the state document before the process starts and the pid after, so a crash between the two is recovered without a duplicate",
+        "an event worker_tests_<state> is appended once per state change and not again for an unchanged state; the state document holds no output, secret or environment value",
+        "spawn_run builds the child's argument list from fixed text and the task id, worktree and state directory only, passes a minimal environment, and the manual testreq run, plan, show and check behave as before"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_worker_tests.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_testreq.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_dispatch_routing.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 2 (first of two tasks; the second wires scan() into the Supervisor loop and surfaces the state).",
+      "lease": {
+        "acquired": "2026-11-25T14:39:37+00:00",
+        "expires": "2026-11-26T14:39:37+00:00"
       }
     }
   ]
