@@ -304,7 +304,11 @@ class LaunchPathAudit(unittest.TestCase):
         self.assertEqual(flagged, {})
 
     def test_only_reviewed_modules_call_popen_directly(self):
-        self.assertEqual(sorted(self.calls()["popen"]), ["live_autonomy.py", "worker_spawner.py"])
+        """testreq.py (T-DEV-065) runs a task's python or node test commands, built from a fixed grammar and never claude,
+        and needs Popen to kill the whole child process tree on a timeout. It is listed only while the module exists, so
+        this audit holds before and after it is merged; any other module still fails here."""
+        expected = ["live_autonomy.py", "worker_spawner.py"] + (["testreq.py"] if (PKG / "testreq.py").exists() else [])
+        self.assertEqual(sorted(self.calls()["popen"]), sorted(expected))
 
     def test_no_module_imports_a_subprocess_function_by_name_or_aliases_subprocess(self):
         """`from subprocess import Popen` or `import subprocess as sp` would hide a launch from the audit."""
