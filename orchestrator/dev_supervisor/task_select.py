@@ -25,12 +25,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
 from . import autonomy, dispatch_routing, memory_guard, model_allocation, testreq
+from governance import tasks as gov_tasks
 from .config import ConfigError
 from .state_store import StateStore, StoreError, utc_iso
 
@@ -38,14 +41,17 @@ __all__ = ["select", "main"]
 
 EXIT_OK, EXIT_NONE, EXIT_REFUSED = 0, 1, 2
 DOC = "selection"
+# Warnings of autonomy.compute_items that make its picture of running workers or tasks unreliable: fail closed.
+UNRELIABLE = ("worker registry unreadable", "worker items failed", "task items failed", "ACTIVE_TASKS.json unreadable",
+              "worker test items failed")
 
 
 def _global_reasons(store: Optional[StateStore], state_dir: Optional[Path], free_memory: Callable[[], Optional[int]],
                     floor: int) -> List[str]:
     reasons: List[str] = []
-    ok, why = memory_guard.check(free_memory(), floor)
+    ok, _ = memory_guard.check(free_memory(), floor)
     if not ok:
-        reasons.append(why)
+        reasons.append(f"memory guard: free memory is below the {floor} MB floor or could not be read")
     alloc = None
     if state_dir is None:
         reasons.append("no implementation route: the state directory is unknown")
@@ -68,17 +74,24 @@ def _global_reasons(store: Optional[StateStore], state_dir: Optional[Path], free
     return reasons
 
 
-def _task_reasons(task: Dict[str, Any], ready: Dict[str, dict], blocked: Dict[str, str]) -> List[str]:
+def _task_reasons(task: Dict[str, Any], ready: Dict[str, dict], blocked: Dict[str, str], stuck: Dict[str, str],
+                  shared: set, dupes: set) -> List[str]:
     tid = str(task.get("id"))
+    if tid in dupes:
+        return [f"task id {tid} appears more than once in the registry"]
     if tid in blocked:
         return [blocked[tid]]
     reasons: List[str] = []
-    item = ready.get(tid)
-    if item is None:
-        return ["not offered by autonomy next (no start_task item)"]
-    reasons += [str(p) for p in item.get("dispatch_problems") or []]
+    if tid in stuck:
+        reasons.append(stuck[tid])
+    if tid not in ready:
+        return reasons + ["not offered by autonomy next (no start_task item)"]
+    reasons += autonomy.dispatch_problems(task)                # the record itself, never a record of the same id
+    owned = [p for p in (task.get("owned_paths") or []) if isinstance(p, str) and p.strip()]
+    if owned and all(p.lower() in shared for p in owned):
+        reasons.append("every owned path is a shared file: no real ownership")
     branch, worktree = task.get("branch"), task.get("worktree")
-    if not (isinstance(branch, str) and branch.startswith("task/")):
+    if not (isinstance(branch, str) and gov_tasks.BRANCH.match(branch) and branch.startswith("task/")):
         reasons.append("no registered task/ branch")
     if not (isinstance(worktree, str) and worktree.strip()):
         reasons.append("no registered worktree")
@@ -96,19 +109,26 @@ def select(root: Path, store: Optional[StateStore], state_dir: Optional[Path], g
     """The selection record. Raises ``RuntimeError`` only when the registry cannot be read."""
     try:
         reg = autonomy._load_json(root / "ACTIVE_TASKS.json")
+        if not isinstance(reg["tasks"], list):
+            raise TypeError("tasks is not a list")
         tasks = [t for t in reg["tasks"] if isinstance(t, dict) and t.get("id")]
+        shared = {str(k).lower() for k in (reg.get("shared_files") or {})}
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         raise RuntimeError("ACTIVE_TASKS.json is unreadable or malformed") from None
     res = autonomy.compute_items(root, store, git or autonomy.real_git_runner(root))
     ready = {i["task_id"]: i for i in res["items"] if i["kind"] == "start_task"}
     blocked = {b["task_id"]: b["blocker"] for b in res["blocked"] if b.get("id") == f"blocked:{b.get('task_id')}"}
+    stuck = {b["task_id"]: b["blocker"] for b in res["blocked"] if str(b.get("id", "")).startswith("blocked:worker:")}
     glob = _global_reasons(store, state_dir, free_memory, memory_guard.min_free_mb() if floor is None else floor)
+    glob += [f"the picture of running workers is unreliable: {w}" for w in res["warnings"] if any(u in w for u in UNRELIABLE)]
+    ids = [str(t["id"]) for t in tasks]
+    dupes = {i for i in ids if ids.count(i) > 1}
     verdicts: List[Dict[str, Any]] = []
     selected: Optional[str] = None
     for t in tasks:
         if t.get("status") != "PLANNED":
             continue
-        reasons = _task_reasons(t, ready, blocked) + glob
+        reasons = _task_reasons(t, ready, blocked, stuck, shared, dupes) + glob
         pick = not reasons and selected is None
         if pick:
             selected = str(t["id"])
@@ -171,9 +191,12 @@ def main(argv: Optional[Sequence[str]] = None, out: Optional[TextIO] = None, *, 
         return EXIT_REFUSED
     state_dir = store.directory
     try:
-        rec = select(root, store, state_dir, git, free_memory)
+        rec = select(root, store, state_dir, git, free_memory, memory_guard.min_free_mb(env if env is not None else os.environ))
     except RuntimeError as e:
         out.write(f"refused: {e}\n")
+        return EXIT_REFUSED
+    except (OSError, StoreError) as e:
+        out.write(f"refused: the state could not be read ({type(e).__name__})\n")
         return EXIT_REFUSED
     recorded = False
     if a.record:

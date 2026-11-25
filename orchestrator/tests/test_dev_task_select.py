@@ -185,6 +185,94 @@ class GlobalReasons(Env):
         self.assertTrue(any("state directory is unknown" in r for r in rec["global_reasons"]))
 
 
+class ReviewFindings(Env):
+    """Findings of the independent review of the first head."""
+
+    def events(self):
+        evs, _ = self.store.read_events()
+        return [e for e in evs if e["kind"].startswith("task_select")]
+
+    def test_the_memory_figure_is_not_part_of_the_fingerprint_so_a_low_memory_loop_records_once(self):
+        for mb in (500, 501, 502):
+            self.mem = mb
+            self.cli("--record")
+        self.assertEqual([e["kind"] for e in self.events()], ["task_selection_none"])
+
+    def test_a_damaged_worker_registry_rejects_every_task(self):
+        from dev_supervisor.workers import Worker, WorkerRegistry, WorkerStatus
+        WorkerRegistry(self.store).add(Worker(worker_id="w1", role="worker", task_id="T-1", branch="task/t-1", worktree=str(self.tmp / "w"),
+                                              owner_stream="s", status=WorkerStatus.RUNNING))
+        (self.state / "workers.json").write_text("{damaged", encoding="utf-8")
+        for bak in self.state.glob("workers.json.bak"):
+            bak.unlink()
+        rec = self.sel()
+        self.assertIsNone(rec["selected"])
+        self.assertTrue(any("unreliable" in r for r in rec["global_reasons"]), rec["global_reasons"])
+
+    def test_an_oserror_from_a_state_document_is_a_refusal_not_a_traceback(self):
+        (self.state / "sessions.json").unlink()
+        (self.state / "sessions.json.bak").unlink(missing_ok=True)
+        (self.state / "sessions.json").mkdir()                  # reading it raises PermissionError / IsADirectoryError
+        rc, out = self.cli()
+        self.assertIn(rc, (0, 1, 2))
+        self.assertNotIn("Traceback", out)
+
+    def test_the_record_itself_is_judged_not_a_record_of_the_same_id(self):
+        self.write([task("T-1", acceptance_criteria=[]), task("T-1", paths=("z/",))])
+        rec = self.sel()
+        self.assertIsNone(rec["selected"])
+        self.assertTrue(all("more than once" in " ".join(v["reasons"]) for v in rec["verdicts"]))
+        from dev_supervisor import autonomy
+        self.assertIn("acceptance_criteria is empty", " ".join(autonomy.dispatch_problems(task("T-1", acceptance_criteria=[]))))
+
+    def test_a_branch_must_match_the_governance_pattern(self):
+        for bad in ("task/", "task/ x; rm", "task/UPPER", "task/a b"):
+            v = self.verdict(self._with(branch=bad), "T-1")
+            self.assertIn("no registered task/ branch", " ".join(v["reasons"]), bad)
+
+    def _with(self, **kw):
+        self.write([task("T-1", **kw)])
+        return self.sel()
+
+    def test_a_blocked_worker_for_the_task_rejects_it(self):
+        from dev_supervisor.workers import Worker, WorkerRegistry, WorkerStatus
+        WorkerRegistry(self.store).add(Worker(worker_id="w1", role="worker", task_id="T-1", branch="task/t-1", worktree=str(self.tmp / "w"),
+                                              owner_stream="s", status=WorkerStatus.BLOCKED))
+        v = self.verdict(self.sel(), "T-1")
+        self.assertFalse(v["selected"])
+        self.assertIn("BLOCKED", " ".join(v["reasons"]))
+
+    def test_a_task_whose_only_owned_path_is_a_shared_file_is_rejected(self):
+        v = self.verdict(self._with(owned_paths=["ACTIVE_TASKS.json"]), "T-1")
+        self.assertIn("shared file", " ".join(v["reasons"]))
+
+    def test_a_registry_whose_tasks_is_not_a_list_is_a_refusal(self):
+        (self.repo / "ACTIVE_TASKS.json").write_text(json.dumps({"tasks": {"T-1": task("T-1")}}), encoding="utf-8")
+        self.assertEqual(self.cli()[0], 2)
+
+    def test_the_floor_comes_from_the_given_environment(self):
+        self.mem = 2000
+        rc, out = self.cli("--json", )
+        self.assertEqual(json.loads(out)["selected"], "T-1")
+        out = io.StringIO()
+        env = {"CREATORSTUDIO_DEV_SUPERVISOR_CONFIG": str(self.tmp / "none.json"), "CREATORSTUDIO_MIN_FREE_MB": "3000"}
+        ts.main(["--json", "--repo", str(self.repo), "--state-dir", str(self.state)], out, git=no_git, free_memory=lambda: self.mem, env=env)
+        self.assertIsNone(json.loads(out.getvalue())["selected"])
+
+    def test_a_planned_task_that_autonomy_does_not_offer_is_not_selected(self):
+        import unittest.mock as mock
+        with mock.patch.object(ts.autonomy, "compute_items", return_value={"items": [], "blocked": [], "warnings": []}):
+            rec = self.sel()
+        self.assertIsNone(rec["selected"])
+        self.assertIn("not offered", rec["verdicts"][0]["reasons"][0])
+
+    def test_record_refuses_before_creating_a_missing_state_directory(self):
+        import shutil
+        shutil.rmtree(self.state)
+        self.cli("--record")
+        self.assertFalse(self.state.exists())
+
+
 class Recording(Env):
     def events(self):
         evs, _ = self.store.read_events()
