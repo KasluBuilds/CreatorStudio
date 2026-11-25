@@ -708,6 +708,18 @@
         "orchestrator/dev_supervisor/task_select.py",
         "orchestrator/tests/test_dev_task_select.py"
       ]
+    },
+    "AGR-DEV-077-01": {
+      "description": "T-DEV-077 edits dev_supervisor/testreq.py, dev_supervisor/worker_tests.py and their two test files only.",
+      "task_ids": [
+        "T-DEV-077"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/testreq.py",
+        "orchestrator/dev_supervisor/worker_tests.py",
+        "orchestrator/tests/test_dev_testreq.py",
+        "orchestrator/tests/test_dev_worker_tests.py"
+      ]
     }
   },
   "tasks": [
@@ -3955,6 +3967,45 @@
         "acquired": "2026-11-25T15:12:39+00:00",
         "expires": "2026-11-26T15:12:39+00:00",
         "released": "2026-11-25T15:47:41+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-077",
+      "title": "dev_supervisor: the test runner started by worker_tests keeps its output in a log and the interrupted note shows its tail",
+      "description": "testreq.spawn_run sends the child's stdout and stderr to the null device, so when a runner refuses or crashes before it writes a record (for example exit code 2 because another run is alive) the reason is lost and worker_tests can only say that the runner ended without a complete record. Add an optional log_path argument to spawn_run: when given, the child's stdout and stderr go to that file (opened in append mode by the parent and closed by the parent right after the child is started); when None the behaviour is unchanged. worker_tests passes a log path inside the test_evidence directory of its state directory, named runner_<task id>_<head first 12 characters>.log, and when it finds a RUNNING entry whose runner ended without a complete record it adds the last 200 characters of that log, scrubbed and on one line, to the interrupted detail.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-077-runner-log",
+      "worktree": "../CreatorStudio-worktrees/t-dev-077-runner-log",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-077-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/testreq.py",
+        "orchestrator/dev_supervisor/worker_tests.py",
+        "orchestrator/tests/test_dev_testreq.py",
+        "orchestrator/tests/test_dev_worker_tests.py"
+      ],
+      "acceptance_criteria": [
+        "spawn_run accepts log_path (default None); with a path the child receives that file, opened in append binary mode, as stdout and as stderr and the parent closes its own handle after the child is started; with None stdout and stderr are the null device as before",
+        "worker_tests passes log_path=<state dir>/test_evidence/runner_<task id>_<first 12 characters of the head>.log to its spawn function (the directory is created if missing) and the existing spawn arguments are unchanged",
+        "when a RUNNING entry is found with a runner that ended without a complete evidence record and that log file exists, the interrupted detail ends with ' last output: ' followed by at most 200 characters of the end of the log, with line breaks replaced by spaces and credentials scrubbed; with no log file the detail is unchanged",
+        "the test fake spawn functions accept the new keyword; new tests cover spawn_run with and without log_path, the log path passed by worker_tests, the log tail in the interrupted detail and its absence without a log"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_worker_tests.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_testreq.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_dispatch_routing.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 4: a four-file task with explicit paths and executable tests, found by the reviews of the worker test scanner (the runner's reason is lost); prepared for a worker.",
+      "lease": {
+        "acquired": "2026-11-25T16:29:16+00:00",
+        "expires": "2026-11-26T16:29:16+00:00"
       }
     }
   ]
