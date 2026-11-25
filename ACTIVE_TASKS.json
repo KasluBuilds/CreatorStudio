@@ -720,6 +720,17 @@
         "orchestrator/tests/test_dev_testreq.py",
         "orchestrator/tests/test_dev_worker_tests.py"
       ]
+    },
+    "AGR-DEV-076-01": {
+      "description": "T-DEV-076 edits three documentation pages of dev_supervisor only.",
+      "task_ids": [
+        "T-DEV-076"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/TEST_EVIDENCE.md",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ]
     }
   },
   "tasks": [
@@ -4007,6 +4018,42 @@
       "lease": {
         "acquired": "2026-11-25T16:29:16+00:00",
         "expires": "2026-11-26T16:29:16+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-076",
+      "title": "dev_supervisor: record the worker-to-integration pipeline mission, what runs by itself now and what does not",
+      "description": "Documentation only. Record in TEST_EVIDENCE.md (a section on Supervisor-triggered runs), WORKER_DISPATCH.md (rows for worker_tests, task_select and the new autonomy next items and cycle stages) and WORKER_GATEWAY.md (new section 14) what the 2026-11-25 mission implemented and merged (T-DEV-072 to T-DEV-075), the review rounds and what they found, the offline end-to-end observation, the independent reviewer route probes, the state of the larger worker task, what is demonstrated and what is not, and the next milestones with measurable acceptance criteria.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-076-docs-pipeline",
+      "worktree": "../CreatorStudio-worktrees/t-dev-076-docs-pipeline",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-076-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/TEST_EVIDENCE.md",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ],
+      "acceptance_criteria": [
+        "the merged pull requests, review rounds, tests run and observations are recorded with labels (OBSERVED, REPORTED, INFERRED, NOT DEMONSTRATED) and match GitHub and the registry",
+        "the pages say that nothing is autonomous, that the running Supervisor holds the code it loaded and needs a restart by its owner for the test scan to run, and list what is still not demonstrated",
+        "the next milestones each have a measurable acceptance criterion",
+        "no credential, absolute user path or launcher content appears"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_docs.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 7 record.",
+      "lease": {
+        "acquired": "2026-11-25T16:49:35+00:00",
+        "expires": "2026-11-26T16:49:35+00:00"
       }
     }
   ]
