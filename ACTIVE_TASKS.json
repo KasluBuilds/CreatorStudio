@@ -731,6 +731,15 @@
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
         "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
       ]
+    },
+    "AGR-DEV-078-01": {
+      "description": "T-DEV-078 edits one documentation page of dev_supervisor only.",
+      "task_ids": [
+        "T-DEV-078"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ]
     }
   },
   "tasks": [
@@ -4055,6 +4064,39 @@
         "acquired": "2026-11-25T16:49:35+00:00",
         "expires": "2026-11-26T16:49:35+00:00",
         "released": "2026-11-25T17:12:11+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-078",
+      "title": "dev_supervisor: correct section 14 of WORKER_GATEWAY.md with the result of the T-DEV-077 worker dispatch",
+      "description": "Documentation only. Section 14 of WORKER_GATEWAY.md (merged in PR 257) says T-DEV-077 was not dispatched. It was dispatched at 17:12 UTC after a raw route check answered 200, and the worker failed. Record the run (worker id, times, turns, tool calls, provider answers, exit code, what the worktree held) and fix the sentences that depend on it: the larger worker task paragraph, the not-demonstrated item about three-or-more-file tasks, and the second milestone.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-078-docs-dispatch-result",
+      "worktree": "../CreatorStudio-worktrees/t-dev-078-docs-dispatch-result",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-078-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
+      ],
+      "acceptance_criteria": [
+        "section 14 states that the worker w-27737b38ef was dispatched for T-DEV-077 and failed, with the facts read from the worker log and registry (labelled OBSERVED), and no longer says it was not dispatched",
+        "the claim about the target of 8 of 10 tasks of three or more files still states that no such task has completed",
+        "no credential or absolute user path appears"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_docs.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 7 correction.",
+      "lease": {
+        "acquired": "2026-11-25T17:32:29+00:00",
+        "expires": "2026-11-26T17:32:29+00:00"
       }
     }
   ]
