@@ -612,6 +612,16 @@
       "paths": [
         "orchestrator/tests/test_dev_dispatch_routing.py"
       ]
+    },
+    "AGR-DEV-066-01": {
+      "description": "T-DEV-066 edits dev_supervisor/claim.py and its test file only; it does not change testreq.py, integrate.py, the registry schema or any other module.",
+      "task_ids": [
+        "T-DEV-066"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/claim.py",
+        "orchestrator/tests/test_dev_claim.py"
+      ]
     }
   },
   "tasks": [
@@ -3514,6 +3524,42 @@
         "acquired": "2026-11-25T05:55:16+00:00",
         "expires": "2026-11-26T05:55:16+00:00",
         "released": "2026-11-25T06:03:42+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-066",
+      "title": "dev_supervisor: claim refuses a spec whose test_requirements cannot be run or decided by a gate",
+      "description": "dev_supervisor.claim.check_spec accepts any non-empty strings as test_requirements. Since T-DEV-065 every string is classified by dev_supervisor.testreq.classify as command, gate or manual, and integrate refuses a merge while any requirement is manual. Make check_spec report each manual requirement at claim time, naming its position and reason, so an ambiguous requirement is caught before work starts instead of at merge.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-066-claim-test-requirements",
+      "worktree": "../CreatorStudio-worktrees/t-dev-066-claim-test-requirements",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-066-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/claim.py",
+        "orchestrator/tests/test_dev_claim.py"
+      ],
+      "acceptance_criteria": [
+        "check_spec returns one problem per manual test requirement, of the form: test_requirements[N] is not machine-executable (<reason from testreq.classify>): <the text, cut to 80 characters>; write it as an exact command or the gate wording (see dev_supervisor/TEST_EVIDENCE.md)",
+        "specs whose test_requirements are all commands or gate prose are still accepted, and the existing rules and messages are unchanged",
+        "the spec fixture in test_dev_claim.py uses an executable requirement; new tests cover a prose requirement, a shell-chained requirement, a mixed list that reports only the manual entries, and a list of only gate wording",
+        "the claim of a spec with a manual requirement writes nothing even with --write"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_claim.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_testreq.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission; intended to be implemented by a dispatched worker.",
+      "lease": {
+        "acquired": "2026-11-25T06:10:48+00:00",
+        "expires": "2026-11-26T06:10:48+00:00"
       }
     }
   ]
