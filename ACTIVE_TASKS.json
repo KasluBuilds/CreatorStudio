@@ -590,6 +590,19 @@
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
         "orchestrator/dev_supervisor/WORKER_GATEWAY.md"
       ]
+    },
+    "AGR-DEV-065-01": {
+      "description": "T-DEV-065 adds dev_supervisor/testreq.py, its tests and its page, and appends one check after the existing eight gates in integrate.py; it does not edit the eight gate functions, the protocol, governance or CI files.",
+      "task_ids": [
+        "T-DEV-065"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/testreq.py",
+        "orchestrator/dev_supervisor/integrate.py",
+        "orchestrator/dev_supervisor/TEST_EVIDENCE.md",
+        "orchestrator/tests/test_dev_testreq.py",
+        "orchestrator/tests/test_dev_integrate.py"
+      ]
     }
   },
   "tasks": [
@@ -3416,6 +3429,48 @@
         "acquired": "2026-11-24T23:32:27+00:00",
         "expires": "2026-11-25T23:32:27+00:00",
         "released": "2026-11-24T23:42:41+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-065",
+      "title": "dev_supervisor: run a task's test_requirements automatically and require passing evidence for the exact head before merge",
+      "description": "A task's test_requirements are free-text strings in ACTIVE_TASKS.json. Add dev_supervisor/testreq.py: classify each string (executable command, covered by an integration gate, or not machine-executable), run the executable ones without a shell from a strict grammar in the task worktree, and store one evidence record per task head in the supervisor state directory. Add a ninth, supervisor-side check named tests to integrate: it refuses a merge unless every executable requirement has a passed record bound to the exact head commit, diff hash and requirement text. The eight existing gates are unchanged.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-065-test-evidence",
+      "worktree": "../CreatorStudio-worktrees/t-dev-065-test-evidence",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-065-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/testreq.py",
+        "orchestrator/dev_supervisor/integrate.py",
+        "orchestrator/dev_supervisor/TEST_EVIDENCE.md",
+        "orchestrator/tests/test_dev_testreq.py",
+        "orchestrator/tests/test_dev_integrate.py"
+      ],
+      "acceptance_criteria": [
+        "each requirement string is classified as command, covered-by-gate or manual; only commands that match a fixed grammar are run, never through a shell; anything else is reported as not machine-executable and is never reported as passed",
+        "running records, per requirement, the exact argv, working directory, start and end time, duration, exit code, an output tail with credentials scrubbed, and one of passed, failed, skipped, blocked or not_run; a unittest run that executes zero tests fails",
+        "a record is bound to the task id, the head commit, the diff hash and a hash of the requirement list; it is stored in the supervisor state directory, survives a restart, and a changed head, diff or requirement text makes it invalid",
+        "a worktree that is dirty before the run, not at the expected head, or modified by the run is reported as blocked or failed with the reason; a timeout, a missing runner and an interrupted run are reported as failed, blocked and not_run respectively and never as passed",
+        "integrate adds a ninth check named tests after the unchanged eight gates: it passes only for a registry-only record, or when every executable requirement has a passed record for the exact head and diff, and every other requirement is covered by a gate; otherwise it fails with the requirement and the command to run",
+        "a repeated run reuses passed results for the same head only with --resume and otherwise runs again; the eight existing gate functions and their tests are unchanged apart from the gate count"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_testreq.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_integrate.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_cycle.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission. Uses the existing free-text schema; no new field. The ninth check is outside evaluate(), so cycle.py and its eight-gate classification are untouched.",
+      "lease": {
+        "acquired": "2026-11-25T05:14:48+00:00",
+        "expires": "2026-11-26T05:14:48+00:00"
       }
     }
   ]
