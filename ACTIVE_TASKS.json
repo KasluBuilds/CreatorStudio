@@ -3637,7 +3637,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-069-next-dispatch-ready",
       "worktree": "../CreatorStudio-worktrees/t-dev-069-next-dispatch-ready",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3661,10 +3661,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the test-execution mission; the smallest step towards unattended task selection: it makes 'is this task safe to hand to a worker' a computed fact.",
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission; the smallest step towards unattended task selection: it makes 'is this task safe to hand to a worker' a computed fact. Merged as PR #236 (independent review of diff de1e83eefe8bb0fe).",
       "lease": {
         "acquired": "2026-11-25T06:47:49+00:00",
-        "expires": "2026-11-26T06:47:49+00:00"
+        "expires": "2026-11-26T06:47:49+00:00",
+        "released": "2026-11-25T07:34:05+00:00"
       }
     },
     {
