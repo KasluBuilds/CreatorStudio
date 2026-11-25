@@ -642,6 +642,15 @@
         "orchestrator/dev_supervisor/autonomy.py",
         "orchestrator/tests/test_dev_autonomy.py"
       ]
+    },
+    "AGR-DEV-070-01": {
+      "description": "T-DEV-070 edits tests/test_dev_intake.py only, one fixture value.",
+      "task_ids": [
+        "T-DEV-070"
+      ],
+      "paths": [
+        "orchestrator/tests/test_dev_intake.py"
+      ]
     }
   },
   "tasks": [
@@ -3654,6 +3663,38 @@
       "lease": {
         "acquired": "2026-11-25T06:47:49+00:00",
         "expires": "2026-11-26T06:47:49+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-070",
+      "title": "dev_supervisor: the intake test fixture uses an executable test requirement",
+      "description": "tests/test_dev_intake.py builds a spec through claim.claim with test_requirements ['none']. dev_supervisor.testreq classifies 'none' as a manual requirement, and T-DEV-066 (in review) makes claim refuse such a spec, which would break three intake tests. Change the fixture to an executable requirement now; it is valid before and after T-DEV-066. Found by the independent review of T-DEV-066.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-070-intake-fixture",
+      "worktree": "../CreatorStudio-worktrees/t-dev-070-intake-fixture",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-070-01"
+      ],
+      "owned_paths": [
+        "orchestrator/tests/test_dev_intake.py"
+      ],
+      "acceptance_criteria": [
+        "the spec fixture's test_requirements is ['python -B -m governance validate from orchestrator/'] and nothing else in the file changes",
+        "the whole file passes on current main"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_intake.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission.",
+      "lease": {
+        "acquired": "2026-11-25T06:52:19+00:00",
+        "expires": "2026-11-26T06:52:19+00:00"
       }
     }
   ]
