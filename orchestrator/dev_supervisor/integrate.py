@@ -10,6 +10,10 @@ under the lock, merges with ``gh pr merge <n> --merge --match-head-commit <evalu
 Gates: 1 pr_state, 2 checks, 3 merge_state, 4 scope, 5 review, 6 secrets, 7 forbidden_files, 8 reserved. A gate is PASS, FAIL or
 UNKNOWN; anything but PASS blocks the merge.
 
+A ninth, supervisor-side check named ``tests`` (T-DEV-065, see TEST_EVIDENCE.md) is appended by ``integrate()`` after the eight
+gates: a code pull request needs passing evidence of the task's own ``test_requirements`` for the exact head and diff
+(``dev_supervisor.testreq``). ``evaluate()`` and the eight gate functions are unchanged; protocol section 18 still lists eight.
+
 gh and git are injected runners (``gh(args, input) -> (rc, text)``, ``git(args) -> (rc, bytes)``) so unit tests never
 touch the network. Standard library only; the governance package is imported read-only.
 
@@ -34,8 +38,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from dev_supervisor import review as _review
+from dev_supervisor import testreq as _testreq
 
-__all__ = ["Gate", "Result", "IntegrationLock", "LockHeld", "evaluate", "preflight", "integrate", "parse_review_marker",
+__all__ = ["Gate", "Result", "IntegrationLock", "LockHeld", "evaluate", "tests_gate", "preflight", "integrate", "parse_review_marker",
            "diff_hash", "render_table", "real_gh_runner", "real_git_runner", "main"]
 
 PASS, FAIL, UNKNOWN = "PASS", "FAIL", "UNKNOWN"
@@ -717,7 +722,7 @@ def _gate_reserved(c: _Ctx, override: str) -> Gate:
 def evaluate(pr: int, gh: Callable, git: Callable, base: str = "main",
              lukas_word: str = "") -> Tuple[List[Gate], Dict[str, Any]]:
     """Evaluate all seven gates. Never raises: any failure turns the affected gate into UNKNOWN."""
-    info: Dict[str, Any] = {"head": "", "diff_sha": "", "comments": None}
+    info: Dict[str, Any] = {"head": "", "diff_sha": "", "comments": None, "tests": None}
     try:
         view = _pr_view(gh, pr)
     except Exception as e:
@@ -741,6 +746,9 @@ def evaluate(pr: int, gh: Callable, git: Callable, base: str = "main",
     except Exception as e:
         ctx.git_error = _clean(f"{type(e).__name__}: {e}")
     info["diff_sha"] = ctx.diff_sha
+    if not ctx.git_error:
+        info["tests"] = {"branch": str(view.get("headRefName") or ""), "wave": str(view.get("headRefName") or "").startswith("wave/"),
+                         "reg_only": _reg_only(ctx), "registry": ctx.registry}
     owners: List[str] = []
     if ctx.git_error:
         for num, name in ((4, "scope"), (5, "review"), (6, "secrets"), (7, "forbidden_files"),
@@ -758,6 +766,30 @@ def evaluate(pr: int, gh: Callable, git: Callable, base: str = "main",
     gates.append(safe(7, "forbidden_files", lambda: _gate_forbidden(ctx)))
     gates.append(safe(8, "reserved", lambda: _gate_reserved(ctx, lukas_word)))
     return gates, info
+
+
+def tests_gate(info: Dict[str, Any], state_dir: Optional[os.PathLike] = None,
+               pid_alive: Optional[Callable[[int], bool]] = None) -> Gate:
+    """The ninth check: the task's test_requirements must have passing evidence for exactly this head and diff.
+    Reads the evidence from the supervisor state directory without creating it. Never raises."""
+    try:
+        ev = _testreq.EvidenceStore(state_dir)
+        status, detail = _testreq.gate_verdict(info.get("tests"), str(info.get("head") or ""), str(info.get("diff_sha") or ""), ev,
+                                               **({"pid_alive": pid_alive} if pid_alive else {}))
+    except Exception as e:
+        return Gate(9, "tests", UNKNOWN, _clean(f"{type(e).__name__}: {e}"))
+    return Gate(9, "tests", status, _clean(detail, 400))
+
+
+def _evaluate_all(pr: int, gh: Callable, git: Callable, base: str, lukas_word: str, state_dir: Optional[os.PathLike],
+                  pid_alive: Optional[Callable[[int], bool]], tests_check: Optional[Callable[[Dict[str, Any]], Gate]]
+                  ) -> Tuple[List[Gate], Dict[str, Any]]:
+    gates, info = evaluate(pr, gh, git, base, lukas_word)
+    try:
+        gate = tests_check(info) if tests_check else tests_gate(info, state_dir, pid_alive)
+    except Exception as e:
+        gate = Gate(9, "tests", UNKNOWN, _clean(f"{type(e).__name__}: {e}"))
+    return gates + [gate], info
 
 
 def _gate_branch_name(branch: str) -> Gate:
@@ -876,10 +908,11 @@ def _record_event(store: Any, res: Result) -> None:
 def integrate(pr: int, *, yes: bool = False, base: str = "main", gh: Callable, git: Callable,
               state_dir: Optional[os.PathLike] = None, lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
               clock: Callable[[], float] = time.time, lukas_word: str = "",
-              pid_alive: Optional[Callable[[int], bool]] = None) -> Result:
+              pid_alive: Optional[Callable[[int], bool]] = None,
+              tests_check: Optional[Callable[[Dict[str, Any]], Gate]] = None) -> Result:
     if lukas_word and not _LUKAS_WORD_RE.match(lukas_word):
         raise ValueError("--lukas-direct-word must be a GitHub issue or pull request comment URL")
-    gates, info = evaluate(pr, gh, git, base, lukas_word)
+    gates, info = _evaluate_all(pr, gh, git, base, lukas_word, state_dir, pid_alive, tests_check)
     res = Result(pr=pr, head=info["head"], gates=gates, diff_sha=info["diff_sha"], override=lukas_word)
     if not yes:
         res.note = "dry run: nothing changed"
@@ -899,7 +932,7 @@ def integrate(pr: int, *, yes: bool = False, base: str = "main", gh: Callable, g
         return res
     try:
         # final gate evaluation under the lock
-        gates, info = evaluate(pr, gh, git, base, lukas_word)
+        gates, info = _evaluate_all(pr, gh, git, base, lukas_word, state_dir, pid_alive, tests_check)
         res.gates, res.diff_sha = gates, info["diff_sha"]
         try:
             lock.heartbeat()

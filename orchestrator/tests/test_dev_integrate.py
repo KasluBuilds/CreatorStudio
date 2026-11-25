@@ -14,6 +14,24 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dev_supervisor import integrate as I  # noqa: E402
+from unittest import mock  # noqa: E402
+from dev_supervisor import testreq as TR  # noqa: E402
+
+REAL_TESTS_GATE = I.tests_gate
+_PATCH = None
+
+
+def setUpModule():
+    """The tests below exercise the eight gates and the merge flow with fake gh/git. The ninth check (T-DEV-065) reads real
+    evidence from the state directory, so here it is replaced by a passing stub; ``TestsCheck`` uses REAL_TESTS_GATE."""
+    global _PATCH
+    _PATCH = mock.patch.object(I, "tests_gate", lambda info, state_dir=None, pid_alive=None: I.Gate(9, "tests", I.PASS, "stub"))
+    _PATCH.start()
+
+
+def tearDownModule():
+    _PATCH.stop()
+
 
 HEAD = "a" * 40
 MB = "b" * 40
@@ -583,7 +601,7 @@ class Reserved(unittest.TestCase):
             res = I.integrate(7, yes=True, gh=gh, git=git, state_dir=d, lukas_word=self.URL)
             self.assertEqual(res.outcome, "MERGED")
             self.assertIn(f"lukas-direct-word: {self.URL}", gh.posted[0])
-            self.assertEqual(len(res.gates), 8)
+            self.assertEqual(len(res.gates), 9)   # the eight gates plus the tests check
 
     def test_reserved_blocks_merge_without_override(self):
         with tempfile.TemporaryDirectory() as d:
@@ -591,6 +609,152 @@ class Reserved(unittest.TestCase):
             git = FakeGit(files=["orchestrator/demo/a.py", "CLAUDE.md"])
             res = I.integrate(7, yes=True, gh=gh, git=git, state_dir=d)
             self.assertEqual((res.outcome, gh.merges()), ("REFUSED", []))
+
+
+REQS = ["python -B -m governance validate from orchestrator/", "independent review of the exact diff"]
+
+
+def evidence_record(head=HEAD, diff=DHASH, reqs=REQS, status="passed", state="complete", task="T-X-001"):
+    return {"schema": 1, "task": task, "branch": TASK_BRANCH, "head": head, "diff_sha256": diff,
+            "reqs_sha256": TR.reqs_hash(reqs), "state": state, "pid": 1, "attempt": 1, "started": "s", "finished": "f",
+            "verdict": "passed" if status == "passed" else "failed",
+            "results": [{"index": i, "requirement": t, "kind": TR.classify(t).kind,
+                         "status": status if TR.classify(t).kind == "command" else "skipped", "finished": "f"}
+                        for i, t in enumerate(reqs)]}
+
+
+class TestsCheck(unittest.TestCase):
+    """The ninth, supervisor-side check (T-DEV-065): the eight gates are unchanged, the merge needs test evidence."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.addCleanup(self.tmp.cleanup)
+        self.state = Path(self.tmp.name)
+        self.patch = mock.patch.object(I, "tests_gate", REAL_TESTS_GATE)    # the real check, over this state directory
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+
+    def git(self, reqs=REQS, **kw):
+        reg = registry()
+        reg["tasks"][0]["test_requirements"] = list(reqs)
+        return FakeGit(reg=reg, **kw)
+
+    def save(self, **kw):
+        TR.EvidenceStore(self.state).save(evidence_record(**kw))
+
+    def go(self, yes=True, git=None, gh=None):
+        gh = gh or FakeGh()
+        res = I.integrate(7, yes=yes, gh=gh, git=git or self.git(), state_dir=self.state, pid_alive=lambda p: False)
+        return res, gh
+
+    def ninth_gate(self, res):
+        return next(g for g in res.gates if g.name == "tests")
+
+    def test_evaluate_still_returns_exactly_the_eight_gates_and_the_facts_for_the_ninth(self):
+        gates, info = run_eval(git=self.git())
+        self.assertEqual([g.name for g in gates], ["pr_state", "checks", "merge_state", "scope", "review", "secrets",
+                                                   "forbidden_files", "reserved"])
+        self.assertEqual((info["tests"]["branch"], info["tests"]["wave"], info["tests"]["reg_only"]), (TASK_BRANCH, False, False))
+        self.assertIsNotNone(info["tests"]["registry"])
+        _, wave = run_eval(gh=FakeGh(pr=pr_json(headRefName="wave/w-1")))
+        self.assertTrue(wave["tests"]["wave"])
+        _, regonly = run_eval(git=FakeGit(files=["ACTIVE_TASKS.json"], added=[]))
+        self.assertTrue(regonly["tests"]["reg_only"])
+        _, bad = run_eval(git=FakeGit(fetch_rc=1))
+        self.assertIsNone(bad["tests"])                                   # git unreadable: the facts are unknown
+
+    def test_no_evidence_refuses_the_merge_and_says_how_to_get_it(self):
+        res, gh = self.go()
+        self.assertEqual((res.outcome, gh.merges()), ("REFUSED", []))
+        g = self.ninth_gate(res)
+        self.assertEqual((g.num, g.status), (9, I.FAIL))
+        self.assertIn("no test evidence", g.detail)
+        self.assertIn("python -B -m dev_supervisor.testreq run --task T-X-001", g.detail)
+        self.assertEqual([x.status for x in res.gates[:8]], [I.PASS] * 8)    # everything else was fine
+        self.assertIn("| 9 | tests | FAIL |", gh.posted[0])                   # recorded on the pull request
+
+    def test_dry_run_shows_the_ninth_check_and_does_not_pass_without_evidence(self):
+        res, gh = self.go(yes=False)
+        self.assertEqual((res.outcome, res.all_pass, len(res.gates), gh.merges()), ("DRY_RUN", False, 9, []))
+        self.save()
+        res, _ = self.go(yes=False)
+        self.assertEqual((res.outcome, res.all_pass), ("DRY_RUN", True))
+
+    def test_matching_evidence_allows_the_merge_and_is_in_the_comment(self):
+        self.save()
+        res, gh = self.go()
+        self.assertEqual((res.outcome, len(gh.merges()), len(res.gates)), ("MERGED", 1, 9))
+        self.assertEqual(self.ninth_gate(res).status, I.PASS)
+        self.assertIn("| 9 | tests | PASS |", gh.posted[0])
+
+    def test_evidence_for_another_head_diff_or_requirement_list_does_not_count(self):
+        for kw in ({"head": "c" * 40}, {"diff": "0" * 16}, {"reqs": REQS[:1]}):
+            tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+            self.addCleanup(tmp.cleanup)
+            TR.EvidenceStore(tmp.name).save(evidence_record(**kw))
+            facts = run_eval(git=self.git())[1]["tests"]
+            gate = REAL_TESTS_GATE({"tests": facts, "head": HEAD, "diff_sha": DHASH}, tmp.name)
+            self.assertEqual(gate.status, I.FAIL, kw)
+
+    def test_failed_skipped_blocked_or_unfinished_evidence_refuses(self):
+        for kw in ({"status": "failed"}, {"status": "skipped"}, {"status": "blocked"}, {"status": "not_run"},
+                   {"state": "running"}, {"state": "interrupted"}):
+            tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+            self.addCleanup(tmp.cleanup)
+            TR.EvidenceStore(tmp.name).save(evidence_record(**kw))
+            res = I.integrate(7, yes=True, gh=FakeGh(), git=self.git(), state_dir=tmp.name, pid_alive=lambda p: False)
+            self.assertEqual(res.outcome, "REFUSED", kw)
+            self.assertEqual(self.ninth_gate(res).status, I.FAIL, kw)
+
+    def test_a_diff_change_after_the_run_refuses_even_though_the_head_name_is_unchanged(self):
+        self.save()
+        res, gh = self.go(git=self.git(diff=b"a different diff\n"))
+        self.assertEqual((res.outcome, gh.merges()), ("REFUSED", []))
+        self.assertIn("different diff", self.ninth_gate(res).detail)
+
+    def test_evidence_that_vanishes_between_evaluation_and_merge_refuses(self):
+        calls = []
+
+        def vanishing(info):
+            calls.append(1)
+            return I.Gate(9, "tests", I.PASS if len(calls) == 1 else I.FAIL, "stub")
+        gh = FakeGh()
+        res = I.integrate(7, yes=True, gh=gh, git=self.git(), state_dir=self.state, tests_check=vanishing)
+        self.assertEqual((res.outcome, gh.merges(), len(calls)), ("REFUSED", [], 2))
+        self.assertEqual(res.note, "gates changed before merge")
+
+    def test_a_wave_pull_request_needs_a_decision_it_is_not_exempt(self):
+        _, info = run_eval(gh=FakeGh(pr=pr_json(headRefName="wave/w-1")))
+        gate = REAL_TESTS_GATE({"tests": info["tests"], "head": HEAD, "diff_sha": DHASH}, self.state)
+        self.assertEqual(gate.status, I.FAIL)
+        self.assertIn("wave pull request", gate.detail)
+
+    def test_an_error_inside_the_check_is_unknown_not_pass(self):
+        _, info = run_eval(git=self.git())
+        with mock.patch.object(TR, "gate_verdict", side_effect=RuntimeError("boom")):
+            gate = REAL_TESTS_GATE({"tests": info["tests"], "head": HEAD, "diff_sha": DHASH}, self.state)
+        self.assertEqual((gate.num, gate.status), (9, I.UNKNOWN))
+        self.assertIn("RuntimeError", gate.detail)
+
+    def test_a_crashing_check_is_unknown_and_blocks(self):
+        def boom(info):
+            raise RuntimeError("disk on fire")
+        res = I.integrate(7, yes=False, gh=FakeGh(), git=self.git(), state_dir=self.state, tests_check=boom)
+        g = self.ninth_gate(res)
+        self.assertEqual((g.status, res.all_pass), (I.UNKNOWN, False))
+        self.assertIn("RuntimeError", g.detail)
+
+    def test_ambiguous_or_missing_requirements_block_the_merge(self):
+        for reqs in (["full suite before merge"], []):
+            res, gh = self.go(git=self.git(reqs))
+            self.assertEqual((res.outcome, gh.merges()), ("REFUSED", []), reqs)
+            self.assertEqual(self.ninth_gate(res).status, I.FAIL, reqs)
+
+    def test_the_state_directory_is_not_created_by_a_dry_run(self):
+        missing = Path(self.tmp.name) / "never_created"
+        res = I.integrate(7, yes=False, gh=FakeGh(), git=self.git(), state_dir=missing, pid_alive=lambda p: False)
+        self.assertEqual(self.ninth_gate(res).status, I.FAIL)
+        self.assertFalse(missing.exists())
 
 
 class GatesSixSeven(unittest.TestCase):
