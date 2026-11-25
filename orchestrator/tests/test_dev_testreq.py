@@ -729,6 +729,53 @@ class Cli(Base):
         self.assertEqual(self.go("plan")[0], 2)
 
 
+class SpawnRun(unittest.TestCase):
+    """spawn_run (T-DEV-073): a fixed argument list, a minimal environment, no shell, no waiting."""
+
+    def spawn(self, **kw):
+        seen = {}
+
+        def popen(argv, **k):
+            seen.update(argv=argv, kw=k)
+            return "proc"
+        env = {"PATH": "p", "ANTHROPIC_API_KEY": "x", "GH_TOKEN": "y", "CLAUDE_CODE_SESSION_ID": "z"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            res = T.spawn_run("T-DEMO-001", "C:/w/t", "C:/state", popen=popen, **kw)
+        self.assertEqual(res, "proc")
+        return seen
+
+    def test_the_argument_list_is_fixed_text_plus_the_task_worktree_and_state_directory(self):
+        seen = self.spawn()
+        self.assertEqual(seen["argv"][1:], ["-B", "-m", "dev_supervisor.testreq", "run", "--task", "T-DEMO-001", "--repo", "C:/w/t",
+                                           "--state-dir", "C:/state", "--timeout", "1800"])
+        self.assertEqual(seen["argv"][0], sys.executable)
+
+    def test_resume_and_timeout_are_passed_on(self):
+        seen = self.spawn(resume=True, timeout=60)
+        self.assertEqual(seen["argv"][-3:], ["--timeout", "60", "--resume"])
+
+    def test_no_shell_no_secret_environment_no_inherited_streams(self):
+        k = self.spawn()["kw"]
+        self.assertNotIn("shell", k)
+        self.assertEqual(sorted(k["env"]), ["CREATORSTUDIO_DEV_SUPERVISOR_DIR", "PATH", "PYTHONDONTWRITEBYTECODE"])
+        for name in ("stdin", "stdout", "stderr"):
+            self.assertEqual(k[name], subprocess.DEVNULL)
+        self.assertTrue(Path(k["cwd"], "dev_supervisor", "testreq.py").is_file())
+        self.assertTrue(k.get("creationflags") or k.get("start_new_session"))
+
+    def test_a_non_default_base_is_passed_on_and_a_dangerous_one_is_refused(self):
+        self.assertEqual(self.spawn(base="origin/develop")["argv"][-2:], ["--base", "origin/develop"])
+        for bad in ("--exec", "a b", "x;y", ""):
+            with self.assertRaises(T.TestReqError):
+                T.spawn_run("T-DEMO-001", "w", "s", base=bad, popen=lambda *a, **k: self.fail("a process was started"))
+
+    def test_anything_but_a_task_id_is_refused_before_a_process_exists(self):
+        for bad in ("", "t-demo-001", "T-DEMO-001; calc", "--help", "T-DEMO-1", None):
+            with self.subTest(bad):
+                with self.assertRaises(T.TestReqError):
+                    T.spawn_run(bad, "w", "s", popen=lambda *a, **k: self.fail("a process was started"))
+
+
 class RealRepository(unittest.TestCase):
     """Real git, real child processes. The repository is built once and copied per test."""
 
