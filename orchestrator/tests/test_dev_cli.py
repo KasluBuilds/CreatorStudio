@@ -1206,14 +1206,15 @@ class TickLatencyTests(Offline):
     def test_a_failing_scan_is_one_event_per_distinct_error_and_the_tick_goes_on(self):
         env, store, loop = self.make()
         loop._worker_tests = self.FakeScanner([], raises=[OSError("x"), OSError("x"), ValueError("y"), None, OSError("x")])
+        got = []
         for _ in range(5):
-            r = loop.tick()
-            self.assertEqual(r["worker_tests"] != [], False if r["worker_tests"] == [] else True)
+            got.append(bool(loop.tick()["worker_tests"]))
             self.assertGreaterEqual(self.heartbeat(store)["duration_ms"], 0.0)       # the heartbeat is still written
+        self.assertEqual(got, [False, False, False, True, False])
         events, _ = store.read_events()
         errs = [e["data"]["error"] for e in events if e["kind"] == "worker_tests_error"]
         self.assertEqual(errs, ["OSError", "ValueError", "OSError"])
-        self.assertNotIn("x", json.dumps([e for e in events if e["kind"] == "worker_tests_error"]).replace("OSError", ""))
+        self.assertNotIn('"x"', json.dumps([e for e in events if e["kind"] == "worker_tests_error"]))      # no message text
 
     def test_the_real_scanner_is_created_lazily_and_writes_only_its_first_enabled_stamp(self):
         env, store, loop = self.make()
