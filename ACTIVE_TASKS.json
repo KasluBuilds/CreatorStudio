@@ -662,6 +662,16 @@
         "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
         "orchestrator/dev_supervisor/TEST_EVIDENCE.md"
       ]
+    },
+    "AGR-DEV-072-01": {
+      "description": "T-DEV-072 edits dev_supervisor/autonomy.py and its test file only.",
+      "task_ids": [
+        "T-DEV-072"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/autonomy.py",
+        "orchestrator/tests/test_dev_autonomy.py"
+      ]
     }
   },
   "tasks": [
@@ -3747,6 +3757,43 @@
         "acquired": "2026-11-25T07:38:19+00:00",
         "expires": "2026-11-26T07:38:19+00:00",
         "released": "2026-11-25T07:52:44+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-072",
+      "title": "dev_supervisor: autonomy next does not offer a worker failure for a task the registry has finished",
+      "description": "autonomy next offers a worker_failed item for a FAILED or LOST worker whose task is already COMPLETED (T-DEV-043 today), although the module text says a task that is not PLANNED or ACTIVE is never offered. _worker_items does not read the registry. Read each worker's task status from ACTIVE_TASKS.json and offer worker_failed only when the task is not COMPLETED or RELEASED. A failure for a finished task is listed under a new suppressed key (id, task_id, reason) so diagnostics and the audit record are not hidden; a failure for a BLOCKED task is listed as blocked, not as a restartable item. An unknown task or an unreadable registry keeps the old behaviour (offered, with a warning when unreadable). Workers, events and the worker registry are not changed.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-072-stale-worker-failed",
+      "worktree": "../CreatorStudio-worktrees/t-dev-072-stale-worker-failed",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-072-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/autonomy.py",
+        "orchestrator/tests/test_dev_autonomy.py"
+      ],
+      "acceptance_criteria": [
+        "a FAILED or LOST worker whose task is COMPLETED or RELEASED produces no worker_failed item and no retry recommendation; it appears in a suppressed list of the next output with its task id and the registry status as reason",
+        "a FAILED or LOST worker whose task is PLANNED, ACTIVE or UNDER_REVIEW still produces a worker_failed item with the same id, reason and retry_eligible values as before",
+        "a failed worker whose task is BLOCKED becomes a blocked entry and not a worker_failed item",
+        "a worker whose task id is not in the registry, or an unreadable registry, keeps the old behaviour; an unreadable registry adds a warning",
+        "the worker registry, events and the stop hook fingerprint logic are unchanged; the stop hook does not block on a suppressed failure"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_autonomy.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_snapshot.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 1. Defect recorded in WORKER_GATEWAY.md section 13.",
+      "lease": {
+        "acquired": "2026-11-25T14:31:26+00:00",
+        "expires": "2026-11-26T14:31:26+00:00"
       }
     }
   ]
