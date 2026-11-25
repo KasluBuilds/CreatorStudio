@@ -40,6 +40,7 @@ try:  # package import (python -m dev_supervisor.autonomy) or run as a script (t
     from . import config as config_mod
     from .config import Config, ConfigError
     from .evidence import Label
+    from . import testreq
     from .state_store import StateStore, StoreError, find_git_root, utc_iso, scrub
     from .workers import WorkerRegistry, WorkerStatus
 except ImportError:  # pragma: no cover - script mode
@@ -47,6 +48,7 @@ except ImportError:  # pragma: no cover - script mode
     from dev_supervisor import config as config_mod  # type: ignore
     from dev_supervisor.config import Config, ConfigError  # type: ignore
     from dev_supervisor.evidence import Label  # type: ignore
+    from dev_supervisor import testreq  # type: ignore
     from dev_supervisor.state_store import StateStore, StoreError, find_git_root, utc_iso, scrub  # type: ignore
     from dev_supervisor.workers import WorkerRegistry, WorkerStatus  # type: ignore
 
@@ -120,6 +122,30 @@ def real_git_runner(root: Path, timeout: float = 20.0) -> GitRunner:
 
 # ------------------------------------------------------------------ repository records
 
+def dispatch_problems(task: Dict[str, Any]) -> List[str]:
+    """Why a registry record is not yet complete enough to hand to a worker (T-DEV-069). Empty means ready.
+
+    Reads the record only. A record is ready when it names owned paths and acceptance criteria and every test
+    requirement is a command or gate wording that ``dev_supervisor.testreq`` can classify (none is manual)."""
+    probs: List[str] = []
+
+    def filled(key: str) -> bool:
+        v = task.get(key)
+        return isinstance(v, list) and any(isinstance(x, str) and x.strip() for x in v)
+
+    if not filled("owned_paths"):
+        probs.append("owned_paths is empty")
+    if not filled("acceptance_criteria"):
+        probs.append("acceptance_criteria is empty")
+    try:
+        for r in testreq.classify_all(task.get("test_requirements")):
+            if r.kind == "manual":
+                probs.append(f"test_requirements[{r.index}] is not machine-executable ({r.reason})")
+    except testreq.TestReqError as e:
+        probs.append(str(e))
+    return probs
+
+
 def _task_items(root: Path, running_tasks: set, warnings: List[str], owner: str = DEFAULT_OWNER,
                 others: Optional[List[dict]] = None) -> Tuple[List[dict], List[dict], int]:
     """(items, blocked, in_progress_count) from ACTIVE_TASKS.json and DEVELOPMENT_TRACKER.json.
@@ -164,7 +190,9 @@ def _task_items(root: Path, running_tasks: set, warnings: List[str], owner: str 
         if reasons:
             blocked.append({"kind": "blocked", "id": f"blocked:{tid}", "task_id": tid, "blocker": "; ".join(reasons)})
         else:
+            problems = dispatch_problems(t)
             items.append({"kind": "start_task", "id": f"start_task:{tid}", "task_id": tid,
+                          "dispatch_ready": not problems, "dispatch_problems": problems,
                           "reason": f"{tid} is PLANNED, its dependencies are done and no owned path is held",
                           "evidence": Label.OBSERVED.value})
 
@@ -525,6 +553,9 @@ def cmd_next(a: argparse.Namespace, out: TextIO, env, clock, git) -> int:
         out.write(f"idle: {res['idle_reason']}\n")
     for i in res["items"]:
         out.write(f"[{i['priority']:>2}] {i['kind']} {i['id']}\n     {i['reason']}\n     inspect: {i['inspect']}\n")
+        if i["kind"] == "start_task":
+            out.write("     dispatch: " + ("READY (record is complete; memory and a route probe are still checked at dispatch)"
+                                           if i.get("dispatch_ready") else "NOT READY - " + "; ".join(i.get("dispatch_problems") or ["unknown"])) + "\n")
     for b in res["blocked"]:
         out.write(f"blocked {b['task_id']}: {b['blocker']}\n")
     if not res["items"]:

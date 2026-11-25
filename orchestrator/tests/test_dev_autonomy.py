@@ -133,6 +133,82 @@ class TestFingerprint(unittest.TestCase):
         self.assertFalse(au.overlaps("a/bc", "a/b/c.py"))
 
 
+def full_task(tid, **over):
+    t = task(tid, paths=["x/"])
+    t.update({"acceptance_criteria": ["it works"],
+              "test_requirements": ["cd orchestrator && python -B -I -m unittest discover -s tests -p test_x.py",
+                                    "independent review of the exact diff"]})
+    t.update(over)
+    return t
+
+
+class TestDispatchReadiness(Base):
+    """T-DEV-069: a start_task item says whether the record is complete enough to hand to a worker."""
+
+    def item(self, rec):
+        self.write_registry([rec])
+        res = self.items()
+        self.assertEqual(self.kinds(res), [("start_task", f"start_task:{rec['id']}")])    # kinds and ids are unchanged
+        return res["items"][0]
+
+    def test_a_complete_record_is_ready(self):
+        i = self.item(full_task("T-1"))
+        self.assertEqual((i["dispatch_ready"], i["dispatch_problems"]), (True, []))
+
+    def test_each_missing_piece_is_named(self):
+        cases = {
+            "no owned paths": (full_task("T-1", owned_paths=[]), "owned_paths is empty"),
+            "blank owned path": (full_task("T-1", owned_paths=["  "]), "owned_paths is empty"),
+            "no acceptance criteria": (full_task("T-1", acceptance_criteria=[]), "acceptance_criteria is empty"),
+            "acceptance criteria missing": ({k: v for k, v in full_task("T-1").items() if k != "acceptance_criteria"}, "acceptance_criteria is empty"),
+            "no test requirements": (full_task("T-1", test_requirements=[]), "missing or empty"),
+            "test requirements missing": ({k: v for k, v in full_task("T-1").items() if k != "test_requirements"}, "missing or empty"),
+            "test requirements not a list": (full_task("T-1", test_requirements="python -B -m governance validate"), "missing or empty"),
+            "prose requirement": (full_task("T-1", test_requirements=["full suite before merge"]), "test_requirements[0] is not machine-executable"),
+            "shell chain": (full_task("T-1", test_requirements=["cd orchestrator && python -B -m governance validate && rm x"]),
+                            "test_requirements[0] is not machine-executable"),
+        }
+        for name, (rec, expect) in cases.items():
+            with self.subTest(case=name):
+                i = self.item(rec)
+                self.assertFalse(i["dispatch_ready"])
+                self.assertTrue(any(expect in p for p in i["dispatch_problems"]), i["dispatch_problems"])
+
+    def test_every_cause_is_reported_and_only_the_manual_requirements(self):
+        rec = full_task("T-1", owned_paths=[], acceptance_criteria=[],
+                        test_requirements=["cd orchestrator && python -B -m governance validate", "make it good", "also this"])
+        probs = self.item(rec)["dispatch_problems"]
+        self.assertEqual(len(probs), 4)
+        self.assertIn("test_requirements[1]", probs[2])
+        self.assertIn("test_requirements[2]", probs[3])
+
+    def test_the_bare_records_of_older_tests_are_not_ready_but_still_offered(self):
+        i = self.item(task("T-1", paths=["x/"]))
+        self.assertFalse(i["dispatch_ready"])
+        self.assertEqual(i["reason"], "T-1 is PLANNED, its dependencies are done and no owned path is held")   # reason unchanged
+
+    def test_blocked_tasks_are_still_blocked_and_get_no_verdict(self):
+        self.write_registry([task("T-0", "ACTIVE", paths=["y/"]), full_task("T-1", depends_on=["T-0"])])
+        res = self.items()
+        self.assertEqual(res["items"], [])
+        self.assertEqual([b["task_id"] for b in res["blocked"]], ["T-1"])
+
+    def test_the_text_output_shows_the_verdict(self):
+        self.write_registry([full_task("T-1"), full_task("T-2", owned_paths=["z/"], test_requirements=["do it"])])
+        rc, out = self.run_cli(["next"])
+        self.assertEqual(rc, 0)
+        self.assertIn("dispatch: READY", out)
+        self.assertIn("dispatch: NOT READY - test_requirements[0] is not machine-executable", out)
+
+    def test_the_json_output_carries_the_fields_and_reading_writes_nothing(self):
+        self.write_registry([full_task("T-1")])
+        before = sorted(p.name for p in self.repo.rglob("*"))
+        rc, out = self.run_cli(["next", "--json"])
+        item = json.loads(out)["items"][0]
+        self.assertEqual((rc, item["dispatch_ready"], item["dispatch_problems"]), (0, True, []))
+        self.assertEqual(sorted(p.name for p in self.repo.rglob("*")), before)
+
+
 class TestTaskEligibility(Base):
     def test_planned_task_without_deps_is_eligible(self):
         self.write_registry([task("T-1", paths=["x/"])])
