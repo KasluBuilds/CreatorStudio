@@ -92,6 +92,14 @@ class CheckSpec(unittest.TestCase):
         self.assertIn("test_requirements[1]", probs[0])
         self.assertIn("test_requirements[3]", probs[1])
 
+    def test_the_message_names_the_reason_and_cuts_the_text_to_80_characters(self):
+        long = "make sure that everything works as the owner expects it to work in every single case " * 2
+        probs = self.refused(test_requirements=[long])
+        self.assertEqual(len(probs), 1)
+        self.assertIn(f"): {long[:80]}; write it as", probs[0])
+        self.assertNotIn(long[:81], probs[0])
+        self.assertIn("is not an allowed program", probs[0])          # the reason from testreq.classify, in parentheses
+
     def test_gate_wording_and_commands_are_accepted(self):
         self.assertEqual(self.refused(test_requirements=["independent review of the exact diff", "integrate --preflight passes on the branch"]), [])
         self.assertEqual(self.refused(test_requirements=["cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_claim.py"]), [])
