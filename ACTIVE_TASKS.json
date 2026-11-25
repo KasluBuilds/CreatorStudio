@@ -632,6 +632,25 @@
         "orchestrator/dev_supervisor/cycle.py",
         "orchestrator/tests/test_dev_cycle.py"
       ]
+    },
+    "AGR-DEV-069-01": {
+      "description": "T-DEV-069 edits dev_supervisor/autonomy.py and its test file only.",
+      "task_ids": [
+        "T-DEV-069"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/autonomy.py",
+        "orchestrator/tests/test_dev_autonomy.py"
+      ]
+    },
+    "AGR-DEV-070-01": {
+      "description": "T-DEV-070 edits tests/test_dev_intake.py only, one fixture value.",
+      "task_ids": [
+        "T-DEV-070"
+      ],
+      "paths": [
+        "orchestrator/tests/test_dev_intake.py"
+      ]
     }
   },
   "tasks": [
@@ -3467,7 +3486,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-065-test-evidence",
       "worktree": "../CreatorStudio-worktrees/t-dev-065-test-evidence",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3496,10 +3515,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the test-execution mission. Uses the existing free-text schema; no new field. The ninth check is outside evaluate(), so cycle.py and its eight-gate classification are untouched.",
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission. Uses the existing free-text schema; no new field. The ninth check is outside evaluate(), so cycle.py and its eight-gate classification are untouched. Merged as PR #223 (independent review of diff a9aeb78a35fb3545).",
       "lease": {
         "acquired": "2026-11-25T05:14:48+00:00",
-        "expires": "2026-11-26T05:14:48+00:00"
+        "expires": "2026-11-26T05:14:48+00:00",
+        "released": "2026-11-25T06:28:09+00:00"
       }
     },
     {
@@ -3606,6 +3626,75 @@
       "lease": {
         "acquired": "2026-11-25T06:15:48+00:00",
         "expires": "2026-11-26T06:15:48+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-069",
+      "title": "dev_supervisor: autonomy next says whether a PLANNED task is ready to dispatch",
+      "description": "autonomy next offers a PLANNED task as start_task when its dependencies are done and no owned path is held, but says nothing about whether its record is complete enough to hand to a worker. Add two fields to each start_task item, dispatch_ready and dispatch_problems, computed from the registry record only: owned_paths and acceptance_criteria must be non-empty and every test_requirement must be a command or gate wording that dev_supervisor.testreq can classify (no manual requirement). Print the verdict under the item in the text output. Items, kinds, ids, ordering and reasons are unchanged; nothing is claimed, drafted or dispatched.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-069-next-dispatch-ready",
+      "worktree": "../CreatorStudio-worktrees/t-dev-069-next-dispatch-ready",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-069-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/autonomy.py",
+        "orchestrator/tests/test_dev_autonomy.py"
+      ],
+      "acceptance_criteria": [
+        "each start_task item carries dispatch_ready (bool) and dispatch_problems (list of strings) computed from the task record; a record with empty owned_paths, empty acceptance_criteria, missing or empty test_requirements, or a manual test requirement is not ready and each cause is named",
+        "a record with owned paths, acceptance criteria and only command or gate test requirements is ready with no problems",
+        "kinds, ids, ordering, reasons and the stop-hook behaviour are unchanged; the text output of next shows the verdict under a start_task item",
+        "the computation reads only the registry record (no git, no network, no file writes)"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_autonomy.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_snapshot.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_acceptance.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission; the smallest step towards unattended task selection: it makes 'is this task safe to hand to a worker' a computed fact.",
+      "lease": {
+        "acquired": "2026-11-25T06:47:49+00:00",
+        "expires": "2026-11-26T06:47:49+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-070",
+      "title": "dev_supervisor: the intake test fixture uses an executable test requirement",
+      "description": "tests/test_dev_intake.py builds a spec through claim.claim with test_requirements ['none']. dev_supervisor.testreq classifies 'none' as a manual requirement, and T-DEV-066 (in review) makes claim refuse such a spec, which would break three intake tests. Change the fixture to an executable requirement now; it is valid before and after T-DEV-066. Found by the independent review of T-DEV-066.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-070-intake-fixture",
+      "worktree": "../CreatorStudio-worktrees/t-dev-070-intake-fixture",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-070-01"
+      ],
+      "owned_paths": [
+        "orchestrator/tests/test_dev_intake.py"
+      ],
+      "acceptance_criteria": [
+        "the spec fixture's test_requirements is ['python -B -m governance validate from orchestrator/'] and nothing else in the file changes",
+        "the whole file passes on current main"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_intake.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission.",
+      "lease": {
+        "acquired": "2026-11-25T06:52:19+00:00",
+        "expires": "2026-11-26T06:52:19+00:00"
       }
     }
   ]
