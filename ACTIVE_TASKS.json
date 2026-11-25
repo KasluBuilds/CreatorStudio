@@ -3719,7 +3719,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-071-docs-test-evidence",
       "worktree": "../CreatorStudio-worktrees/t-dev-071-docs-test-evidence",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3742,10 +3742,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the test-execution mission.",
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission. Merged as PR #241 (independent review of diff c811aa34b62b5352).",
       "lease": {
         "acquired": "2026-11-25T07:38:19+00:00",
-        "expires": "2026-11-26T07:38:19+00:00"
+        "expires": "2026-11-26T07:38:19+00:00",
+        "released": "2026-11-25T07:52:44+00:00"
       }
     }
   ]
