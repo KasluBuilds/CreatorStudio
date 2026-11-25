@@ -172,7 +172,7 @@ def reqs_hash(texts: Sequence[Any]) -> str:
 # ------------------------------------------------------------------ evidence store
 
 def evidence_name(task_id: str, head: str) -> str:
-    return "tev_" + re.sub(r"[^a-z0-9]", "_", task_id.lower()) + "_" + head[:12].lower()
+    return "tev_" + re.sub(r"[^a-z0-9]", "_", task_id.lower()) + "_" + re.sub(r"[^0-9a-f]", "_", head[:12].lower())
 
 
 def _seal(record: Dict[str, Any]) -> Dict[str, Any]:

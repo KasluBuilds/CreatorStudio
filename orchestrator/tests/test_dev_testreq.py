@@ -196,6 +196,11 @@ class Classification(unittest.TestCase):
                     self.assertTrue(r.argv[0] in ("python", "node") and not any(c in " ".join(r.argv) for c in "&|;<>`$"), r.text)
         self.assertIn("command", kinds)
 
+    def test_evidence_file_names_cannot_leave_the_directory(self):
+        name = T.evidence_name("T-X-1", "../../etc/x")
+        self.assertRegex(name, r"^[a-z0-9_]+$")
+        self.assertNotIn("..", name)
+
     def test_requirement_hash_changes_with_text_order_and_length(self):
         a = ["x", "y"]
         self.assertEqual(T.reqs_hash(a), T.reqs_hash(list(a)))
@@ -340,7 +345,9 @@ class Execution(Base):
 
     def test_a_credential_split_by_the_tail_cut_leaves_no_fragment(self):
         secret = "gh" + "p_" + "B" * 24
-        text = secret + "z" * (T.TAIL_CHARS - 10) + "\n" + OKTXT          # the 4000-character cut falls inside the secret
+        pad = T.TAIL_CHARS + 14 - len(secret) - 1 - len(OKTXT)              # total length 4014: the cut falls inside the secret
+        text = secret + "z" * pad + "\n" + OKTXT
+        self.assertEqual(len(text), T.TAIL_CHARS + 14)
         x = self.run_all([UNIT.format("test_a.py")], executor=ok_exec(text=text))["results"][0]
         self.assertNotIn("BBBB", x["output_tail"])
         stored = (self.ev.directory / f"{T.evidence_name(TID, self.git.head)}.json").read_text(encoding="utf-8")
