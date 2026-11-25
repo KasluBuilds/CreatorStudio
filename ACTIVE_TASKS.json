@@ -4027,7 +4027,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-076-docs-pipeline",
       "worktree": "../CreatorStudio-worktrees/t-dev-076-docs-pipeline",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -4050,10 +4050,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 7 record.",
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 7 record. Merged as PR #257 (independent review of diff 91072e6f4725a6ad).",
       "lease": {
         "acquired": "2026-11-25T16:49:35+00:00",
-        "expires": "2026-11-26T16:49:35+00:00"
+        "expires": "2026-11-26T16:49:35+00:00",
+        "released": "2026-11-25T17:12:11+00:00"
       }
     }
   ]
