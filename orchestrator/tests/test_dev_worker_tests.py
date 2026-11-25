@@ -615,7 +615,7 @@ class SecondReview(Env):
             sc.scan()
         self.assertEqual(len(calls), W.MAX_ATTEMPTS + 2)
         self.assertIn("could not be started", self.entry()["detail"])
-        self.assertEqual(self.store.read(W.DOC)["attempts"].get(f"{TID}:{sha(0)}"), 0)
+        self.assertEqual(self.store.read(W.DOC)["attempts"][f"{TID}:{sha(0)}"]["n"], 0)
 
     def test_a_damaged_entry_in_the_document_is_ignored(self):
         doc = self.store.read(W.DOC)
@@ -636,6 +636,188 @@ class SecondReview(Env):
         self.scanner.scan()
         self.assertNotEqual(self.entry()["state"], "PASSED")
         self.assertEqual(self.entry()["state"], "FAILED")
+
+
+class ThirdReview(Env):
+    """Findings of the third independent review."""
+
+    def test_gate_only_requirements_are_never_a_pass_without_a_record(self):
+        self.task["test_requirements"] = [GATE]
+        self.add_worker()
+        self.scanner.scan()
+        e = self.entry()
+        self.assertEqual((e["state"], self.spawned), ("BLOCKED", []))
+        self.assertIn("no command test requirement", e["detail"])
+
+    def test_a_manual_rerun_that_passes_replaces_a_recorded_failure(self):
+        p = self.launch()
+        self.write_evidence("Ran 3 tests in 0.1s\n\nFAILED (failures=1)\n", 1)
+        p.code = 0
+        self.scanner.scan()
+        self.assertEqual(self.entry()["state"], "FAILED")
+        self.write_evidence()                                       # the operator re-runs by hand; it passes now
+        self.scanner.scan()
+        self.assertEqual((self.entry()["state"], len(self.spawned)), ("PASSED", 1))
+
+    def test_a_reused_pid_cannot_hold_the_slot_forever(self):
+        p = self.launch()
+        self.alive.add(p.pid)                                       # the runner died; the OS gave its pid to a long-lived process
+        p.code = None
+        self.now += 6 * 3600 + 1000
+        self.add_worker("w2", task="T-DEMO-002", branch="task/demo2", worktree=self.tmp / "work2", ended=self.now - 10)
+        (self.tmp / "work2" / "orchestrator").mkdir(parents=True)
+        self.git.registry = {"tasks": [self.task, dict(self.task, id="T-DEMO-002", branch="task/demo2")]}
+        self.gits[str(self.tmp / "work2")] = FakeGit(registry=self.git.registry, branch="task/demo2")
+        fresh = self.make_scanner()                                  # no handle: only the pid check and the age budget
+        fresh.scan()
+        self.assertEqual(len(self.spawned), 2)                       # w1 is relaunched (its pid is not trusted); nothing is stuck
+        self.assertEqual((self.entry("w1")["state"], self.entry("w1")["attempts"]), ("RUNNING", 2))
+        self.assertEqual(self.entry("w2")["state"], "PENDING")
+
+    def test_a_dead_runners_pid_is_cleared_even_when_the_worker_is_no_longer_evaluated(self):
+        p = self.launch()
+        p.code = 0
+        self.task["status"] = "COMPLETED"                           # the task finished: the entry is skipped from now on
+        self.git.registry = {"tasks": [self.task]}
+        self.scanner.scan()
+        self.assertIsNone(self.entry()["runner_pid"])
+
+    def test_the_pid_is_on_disk_before_any_other_work_of_the_pass(self):
+        self.add_worker("w1")
+        seen = []
+        real = self.store.write
+
+        def spy(name, data):
+            if name == W.DOC:
+                seen.append({k: v.get("runner_pid") for k, v in data["entries"].items()})
+            return real(name, data)
+        self.store.write = spy
+        self.scanner.scan()
+        self.assertIn({"w1": self.spawned[0]["pid"]}, seen)
+
+    def test_an_orphan_runner_found_after_the_grace_period_still_holds_the_slot(self):
+        self.add_worker("w1")
+        self.scanner.scan()
+        doc = self.store.read(W.DOC)
+        doc["entries"]["w1"]["runner_pid"] = None                   # the pid never reached the disk
+        self.store.write(W.DOC, doc)
+        done = self.write_evidence()
+        T.EvidenceStore(self.state).save(dict(done, state="running", finished=None, pid=4242, verdict="not_run"))
+        self.alive.add(4242)
+        self.now += W.ADOPT_GRACE_S + 5
+        work2 = self.tmp / "work2"
+        (work2 / "orchestrator").mkdir(parents=True)
+        self.git.registry = {"tasks": [self.task, dict(self.task, id="T-DEMO-002", branch="task/demo2")]}
+        self.gits[str(work2)] = FakeGit(registry=self.git.registry, branch="task/demo2")
+        self.add_worker("w2", task="T-DEMO-002", branch="task/demo2", worktree=work2, ended=self.now - 5)
+        self.make_scanner().scan()
+        self.assertEqual(len(self.spawned), 1)
+        self.assertEqual(self.entry("w2")["state"], "PENDING")
+
+    def test_attempt_counters_are_pruned_by_age_never_by_name(self):
+        doc = self.store.read(W.DOC)
+        doc["attempts"] = {f"T-OLD-{i:03d}:{'a' * 40}": {"n": 3, "t": utc_stamp(i)} for i in range(W.MAX_ATTEMPT_KEYS)}
+        doc["attempts"][f"T-AAA-001:{sha(0)}"] = {"n": 2, "t": utc_stamp(10_000)}      # sorts first, but is the newest
+        self.store.write(W.DOC, doc)
+        self.add_worker()
+        self.scanner.scan()
+        att = self.store.read(W.DOC)["attempts"]
+        self.assertIn(f"T-AAA-001:{sha(0)}", att)
+        self.assertNotIn(f"T-OLD-000:{'a' * 40}", att)             # the oldest went
+        self.assertLessEqual(len(att), W.MAX_ATTEMPT_KEYS)
+        self.assertEqual(att[f"{TID}:{sha(0)}"]["n"], 1)
+
+    def test_old_decided_entries_and_entries_of_unknown_workers_are_dropped(self):
+        doc = self.store.read(W.DOC)
+        doc["entries"]["ghost"] = {"worker_id": "ghost", "task_id": TID, "state": "PASSED", "updated": utc_iso(self.now)}
+        self.store.write(W.DOC, doc)
+        self.scanner.scan()
+        self.assertNotIn("ghost", self.store.read(W.DOC)["entries"])
+
+    def test_a_changed_field_alone_does_not_append_an_event(self):
+        self.git.dirty = "1 .M N... x\n"
+        self.add_worker()
+        self.scanner.scan()
+        n = len(self.events())
+        self.git.commit()                                           # new head, same reason: fields change, state and detail do not
+        self.scanner.scan()
+        self.assertEqual(len(self.events()), n)
+
+
+class FourthReview(Env):
+    def running_record(self, pid, started=None):
+        done = self.write_evidence()
+        rec = dict(done, state="running", finished=None, pid=pid, verdict="not_run")
+        if started:
+            rec["started"] = started
+        T.EvidenceStore(self.state).save(rec)
+
+    def test_a_running_record_older_than_the_budget_is_not_adopted_forever(self):
+        self.add_worker()
+        self.running_record(4242, utc_iso(T0 + 100))
+        self.alive.add(4242)                                         # the runner died long ago; its pid now belongs to another process
+        self.now = T0 + 100 + 10 * 3600
+        for _ in range(8):
+            self.now += 20
+            for proc in self.procs:
+                proc.code = 2                                        # every relaunched runner refuses: the old pid looks alive
+            self.scanner.scan()
+        e = self.entry()
+        self.assertNotEqual(e["detail"], "a test run for this head is in progress (adopted)")
+        self.assertEqual(len(self.events("worker_tests_started")), W.MAX_ATTEMPTS)
+        self.assertEqual(e["state"], "BLOCKED")
+        self.assertIn("--ignore-running", e["detail"])
+
+    def test_a_fresh_running_record_is_adopted(self):
+        self.add_worker()
+        self.running_record(4242, utc_iso(self.now - 10))
+        self.alive.add(4242)
+        self.scanner.scan()
+        self.assertEqual((self.entry()["state"], self.entry()["runner_pid"], self.spawned), ("RUNNING", 4242, []))
+
+    def test_a_running_record_whose_pid_is_dead_is_not_adopted(self):
+        self.add_worker()
+        self.running_record(4242, utc_iso(self.now - 10))
+        self.scanner.scan()
+        self.assertEqual(len(self.spawned), 1)
+
+    def test_a_runner_this_process_saw_end_stays_ended_when_its_pid_is_reused(self):
+        p = self.launch()
+        p.code = 0
+        self.scanner.scan()                                          # reaps the handle
+        self.alive.add(p.pid)                                        # the pid now belongs to something else
+        entry = dict(self.entry(), runner_pid=p.pid, state="RUNNING", launched_at=utc_iso(self.now))
+        self.assertFalse(self.scanner._live(entry))
+
+    def test_legacy_integer_attempts_are_respected(self):
+        doc = self.store.read(W.DOC)
+        doc["attempts"] = {f"{TID}:{sha(0)}": W.MAX_ATTEMPTS}
+        self.store.write(W.DOC, doc)
+        self.add_worker()
+        self.scanner.scan()
+        self.assertEqual((self.entry()["state"], self.spawned), ("BLOCKED", []))
+
+    def test_tidy_keeps_the_entry_of_a_live_runner_and_drops_old_dead_ones(self):
+        p = self.launch()
+        self.alive.add(p.pid)
+        doc = self.store.read(W.DOC)
+        doc["entries"]["w1"]["updated"] = utc_iso(self.now - W.ENTRY_KEEP_S - 5)
+        doc["entries"]["old"] = {"worker_id": "old", "task_id": TID, "state": "FAILED", "updated": utc_iso(self.now - W.ENTRY_KEEP_S - 5)}
+        self.store.write(W.DOC, doc)
+        self.registry.workers["old"] = self.registry.workers["w1"]
+        fresh = self.make_scanner()
+        fresh.scan()
+        entries = self.store.read(W.DOC)["entries"]
+        self.assertIn("w1", entries)
+        self.assertNotIn("old", entries)
+
+    def test_the_budget_has_slack_per_command(self):
+        p = self.launch()
+        self.assertGreaterEqual(self.entry()["max_run_s"], (1800 + 300) * 1 + 900)
+
+
+def utc_stamp(i):
+    return utc_iso(T0 + i)
 
 
 class Limits(Env):
