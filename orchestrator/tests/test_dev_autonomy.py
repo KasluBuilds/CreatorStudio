@@ -794,6 +794,106 @@ class TestMilestoneProposals(Base):
         self.assertFalse(self.state.exists())
 
 
+class TaskTestGit(FakeGit):
+    """FakeGit that also knows which origin/<branch> refs exist."""
+
+    def __init__(self, pushed=()):
+        super().__init__()
+        self.pushed = set(pushed)
+
+    def __call__(self, args):
+        a = list(args)
+        if a[0] == "rev-parse" and "refs/remotes/origin/task/" in a[-1]:
+            return (0 if a[-1].split("refs/remotes/origin/", 1)[1] in self.pushed else 1), ""
+        return super().__call__(args)
+
+
+class TestWorkerTestItems(Base):
+    """T-DEV-074: the worker_tests document of the Supervisor shows up in next."""
+    HEAD = "a" * 40
+
+    def setUp(self):
+        super().setUp()
+        self.mkstore()
+        self.write_registry([task("T-1", "ACTIVE", paths=["a/"])])
+        self.heads = {}
+
+    def put(self, state, wid="w1", tid="T-1", head=None, detail="d", branch="task/one", worktree="C:/w/one"):
+        doc = self.store.read("worker_tests", default=None) or {"entries": {}}
+        doc["entries"][wid] = {"worker_id": wid, "task_id": tid, "state": state, "head": head or self.HEAD,
+                               "detail": detail, "branch": branch, "worktree": worktree}
+        self.store.write("worker_tests", doc)
+
+    def res(self, git=None):
+        return au.compute_items(self.repo, self.store, git or TaskTestGit(),
+                                head_of=lambda wt: self.heads.get(wt, self.HEAD))
+
+    def test_failed_and_blocked_entries_are_offered_with_their_detail_before_worker_failed(self):
+        self.put("FAILED", "w1", detail="requirement 1 failed: exit code 1 - details: testreq show")
+        self.put("BLOCKED", "w2", tid="T-2", detail="the worktree has uncommitted changes")
+        self.write_registry([task("T-1", "ACTIVE", paths=["a/"]), task("T-2", "ACTIVE", paths=["b/"])])
+        self.add_worker("w3", "T-3", WorkerStatus.FAILED)
+        res = self.res()
+        got = [(i["kind"], i["task_id"]) for i in res["items"]]
+        self.assertEqual(got[:2], [("worker_tests_failed", "T-1"), ("worker_tests_failed", "T-2")])
+        self.assertLess(got.index(("worker_tests_failed", "T-2")), got.index(("worker_failed", "T-3")))
+        self.assertIn("requirement 1 failed", res["items"][0]["reason"])
+        self.assertIn("uncommitted changes", res["items"][1]["reason"])
+
+    def test_a_passed_entry_names_intake_until_the_branch_is_pushed(self):
+        self.put("PASSED", "w1")
+        i = self.res()["items"][0]
+        self.assertEqual(i["kind"], "worker_tests_passed")
+        self.assertIn("dev_supervisor.intake w1", i["reason"])
+        self.assertEqual(self.res(TaskTestGit(pushed=["task/one"]))["items"], [])
+
+    def test_running_and_pending_entries_are_a_waiting_note_not_items(self):
+        self.put("RUNNING", "w1")
+        self.put("PENDING", "w2", tid="T-2")
+        res = self.res()
+        self.assertEqual([i for i in res["items"] if i["kind"].startswith("worker_tests")], [])
+        self.assertIn("waiting for 2 task test runs", res["idle_reason"] or "")
+
+    def test_entries_of_finished_tasks_are_never_offered(self):
+        for st in ("COMPLETED", "RELEASED"):
+            self.write_registry([task("T-1", st, paths=["a/"])])
+            for state in ("FAILED", "BLOCKED", "PASSED", "RUNNING"):
+                self.put(state)
+                res = self.res()
+                self.assertEqual(res["items"], [], (st, state))
+                self.assertNotIn("task test run", res["idle_reason"] or "")
+
+    def test_an_entry_for_a_head_the_worktree_has_left_is_not_offered(self):
+        self.put("FAILED")
+        self.heads["C:/w/one"] = "b" * 40
+        self.assertEqual(self.res()["items"], [])
+
+    def test_the_id_changes_with_state_and_head_so_the_fingerprint_changes(self):
+        self.put("FAILED")
+        one = self.res()
+        self.put("PASSED")
+        two = self.res()
+        self.put("PASSED", head="c" * 40)
+        self.heads["C:/w/one"] = "c" * 40
+        three = self.res()
+        self.assertEqual(len({one["fingerprint"], two["fingerprint"], three["fingerprint"]}), 3)
+
+    def test_no_document_or_a_malformed_one_changes_nothing(self):
+        def worker_test_kinds():
+            return [k for k, _ in self.kinds(self.res()) if k.startswith("worker_tests")]
+        self.assertEqual(worker_test_kinds(), [])
+        self.store.write("worker_tests", {"entries": "junk"})
+        self.assertEqual(worker_test_kinds(), [])
+        self.store.write("worker_tests", {"entries": {"w1": 5, "w2": {"state": "FAILED"}, "w3": {"task_id": "T-1", "state": "ODD"}}})
+        self.assertEqual(worker_test_kinds(), [])
+
+    def test_text_output_and_stop_hook_see_the_item(self):
+        self.put("FAILED", detail="requirement 1 failed")
+        rc, out = self.run_cli(["next"])
+        self.assertIn("worker_tests_failed", out)
+        self.assertIn("requirement 1 failed", out)
+
+
 class TestStopHook(Base):
     def setUp(self):
         super().setUp()

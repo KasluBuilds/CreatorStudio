@@ -64,11 +64,13 @@ DONE_STATUSES = ("COMPLETED", "RELEASED")
 OCCUPYING_STATUSES = ("ACTIVE", "UNDER_REVIEW")
 STEP_DONE = "COMPLETED"
 
-PRIORITY = {"review_worker_result": 10, "worker_failed": 20, "review_step": 30, "verify_wave": 40,
+PRIORITY = {"review_worker_result": 10, "worker_tests_failed": 15, "worker_failed": 20, "worker_tests_passed": 25, "review_step": 30, "verify_wave": 40,
             "start_task": 50, "start_step": 55}
 INSPECT_HINT = {
     "review_worker_result": "python -B -m dev_supervisor workers",
     "worker_failed": "python -B -m dev_supervisor workers",
+    "worker_tests_failed": "python -B -m dev_supervisor.testreq show",
+    "worker_tests_passed": "python -B -m dev_supervisor.intake",
     "review_step": "python -B -m governance",
     "verify_wave": "python -B -m governance wave status",
     "start_task": "python -B -m governance",
@@ -380,6 +382,64 @@ def _worker_items(store: Optional[StateStore], warnings: List[str], root: Option
     return items, blocked, running_tasks, running
 
 
+def _git_head(worktree: str, timeout: float = 20.0) -> Optional[str]:
+    """HEAD of a worktree by read-only plumbing; None when unreadable."""
+    try:
+        p = subprocess.run(["git", "-C", worktree, "rev-parse", "HEAD"], capture_output=True, text=True, timeout=timeout,
+                           encoding="utf-8", errors="replace")
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return p.stdout.strip() if p.returncode == 0 and p.stdout.strip() else None
+
+
+def _test_items(root: Path, store: Optional[StateStore], git: GitRunner, head_of: Callable[[str], Optional[str]],
+                warnings: List[str]) -> Tuple[List[dict], int]:
+    """(items, waiting) from the ``worker_tests`` document of the Supervisor (T-DEV-074).
+
+    FAILED and BLOCKED entries are offered with their detail; PASSED ones (nothing published yet: no ``origin/<branch>``
+    ref) with the next step; RUNNING and PENDING ones only count as ``waiting``. An entry of a finished task, or one whose
+    head is not the worktree's head any more (the Supervisor will evaluate it again), is never offered."""
+    items: List[dict] = []
+    if store is None or not store.directory.is_dir():
+        return items, 0
+    try:
+        doc = store.read("worker_tests", default=None)
+    except StoreError:
+        warnings.append("worker_tests document unreadable")
+        return items, 0
+    entries = doc.get("entries") if isinstance(doc, dict) else None
+    if not isinstance(entries, dict):
+        return items, 0
+    statuses = _task_statuses(root)
+    waiting = 0
+    for wid, e in sorted(entries.items()):
+        if not isinstance(e, dict):
+            continue
+        tid, state, head = str(e.get("task_id", "")), str(e.get("state", "")), str(e.get("head") or "")
+        if not tid or (statuses is not None and statuses.get(tid) in DONE_STATUSES):
+            continue
+        if state in ("RUNNING", "PENDING"):
+            waiting += 1
+            continue
+        if state not in ("FAILED", "BLOCKED", "PASSED"):
+            continue
+        if head and str(e.get("worktree") or "") and head_of(str(e["worktree"])) not in (head, None):
+            continue
+        detail = str(e.get("detail") or "")[:300]
+        eid = f"{wid}:{state}:{head[:12]}"
+        if state == "PASSED":
+            rc, _ = git(["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{e.get('branch')}"])
+            if rc == 0:
+                continue                                    # already pushed: the pull request chain owns it now
+            items.append({"kind": "worker_tests_passed", "id": f"worker_tests_passed:{eid}", "task_id": tid, "worker_id": wid,
+                          "reason": f"task tests passed for {tid} head {head[:12]}; next: python -B -m dev_supervisor.intake {wid} --yes "
+                                    f"(then an independent review)", "evidence": Label.OBSERVED.value})
+        else:
+            items.append({"kind": "worker_tests_failed", "id": f"worker_tests_failed:{eid}", "task_id": tid, "worker_id": wid,
+                          "reason": f"task tests {state} for {tid} head {head[:12]}: {detail}", "evidence": Label.OBSERVED.value})
+    return items, waiting
+
+
 def _milestone_proposals(root: Path, warnings: List[str]) -> List[dict]:
     """Read-only advice for Main: milestones of PROJECT_STATUS.json that could be registered as work (T-DEV-039).
 
@@ -439,7 +499,7 @@ def _milestone_proposals(root: Path, warnings: List[str]) -> List[dict]:
 
 
 def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunner] = None,
-                  owner: str = DEFAULT_OWNER) -> Dict[str, Any]:
+                  owner: str = DEFAULT_OWNER, head_of: Optional[Callable[[str], Optional[str]]] = None) -> Dict[str, Any]:
     """The actionable picture for Main. Never raises; problems become ``warnings``."""
     warnings: List[str] = []
     git = git or real_git_runner(root)
@@ -455,6 +515,12 @@ def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunn
         blocked += wblocked
     except Exception as e:  # noqa: BLE001 - tolerant by contract
         warnings.append(f"worker items failed ({e.__class__.__name__})")
+    test_waiting = 0
+    try:
+        qitems, test_waiting = _test_items(root, store, git, head_of or _git_head, warnings)
+        items += qitems
+    except Exception as e:  # noqa: BLE001
+        warnings.append(f"worker test items failed ({e.__class__.__name__})")
     try:
         titems, tblocked, in_progress = _task_items(root, running_tasks, warnings, owner, others)
         items += titems
@@ -479,6 +545,8 @@ def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunn
         parts = []
         if running:
             parts.append(f"waiting for {running} running worker{'s' if running != 1 else ''}")
+        if test_waiting:
+            parts.append(f"waiting for {test_waiting} task test run{'s' if test_waiting != 1 else ''}")
         if in_progress:
             parts.append(f"{in_progress} step{'s' if in_progress != 1 else ''} IN_PROGRESS")
         tb = [b for b in blocked if not b["id"].startswith("blocked:worker:")]
