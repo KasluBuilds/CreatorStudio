@@ -4,7 +4,7 @@
 
 Read-only. It reads ACTIVE_TASKS.json as of ``--base`` (default ``origin/main``, as of the last fetch: it never
 fetches), the task's pull requests through ``gh pr list`` and, for an open pull request, the integrate gates
-(``integrate.evaluate``, unchanged). It writes nothing, merges nothing and never raises on bad data.
+(``integrate.evaluate``, unchanged) plus integrate's ninth ``tests`` check (T-DEV-065). It writes nothing, merges nothing and never raises on bad data.
 
 Stages, in chain order::
 
@@ -14,7 +14,8 @@ Stages, in chain order::
     in_review            open pull request, the review gate is the missing one -> independent review of the diff hash
     waiting_ci           open pull request, CI pending or merge state not yet computed -> wait
     needs_fix            open pull request, a gate fails (incl. red CI, a branch behind main) -> fix the named gates
-    ready_to_merge       open pull request, every gate PASS                    -> integrate --yes
+    needs_tests          open pull request, the eight gates PASS, the tests check does not  -> testreq run in the task worktree
+    ready_to_merge       open pull request, every gate PASS and the tests check PASS         -> integrate --yes
     awaiting_closeout    a pull request merged, task still ACTIVE              -> registry-only close-out on the task branch
     done                 task COMPLETED or RELEASED
     unknown              something could not be read; the reason is stated, never guessed
@@ -33,7 +34,7 @@ from . import integrate, memory_guard
 
 __all__ = ["track", "main", "STAGES"]
 
-STAGES = ("unregistered", "awaiting_work", "branch_pushed", "in_review", "waiting_ci", "needs_fix", "ready_to_merge",
+STAGES = ("unregistered", "awaiting_work", "branch_pushed", "in_review", "waiting_ci", "needs_fix", "needs_tests", "ready_to_merge",
           "awaiting_closeout", "done", "unknown")
 DONE_STATUSES = ("COMPLETED", "RELEASED")
 WORK_STATUSES = ("PLANNED", "ACTIVE", "UNDER_REVIEW")
@@ -98,16 +99,17 @@ def classify(gates: Sequence[Any]) -> Tuple[str, str]:
 
 
 def track(task_id: str, gh: Callable, git: Callable, *, base: str = "origin/main", pr_base: str = "main",
-          evaluate: Callable = integrate.evaluate, free_memory: Callable = memory_guard.free_memory_mb) -> Dict[str, Any]:
+          evaluate: Callable = integrate.evaluate, free_memory: Callable = memory_guard.free_memory_mb,
+          tests_check: Callable = integrate.tests_gate) -> Dict[str, Any]:
     """The cycle record for ``task_id``. Never raises."""
     try:
-        return _track(task_id, gh, git, base, pr_base, evaluate, free_memory)
+        return _track(task_id, gh, git, base, pr_base, evaluate, free_memory, tests_check)
     except Exception as exc:                                                       # a tracker must not crash its caller
         return _unknown(str(task_id), f"unexpected {type(exc).__name__} while reading state")
 
 
 def _track(task_id: str, gh: Callable, git: Callable, base: str, pr_base: str, evaluate: Callable,
-           free_memory: Callable) -> Dict[str, Any]:
+           free_memory: Callable, tests_check: Callable) -> Dict[str, Any]:
     if not isinstance(base, str) or not base or base.startswith("-"):
         return _unknown(task_id, "the base ref is empty or starts with a dash")
     rc, raw = git(["show", f"{base}:ACTIVE_TASKS.json"])
@@ -147,10 +149,19 @@ def _track(task_id: str, gh: Callable, git: Callable, base: str, pr_base: str, e
         stage, why = classify(gates)
         ev.append(_ev(f"PR #{n} gates: " + "; ".join(f"{g.num}:{g.name}={g.status}" for g in gates)))
         ev.append(_ev(why))
+        if stage == "ready_to_merge" and info.get("tests") is not None:     # the ninth check, only when integrate gave its facts
+            tg = tests_check(info)
+            ev.append(_ev(f"tests check: {tg.status} - {tg.detail}"))
+            if tg.status == integrate.UNKNOWN:
+                stage, why = "unknown", "the tests check could not be read"
+            elif tg.status != integrate.PASS:
+                stage, why = "needs_tests", "the eight gates pass but the tests check does not"
+            ev.append(_ev(why))
         nxt = {
             "in_review": f"independent review of PR #{n} diff {info.get('diff_sha') or '?'}: fresh read-only reviewer, post the dev-review marker",
             "waiting_ci": f"wait for CI / the merge state of PR #{n}, then run the tracker again",
             "needs_fix": f"fix the failing gates on PR #{n}, then re-run integrate (dry run)",
+            "needs_tests": f"in the task worktree: python -B -m dev_supervisor.testreq run --task {task_id} (a prose requirement must first be rewritten as an exact command), then re-run integrate (dry run)",
             "ready_to_merge": f"python -B -m dev_supervisor.integrate {n} --yes",
             "unknown": "gate results were not readable",
         }[stage]
