@@ -110,14 +110,10 @@ If a task's requirement is prose that is not in the table, rewrite it in the cla
 ## What this does not do
 
 - It does not choose which tests a task needs: the requirement list is the task author's decision. A task that lists only `governance validate` is satisfied by that.
-- It does not run when nobody calls it. Nothing triggers `testreq run` automatically yet, and `cycle` still reports `ready_to_merge` on the eight gates; the merge is then refused by the ninth.
-- `integrate --preflight` and `claim` do not check requirements yet (a claim with a prose requirement is accepted and then fails at merge).
+- It does not run when nobody calls it. Nothing triggers `testreq run` automatically yet. `cycle` reports `needs_tests` (T-DEV-067) when the eight gates pass and this check does not.
+- `claim` refuses prose requirements (T-DEV-066, produced by a dispatched worker). `integrate --preflight` does not run the check; use `testreq check`.
 - Wave pull requests are refused by this check, not covered by it (no wave is open today). Full-suite requirements are expensive; write targeted ones.
 
 ## Observed use
 
-OBSERVED while this was built: the task's own requirements were run with `testreq run` on the head before review (4 commands, all passed, evidence recorded);
-the classifier found 212 commands, 45 gate prose and 12 manual requirements in the registry; running the requirements from `orchestrator/` exposed a
-wrong working directory, which was fixed; the full `test_dev_*` run and CI both exposed one launch-path audit test (fixed by T-DEV-068); and the independent
-review of the first head found a wave exemption, a node reporter mismatch and a read path that was not pure, all fixed before merge. The first merge decided with the
-ninth row active was T-DEV-068 (PR #225), using this branch's code before it was merged itself. The result for this task is in its pull request description.
+OBSERVED on 2026-11-25 (UTC), recorded in `WORKER_GATEWAY.md` section 13: the runner decided the merge of PRs #225, #230, #231 (a worker's change), #235 and #236, each with nine passing rows and a row 9 naming the head and diff. While it was built the classifier found 212 commands, 45 gate prose and 12 manual requirements in the registry; running a task's requirements from `orchestrator/` exposed a wrong working directory; the full `test_dev_*` run and CI exposed one launch-path audit test (T-DEV-068); and independent review of the first head found a wave exemption, a node reporter mismatch and an impure read path, all fixed before merge. It has not run unattended, and a single machine has produced all the evidence.
