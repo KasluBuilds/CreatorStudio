@@ -352,7 +352,7 @@ class RealRepositories(unittest.TestCase):
             "branch": "task/t-zzz-902-demo", "worktree": "../wt-demo", "owned_paths": ["orchestrator/demo_zzz.py"],
             "agreement_id": "AGR-ZZZ-902-01",
             "agreement": "The dev_supervisor package is owned by claude:repository-coordinator. T-ZZZ-902 may add a demo module.",
-            "acceptance_criteria": ["it works"], "test_requirements": ["none"], "integration_notes": "test",
+            "acceptance_criteria": ["it works"], "test_requirements": ["python -B -m governance validate from orchestrator/"], "integration_notes": "test",
         }
         probs, _ = C.claim(self.clone, spec, write=True)
         self.assertEqual(probs, [])
