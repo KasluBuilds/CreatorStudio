@@ -763,6 +763,12 @@ class SpawnRun(unittest.TestCase):
         self.assertTrue(Path(k["cwd"], "dev_supervisor", "testreq.py").is_file())
         self.assertTrue(k.get("creationflags") or k.get("start_new_session"))
 
+    def test_a_non_default_base_is_passed_on_and_a_dangerous_one_is_refused(self):
+        self.assertEqual(self.spawn(base="origin/develop")["argv"][-2:], ["--base", "origin/develop"])
+        for bad in ("--exec", "a b", "x;y", ""):
+            with self.assertRaises(T.TestReqError):
+                T.spawn_run("T-DEMO-001", "w", "s", base=bad, popen=lambda *a, **k: self.fail("a process was started"))
+
     def test_anything_but_a_task_id_is_refused_before_a_process_exists(self):
         for bad in ("", "t-demo-001", "T-DEMO-001; calc", "--help", "T-DEMO-1", None):
             with self.subTest(bad):

@@ -50,6 +50,7 @@ MAX_AGE_S = 48 * 3600.0
 ADOPT_GRACE_S = 60.0
 OPEN_TASK_STATUSES = ("ACTIVE", "UNDER_REVIEW")
 DETAIL_MAX = 400
+MAX_ATTEMPT_KEYS = 100
 
 
 class State:
@@ -99,6 +100,8 @@ class WorkerTestScanner:
         doc = self.store.read(DOC, default=None)
         if not isinstance(doc, dict) or not isinstance(doc.get("entries"), dict):
             doc = {"schema": SCHEMA, "enabled_since": None, "entries": {}}
+        if not isinstance(doc.get("attempts"), dict):
+            doc["attempts"] = {}
         return doc
 
     def _runner_alive(self, pid: Any) -> bool:
@@ -107,6 +110,18 @@ class WorkerTestScanner:
             return h.poll() is None
         return bool(isinstance(pid, int) and self.pid_alive(pid))
 
+    def _live(self, entry: Optional[Dict[str, Any]]) -> bool:
+        """Is a runner of this entry still working, whatever state the entry has now? (A head that moved or a blocked
+        worktree must never free the slot while the old runner is alive.) A launch whose pid was not saved yet counts
+        for a grace period."""
+        if not entry:
+            return False
+        pid = entry.get("runner_pid")
+        if pid is None:
+            started = parse_iso(entry.get("launched_at"))
+            return entry.get("state") == State.RUNNING and started is not None and self.clock() - started < ADOPT_GRACE_S
+        return self._runner_alive(pid)
+
     def _reap(self) -> None:
         for pid in [p for p, h in self._handles.items() if h.poll() is not None]:
             del self._handles[pid]
@@ -114,7 +129,10 @@ class WorkerTestScanner:
     # ------------------------------------------------------------ one pass
 
     def scan(self) -> List[Dict[str, Any]]:
-        """One pass. Returns the changes made: [{worker_id, task_id, state, detail}]."""
+        """One pass. Returns the changes made: [{worker_id, task_id, state, detail}].
+
+        No git command runs while no worker is a candidate. One worker's failure never stops the others; the state
+        document is read and written outside that protection, so a damaged or unwritable store raises to the caller."""
         self._reap()
         doc = self._load()
         before = json.dumps(doc, sort_keys=True)
@@ -122,17 +140,18 @@ class WorkerTestScanner:
         if not doc.get("enabled_since"):
             doc["enabled_since"] = utc_iso(now)
         since = parse_iso(doc["enabled_since"]) or now
-        tasks = self._registry_tasks()
         changes: List[Dict[str, Any]] = []
-        if tasks is not None:
-            workers = sorted(self.registry.workers.values(), key=lambda w: (w.assigned_at or "", w.worker_id))
-            for w in workers:
-                if not self._candidate(w, since, now):
-                    continue
-                task = tasks.get(w.task_id)
-                if task is not None and task.get("status") not in OPEN_TASK_STATUSES:
-                    continue                                       # a finished task is not tested
+        workers = [w for w in sorted(self.registry.workers.values(), key=lambda w: (w.assigned_at or "", w.worker_id))
+                   if self._candidate(w, since, now)]
+        tasks = self._registry_tasks() if workers else None
+        for w in workers if tasks is not None else []:
+            task = tasks.get(w.task_id)
+            if task is not None and task.get("status") not in OPEN_TASK_STATUSES:
+                continue                                           # a finished task is not tested
+            try:
                 self._evaluate(w, task, doc, changes)
+            except Exception as e:                                 # noqa: BLE001 - recorded on the entry, never raised
+                self._set(doc, changes, w, State.BLOCKED, f"the evaluation failed ({type(e).__name__})")
         if json.dumps(doc, sort_keys=True) != before:
             self.store.write(DOC, doc)
         return changes
@@ -159,11 +178,15 @@ class WorkerTestScanner:
 
     def _set(self, doc: Dict[str, Any], changes: List[Dict[str, Any]], w: Any, state: str, detail: str, *,
              event: Optional[str] = None, emit: bool = True, **fields: Any) -> Dict[str, Any]:
+        """Record a state. Nothing is rewritten, and no event appended, when state, detail and fields are unchanged."""
         entries = doc["entries"]
         old = entries.get(w.worker_id) or {}
         detail = _short(detail)
         new = {**old, "worker_id": w.worker_id, "task_id": w.task_id, "branch": w.branch, "worktree": w.worktree,
-               "state": state, "detail": detail, "updated": utc_iso(self.clock()), **fields}
+               "state": state, "detail": detail, **fields}
+        if {k: v for k, v in new.items() if k != "updated"} == {k: v for k, v in old.items() if k != "updated"}:
+            return old
+        new["updated"] = utc_iso(self.clock())
         entries[w.worker_id] = new
         if old.get("state") != state or old.get("detail") != detail:
             changes.append({"worker_id": w.worker_id, "task_id": w.task_id, "state": state, "detail": detail})
@@ -174,6 +197,8 @@ class WorkerTestScanner:
 
     def _evaluate(self, w: Any, task: Optional[Dict[str, Any]], doc: Dict[str, Any], changes: List[Dict[str, Any]]) -> None:
         entry = doc["entries"].get(w.worker_id)
+        if self._live(entry):
+            return                                                       # a runner of this worker is still working: wait
         blocked = lambda why, **kw: self._set(doc, changes, w, State.BLOCKED, why, **kw)   # noqa: E731
         if task is None:
             blocked(f"task {w.task_id} is not on {self.base} (as of the last fetch; run git fetch)")
@@ -181,7 +206,7 @@ class WorkerTestScanner:
         if task.get("branch") != w.branch:
             blocked(f"the registered branch of {w.task_id} is {task.get('branch')}, the worker's is {w.branch}")
             return
-        if not os.path.isdir(w.worktree):
+        if not isinstance(w.worktree, str) or not os.path.isdir(w.worktree):
             blocked(f"the worktree {w.worktree} does not exist")
             return
         git = self.git_for(w.worktree)
@@ -194,11 +219,10 @@ class WorkerTestScanner:
         if rc != 0 or br.decode("utf-8", "replace").strip() != w.branch:
             blocked(f"the worktree is not on the registered branch {w.branch}", head=head)
             return
-        if entry and entry.get("head") == head and entry.get("state") in State.FINAL:
-            return                                                       # decided for this head
-        if entry and entry.get("head") == head and entry.get("state") == State.RUNNING \
-                and self._runner_known_alive(entry):
-            return
+        texts = task.get("test_requirements")
+        rhash = testreq.reqs_hash(texts) if isinstance(texts, list) else ""
+        if entry and entry.get("head") == head and entry.get("state") in State.FINAL and entry.get("reqs_sha256") == rhash:
+            return                                                       # decided for this head and these requirements
         if changed:
             blocked("the worktree has uncommitted changes; commit or stash them (the evidence must describe the commit)", head=head)
             return
@@ -210,7 +234,6 @@ class WorkerTestScanner:
         if not diff:
             blocked(f"the diff against {self.base} cannot be computed", head=head)
             return
-        texts = task.get("test_requirements")
         try:
             reqs = testreq.classify_all(texts)
         except testreq.TestReqError as e:
@@ -225,35 +248,27 @@ class WorkerTestScanner:
         status, detail = testreq.check_evidence(reqs, texts, rec, why, task_id=w.task_id, head=head, diff_sha=diff,
                                                 pid_alive=self.pid_alive)
         bound = self._bound(rec, w.task_id, head, diff, texts)
+        known = dict(head=head, diff_sha256=diff, reqs_sha256=rhash)
         if status == testreq.PASS:
-            self._set(doc, changes, w, State.PASSED, detail, head=head, diff_sha256=diff, runner_pid=None)
+            self._set(doc, changes, w, State.PASSED, detail, runner_pid=None, **known)
             return
         if bound and rec.get("state") == "complete":
-            self._set(doc, changes, w, State.FAILED, detail, head=head, diff_sha256=diff, runner_pid=None)
+            self._set(doc, changes, w, State.FAILED, detail, runner_pid=None, **known)
             return
         if bound and rec.get("state") == "running" and self.pid_alive(rec.get("pid")):
-            self._set(doc, changes, w, State.RUNNING, "a test run for this head is in progress (adopted)", head=head,
-                      diff_sha256=diff, runner_pid=rec.get("pid"), event="worker_tests_started")
+            self._set(doc, changes, w, State.RUNNING, "a test run for this head is in progress (adopted)",
+                      runner_pid=rec.get("pid"), event="worker_tests_started", **known)
             return
-        same = bool(entry) and entry.get("head") == head
-        attempts = int(entry.get("attempts") or 0) if same else 0
-        if same and entry.get("state") == State.RUNNING:
+        key = f"{w.task_id}:{head}"
+        attempts = int(doc["attempts"].get(key) or 0)                 # per task and head, not per worker
+        if entry and entry.get("head") == head and entry.get("state") == State.RUNNING:
             self._set(doc, changes, w, State.RUNNING, f"the runner (pid {entry.get('runner_pid')}) ended without a complete "
-                      f"record; attempt {attempts} of {MAX_ATTEMPTS}", head=head, event="worker_tests_interrupted")
-            entry = doc["entries"][w.worker_id]
+                      f"record; attempt {attempts} of {MAX_ATTEMPTS}", event="worker_tests_interrupted", **known)
         if attempts >= MAX_ATTEMPTS:
             blocked(f"{attempts} runs were interrupted or left no complete record for this head; run it by hand: "
-                    f"python -B -m dev_supervisor.testreq run --task {w.task_id} --resume", head=head, diff_sha256=diff,
-                    attempts=attempts)
+                    f"python -B -m dev_supervisor.testreq run --task {w.task_id} --resume", attempts=attempts, **known)
             return
-        self._launch(w, doc, changes, head, diff, attempts, resume=attempts > 0)
-
-    def _runner_known_alive(self, entry: Dict[str, Any]) -> bool:
-        pid = entry.get("runner_pid")
-        if pid is None:                          # launch written, pid not yet recorded: wait out the grace period
-            started = parse_iso(entry.get("launched_at"))
-            return started is not None and self.clock() - started < ADOPT_GRACE_S
-        return self._runner_alive(pid)
+        self._launch(w, doc, changes, key, attempts, known)
 
     @staticmethod
     def _bound(rec: Optional[Dict[str, Any]], task_id: str, head: str, diff: str, texts: Any) -> bool:
@@ -261,29 +276,30 @@ class WorkerTestScanner:
             ("schema", testreq.SCHEMA), ("task", task_id), ("head", head), ("diff_sha256", diff),
             ("reqs_sha256", testreq.reqs_hash(texts)))))
 
-    def _launch(self, w: Any, doc: Dict[str, Any], changes: List[Dict[str, Any]], head: str, diff: str, attempts: int,
-                resume: bool) -> None:
-        # Includes this worker's own entry: a live runner for another head of the same worktree still counts.
-        others = [e for e in doc["entries"].values() if e.get("state") == State.RUNNING and self._runner_known_alive(e)]
+    def _launch(self, w: Any, doc: Dict[str, Any], changes: List[Dict[str, Any]], key: str, attempts: int,
+                known: Dict[str, Any]) -> None:
+        others = [e for e in doc["entries"].values() if e.get("worker_id") != w.worker_id and self._live(e)]
         if others:
-            self._set(doc, changes, w, State.PENDING, f"waiting for the test run of {others[0].get('task_id')}", head=head)
+            self._set(doc, changes, w, State.PENDING, f"waiting for the test run of {others[0].get('task_id')}", **known)
             return
         floor = self.floor if self.floor is not None else memory_guard.min_free_mb()
-        ok, why = memory_guard.check(self.free_memory(), floor)
+        ok, _ = memory_guard.check(self.free_memory(), floor)
         if not ok:
-            self._set(doc, changes, w, State.PENDING, why, head=head)
+            self._set(doc, changes, w, State.PENDING, f"waiting for memory: below the {floor} MB floor or unreadable", **known)
             return
-        launched = utc_iso(self.clock())
+        doc["attempts"][key] = attempts + 1
+        while len(doc["attempts"]) > MAX_ATTEMPT_KEYS:
+            doc["attempts"].pop(next(iter(doc["attempts"])))
         # Written before the process exists: a crash after the spawn and before the pid is saved is recovered by adoption.
-        self._set(doc, changes, w, State.RUNNING, f"launching attempt {attempts + 1} of {MAX_ATTEMPTS}", head=head,
-                  diff_sha256=diff, attempts=attempts + 1, runner_pid=None, launched_at=launched, emit=False)
+        self._set(doc, changes, w, State.RUNNING, f"launching attempt {attempts + 1} of {MAX_ATTEMPTS}", attempts=attempts + 1,
+                  runner_pid=None, launched_at=utc_iso(self.clock()), emit=False, **known)
         self.store.write(DOC, doc)
         try:
-            proc = self.spawn(w.task_id, w.worktree, str(self.store.directory), resume=resume, timeout=self.timeout)
+            proc = self.spawn(w.task_id, w.worktree, str(self.store.directory), resume=attempts > 0, timeout=self.timeout,
+                              base=self.base)
         except Exception as e:                                          # noqa: BLE001 - recorded, never raised into the loop
-            self._set(doc, changes, w, State.BLOCKED, f"the runner could not be started ({type(e).__name__})", head=head,
-                      diff_sha256=diff, runner_pid=None)
+            self._set(doc, changes, w, State.BLOCKED, f"the runner could not be started ({type(e).__name__})", runner_pid=None, **known)
             return
         self._handles[proc.pid] = proc
         self._set(doc, changes, w, State.RUNNING, f"runner pid {proc.pid} started, attempt {attempts + 1} of {MAX_ATTEMPTS}",
-                  head=head, diff_sha256=diff, runner_pid=proc.pid, event="worker_tests_started")
+                  runner_pid=proc.pid, event="worker_tests_started", **known)

@@ -100,10 +100,13 @@ class Env(unittest.TestCase):
         self.now = T0 + 100
 
     def make_scanner(self, **kw):
-        def spawn(task_id, worktree, state_dir, *, resume=False, timeout=1800.0):
+        def spawn(task_id, worktree, state_dir, *, resume=False, timeout=1800.0, base="origin/main"):
             self.next_pid += 1
             p = FakeProc(self.next_pid)
-            self.spawned.append({"task": task_id, "worktree": worktree, "state_dir": state_dir, "resume": resume, "pid": p.pid})
+            on_disk = (self.store.read(W.DOC) or {}).get("entries", {}).get(next(
+                (w.worker_id for w in self.registry.workers.values() if w.task_id == task_id), ""), {})
+            self.spawned.append({"task": task_id, "worktree": worktree, "state_dir": state_dir, "resume": resume, "pid": p.pid,
+                                 "base": base, "on_disk": (on_disk.get("state"), on_disk.get("runner_pid"), bool(on_disk.get("launched_at")))})
             self.procs.append(p)
             return p
         args = dict(git_for=lambda path: self.gits.get(str(path), self.git), spawn=spawn, pid_alive=lambda pid: pid in self.alive,
@@ -142,8 +145,9 @@ class Triggering(Env):
     def test_a_successful_worker_starts_one_runner_with_a_fixed_command(self):
         self.add_worker()
         ch = self.scanner.scan()
-        self.assertEqual([(s["task"], s["worktree"], s["state_dir"], s["resume"]) for s in self.spawned],
-                         [(TID, str(self.work), str(self.state), False)])
+        self.assertEqual([(s["task"], s["worktree"], s["state_dir"], s["resume"], s["base"]) for s in self.spawned],
+                         [(TID, str(self.work), str(self.state), False, "origin/main")])
+        self.assertEqual(self.spawned[0]["on_disk"], ("RUNNING", None, True), "the launch is on disk before the process starts")
         e = self.entry()
         self.assertEqual((e["state"], e["head"], e["attempts"], e["runner_pid"]), ("RUNNING", sha(0), 1, self.spawned[0]["pid"]))
         self.assertEqual([c["state"] for c in ch][-1], "RUNNING")
@@ -412,6 +416,120 @@ class Recovery(Env):
         self.assertEqual(second["entries"]["w1"]["head"], sha(0))
 
 
+class Review(Env):
+    """Findings of the independent review of the first head."""
+
+    def test_a_moved_head_does_not_free_the_slot_while_the_old_runner_lives(self):
+        p = self.launch()
+        self.alive.add(p.pid)
+        self.git.commit()                                       # someone commits in the worktree under a live runner
+        for _ in range(3):
+            self.scanner.scan()
+        self.assertEqual(len(self.spawned), 1)
+        self.assertEqual(self.entry()["state"], "RUNNING")
+
+    def test_a_blocked_look_at_the_worktree_does_not_free_the_slot_for_another_worker(self):
+        work2 = self.tmp / "work2"
+        (work2 / "orchestrator").mkdir(parents=True)
+        other = dict(self.task, id="T-DEMO-002", branch="task/demo2")
+        self.git.registry = {"tasks": [self.task, other]}
+        self.gits = getattr(self, "gits", {})
+        p = self.launch()
+        self.git.dirty = "1 .M N... x\n"
+        self.git.commit()
+        self.gits[str(work2)] = FakeGit(registry=self.git.registry, branch="task/demo2")
+        self.add_worker("w2", task="T-DEMO-002", branch="task/demo2", worktree=work2)
+        self.scanner.scan()
+        self.assertEqual(len(self.spawned), 1)
+        self.assertEqual(self.entry("w2")["state"], "PENDING")
+
+    def test_attempts_belong_to_the_task_and_head_not_to_the_worker(self):
+        work2 = self.tmp / "work2"
+        (work2 / "orchestrator").mkdir(parents=True)
+        self.gits[str(work2)] = self.git                           # a continuation worker on the same branch and head
+        p = self.launch()
+        for wid in ("w1", "w2"):
+            if wid == "w2":
+                self.add_worker("w2", worktree=work2, status=WorkerStatus.EXITED)
+            for _ in range(5):
+                for proc in self.procs:
+                    proc.code = -9
+                self.scanner.scan()
+        self.assertEqual(len(self.spawned), W.MAX_ATTEMPTS)
+        self.assertEqual(len(self.events("worker_tests_started")), W.MAX_ATTEMPTS)
+
+    def test_a_new_head_gets_a_fresh_attempt_budget(self):
+        p = self.launch()
+        p.code = -9
+        self.scanner.scan()
+        self.git.commit()
+        self.procs[-1].code = -9
+        self.scanner.scan()
+        e = self.entry()
+        self.assertEqual((e["head"], e["attempts"], self.spawned[-1]["resume"]), (sha(1), 1, False))
+
+    def test_changed_requirements_are_evaluated_again_after_a_verdict(self):
+        p = self.launch()
+        self.write_evidence()
+        p.code = 0
+        self.scanner.scan()
+        self.assertEqual(self.entry()["state"], "PASSED")
+        self.task["test_requirements"] = [REQ.replace("test_demo", "test_other"), GATE]
+        self.scanner.scan()
+        self.assertEqual((self.entry()["state"], len(self.spawned)), ("RUNNING", 2))
+
+    def test_one_workers_exception_does_not_stop_the_others_and_is_recorded(self):
+        class Boom(FakeGit):
+            def __call__(self, args):
+                raise RuntimeError("secret detail that must not be stored")
+        boom_dir, ok_dir = self.tmp / "boom", self.tmp / "ok"
+        for d in (boom_dir, ok_dir):
+            (d / "orchestrator").mkdir(parents=True)
+        self.gits[str(boom_dir)] = Boom()
+        self.git.registry["tasks"].append(dict(self.task, id="T-DEMO-009", branch="task/nine"))
+        self.add_worker("w0", task="T-DEMO-009", branch="task/nine", worktree=boom_dir)
+        self.add_worker("w1", worktree=ok_dir)
+        self.scanner.scan()
+        self.assertEqual((self.entry("w0")["state"], self.entry("w0")["detail"]), ("BLOCKED", "the evaluation failed (RuntimeError)"))
+        self.assertEqual(self.entry("w1")["state"], "RUNNING")
+        self.assertNotIn("secret detail", json.dumps(self.store.read(W.DOC)))
+
+    def test_a_damaged_worktree_field_is_a_block_not_an_exception(self):
+        w = self.add_worker("w0")
+        w.worktree = None
+        self.scanner.scan()
+        self.assertEqual(self.entry("w0")["state"], "BLOCKED")
+
+    def test_no_candidate_means_no_git_command_and_only_the_enabled_stamp_is_written(self):
+        self.git.calls.clear()
+        self.add_worker(status=WorkerStatus.FAILED)
+        writes = []
+        real = self.store.write
+        self.store.write = lambda name, data: (writes.append(name), real(name, data))[1]
+        self.scanner.scan()
+        self.assertEqual((self.git.calls, writes), ([], []))
+
+    def test_an_unchanged_state_is_neither_rewritten_nor_announced(self):
+        self.git.dirty = "1 .M N... x\n"
+        self.add_worker()
+        self.scanner.scan()
+        first = self.store.read(W.DOC)["entries"]["w1"]["updated"]
+        writes = []
+        real = self.store.write
+        self.store.write = lambda name, data: (writes.append(name), real(name, data))[1]
+        self.now += 60
+        for _ in range(3):
+            self.scanner.scan()
+        self.assertEqual((writes, self.store.read(W.DOC)["entries"]["w1"]["updated"], len(self.events())), ([], first, 1))
+
+    def test_the_base_ref_is_passed_to_the_runner(self):
+        sc = self.make_scanner(base="origin/develop")
+        self.git.registry = {"tasks": [self.task]}
+        self.add_worker()
+        sc.scan()
+        self.assertEqual(self.spawned[0]["base"], "origin/develop")
+
+
 class Limits(Env):
     def test_one_runner_at_a_time(self):
         other = dict(self.task, id="T-DEMO-002", branch="task/demo2")
@@ -439,7 +557,7 @@ class Limits(Env):
         self.scanner.scan()
         e = self.entry()
         self.assertEqual((e["state"], self.spawned, self.events()), ("PENDING", [], []))
-        self.assertIn("512 MB free", e["detail"])
+        self.assertIn("below the 1024 MB floor", e["detail"])
         self.free = None
         self.scanner.scan()
         self.assertEqual((self.entry()["state"], self.spawned), ("PENDING", []))
