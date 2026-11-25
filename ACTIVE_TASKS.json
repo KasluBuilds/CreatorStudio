@@ -3895,7 +3895,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-074-worker-tests-wiring",
       "worktree": "../CreatorStudio-worktrees/t-dev-074-worker-tests-wiring",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3924,10 +3924,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 2 (second of two tasks). Takes effect only when the Supervisor process is restarted: the running Supervisor keeps the code it loaded.",
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 2 (second of two tasks). Takes effect only when the Supervisor process is restarted: the running Supervisor keeps the code it loaded. Merged as PR #252 (independent review of diff 3dc7ffce42c84e9f).",
       "lease": {
         "acquired": "2026-11-25T14:58:07+00:00",
-        "expires": "2026-11-26T14:58:07+00:00"
+        "expires": "2026-11-26T14:58:07+00:00",
+        "released": "2026-11-25T16:44:40+00:00"
       }
     },
     {
