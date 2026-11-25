@@ -90,6 +90,7 @@ Status record dated **2026-11-18**. Baseline commit **`93a9a829e073`** on `main`
 | T-EDT-001 Validated edit-plan schema and Editor planning workflow (M-EDT-01, offline) | claude:repository-coordinator | `task/t-edt-001-edit-plan` | ACTIVE | 2026-11-23T17:00:00+00:00 | orchestrator/edit_plan/, orchestrator/tests/test_edit_plan.py, AI_Creator_Studio_Documentation/EDITING_ENGINE.md |
 | T-DEV-066 dev_supervisor: claim refuses a spec whose test_requirements cannot be run or decided by a gate | claude:main-coordinator | `task/t-dev-066-claim-test-requirements` | ACTIVE | 2026-11-26T06:10:48+00:00 | orchestrator/dev_supervisor/claim.py, orchestrator/tests/test_dev_claim.py |
 | T-DEV-067 dev_supervisor: cycle reports needs_tests when the eight gates pass but the tests check does not | claude:main-coordinator | `task/t-dev-067-cycle-needs-tests` | ACTIVE | 2026-11-26T06:15:48+00:00 | orchestrator/dev_supervisor/cycle.py, orchestrator/tests/test_dev_cycle.py |
+| T-DEV-069 dev_supervisor: autonomy next says whether a PLANNED task is ready to dispatch | claude:main-coordinator | `task/t-dev-069-next-dispatch-ready` | ACTIVE | 2026-11-26T06:47:49+00:00 | orchestrator/dev_supervisor/autonomy.py, orchestrator/tests/test_dev_autonomy.py |
 
 Leases are not judged here (this file never reads the clock): run `cd orchestrator && python -B -m governance leases` to list expired ones.
 
