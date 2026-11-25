@@ -530,6 +530,114 @@ class Review(Env):
         self.assertEqual(self.spawned[0]["base"], "origin/develop")
 
 
+class SecondReview(Env):
+    """Findings of the second independent review."""
+
+    def test_a_dead_runners_pid_is_cleared_so_a_reused_pid_cannot_jam_the_slot(self):
+        p = self.launch()
+        pid = p.pid
+        self.git.commit()
+        self.git.dirty = "1 .M N... x\n"                          # moved head, dirty worktree: BLOCKED while the runner lives
+        self.alive.add(pid)
+        self.scanner.scan()
+        p.code = 0                                                 # the runner ends
+        self.alive.discard(pid)
+        self.scanner.scan()
+        self.assertEqual(self.entry()["state"], "BLOCKED")
+        self.assertIsNone(self.entry()["runner_pid"])
+        self.alive.add(pid)                                        # the OS hands the pid to something else
+        self.git.dirty = ""
+        self.scanner.scan()
+        self.assertEqual((self.entry()["state"], len(self.spawned)), ("RUNNING", 2))
+        other = dict(self.task, id="T-DEMO-002", branch="task/demo2")
+        self.git.registry = {"tasks": [self.task, other]}
+
+    def test_a_pid_reused_after_the_runner_finished_does_not_hide_its_complete_record(self):
+        p = self.launch()
+        self.write_evidence()
+        rec = self.ev_record()
+        T.EvidenceStore(self.state).save(dict(rec, pid=p.pid))     # the record names this runner's pid
+        again = self.make_scanner()
+        self.alive.add(p.pid)                                      # ...and the pid now belongs to another process
+        again.scan()
+        self.assertEqual(self.entry()["state"], "PASSED")
+
+    def ev_record(self):
+        return T.EvidenceStore(self.state).load(TID, self.git.head)[0]
+
+    def test_a_path_that_looks_like_a_credential_does_not_cause_a_rewrite_or_event_on_every_pass(self):
+        odd = self.tmp / "task-governance-foundation-with-a-long-name"
+        (odd / "orchestrator").mkdir(parents=True)
+        self.gits[str(odd)] = self.git
+        self.git.dirty = "1 .M N... x\n"
+        self.add_worker(worktree=odd)
+        self.scanner.scan()
+        writes = []
+        real = self.store.write
+        self.store.write = lambda name, data: (writes.append(name), real(name, data))[1]
+        for _ in range(3):
+            self.now += 5
+            self.scanner.scan()
+        self.assertEqual((writes, len(self.events("worker_tests_blocked"))), ([], 1))
+
+    def test_a_moved_base_makes_a_decided_head_be_evaluated_again(self):
+        base = {"sha": "b" * 40}
+        orig = self.git.__class__.__call__
+
+        def with_base(git, args):
+            return (0, base["sha"].encode()) if list(args) == ["rev-parse", "origin/main"] else orig(git, args)
+        self.git.__class__.__call__ = with_base
+        self.addCleanup(setattr, self.git.__class__, "__call__", orig)
+        p = self.launch()
+        self.write_evidence()
+        p.code = 0
+        self.scanner.scan()
+        self.assertEqual(self.entry()["state"], "PASSED")
+        self.scanner.scan()
+        self.assertEqual(len(self.spawned), 1)
+        base["sha"] = "c" * 40
+        self.scanner.scan()
+        self.assertEqual(self.entry()["base_sha"], "c" * 40)       # evaluated again against the new base
+
+    def test_a_failed_spawn_does_not_use_up_an_attempt(self):
+        calls = []
+
+        def refuse(*a, **k):
+            calls.append(1)
+            raise OSError("x")
+        sc = self.make_scanner(spawn=refuse)
+        self.add_worker()
+        for _ in range(5):
+            sc.scan()
+        self.assertEqual(len(calls), 1, "no retry storm within the retry interval")
+        for _ in range(W.MAX_ATTEMPTS + 1):
+            self.now += W.SPAWN_RETRY_S + 1
+            sc.scan()
+        self.assertEqual(len(calls), W.MAX_ATTEMPTS + 2)
+        self.assertIn("could not be started", self.entry()["detail"])
+        self.assertEqual(self.store.read(W.DOC)["attempts"].get(f"{TID}:{sha(0)}"), 0)
+
+    def test_a_damaged_entry_in_the_document_is_ignored(self):
+        doc = self.store.read(W.DOC)
+        doc["entries"]["junk"] = 5
+        self.store.write(W.DOC, doc)
+        self.add_worker()
+        self.scanner.scan()
+        self.assertEqual(self.entry()["state"], "RUNNING")
+
+    def test_a_skipped_command_in_a_record_is_never_a_pass(self):
+        rec = self.write_evidence()
+        rec = json.loads(json.dumps(rec))
+        for r in rec["results"]:
+            if r["kind"] == "command":
+                r["status"] = "skipped"
+        T.EvidenceStore(self.state).save(rec)
+        self.add_worker()
+        self.scanner.scan()
+        self.assertNotEqual(self.entry()["state"], "PASSED")
+        self.assertEqual(self.entry()["state"], "FAILED")
+
+
 class Limits(Env):
     def test_one_runner_at_a_time(self):
         other = dict(self.task, id="T-DEMO-002", branch="task/demo2")
