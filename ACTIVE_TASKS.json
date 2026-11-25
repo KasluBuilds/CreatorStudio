@@ -3766,7 +3766,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-072-stale-worker-failed",
       "worktree": "../CreatorStudio-worktrees/t-dev-072-stale-worker-failed",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3790,10 +3790,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 1. Defect recorded in WORKER_GATEWAY.md section 13.",
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 1. Defect recorded in WORKER_GATEWAY.md section 13. Merged as PR #244 (independent review of diff 1b5e5b4a7bb5f16c).",
       "lease": {
         "acquired": "2026-11-25T14:31:26+00:00",
-        "expires": "2026-11-26T14:31:26+00:00"
+        "expires": "2026-11-26T14:31:26+00:00",
+        "released": "2026-11-25T14:44:49+00:00"
       }
     }
   ]
