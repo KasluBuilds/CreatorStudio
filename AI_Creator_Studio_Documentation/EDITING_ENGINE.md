@@ -102,17 +102,21 @@ Short-form:
 
 ## 10. Edit-plan representation
 
-Recommended JSON concepts (schema is proposed, not implemented):
-- `project_id`, `timeline_id`, `version`, `frame_rate`
-- `source_media`: IDs, paths, metadata, checksum
-- `segments`: source in/out, timeline position, track, playback speed
-- `operations`: cut, append, transform, transition, audio, title, caption, effect
-- `asset_refs`: local path, provenance and rights status
-- `intent`: reason for each significant edit
-- `platform_targets`
-- `validation`: warnings and checks
+**Status: IMPLEMENTED offline (T-EDT-001, schema `edit-plan/0.1`), unit-tested only — NOT VERIFIED.** The code is `orchestrator/edit_plan/` (see its README for codes and limits). Nothing here has run against Resolve or real footage.
 
-Use explicit frame counts/timebase and preserve original source timecodes. Avoid floating-point-only timing where frame accuracy matters.
+Plan fields (strict: unknown fields and unknown versions are rejected; a JSON Schema is exported by `json_schema()`):
+- `version` (`"edit-plan/0.1"`), `meta`: `project_slug`, `plan_id`, `created_by`, `source_brief_id`, `source_brief_hash`
+- `timeline`: `name`, `frame_rate` as an exact rational `{num, den}` (29.97 = 30000/1001), `width`, `height`, `start_timecode` (non-drop)
+- `sources`: `source_id`, `path` (reference only, never opened), `frame_rate`, `duration_frames`, `content_hash` (sha256), `origin` (`creator_recording`, `other_recording`, `stock_footage`, `music`, `sfx`, `graphic`, `generated_speech`), `has_video`, `has_audio`
+- `tracks`: `track_id`, `kind` (`video`/`audio`/`subtitle`), 1-based `index`
+- `segments` (ordered): `purpose` (`dialogue`, `b_roll`, `music`, `sfx`, `title`), `track_id`, `record_in` (timeline frames relative to the timeline start), `source_id`, `source_in`, `source_out` plus an explicit `range_convention` (`inclusive_out` = last included frame, `exclusive_out` = first excluded frame), `media` (`video`, `audio`, `video_audio`), `audio_track_id`, `speaker`, `title_text`/`title_duration_frames` (titles only), `audio_gain_db` (any value is refused by the capability gate), and a `rationale` (`text` plus `brief_item_id`). The timeline duration is derived from the source length and both rates (floor, as Resolve does); it is never stored.
+- `transitions` (`cut`, `dissolve`, `dip_to_black`; between two adjacent segments), `markers`, `captions` (`text` must quote a `transcript_ref` of source frames), each with a rationale
+- `qc_expectations`: `total_duration_frames`, `frame_rate`, `resolution`, `no_gaps_on_base_tracks`, `captions_match_transcript`, `sources_unmodified`, `custom`
+- `exports`: requested outputs (directory, file name, format, codec)
+
+Validation returns a structured report (errors and warnings with codes, total duration, gaps, plan hash) and never raises on bad data. It covers exact frame arithmetic, per-track overlap, mixed-rate conversion (exact, or flagged), the capability gate against `resolve_executor` (an UNSUPPORTED item — audio gain, any transition other than a plain cut, subtitle tracks/captions — is a hard error, never dropped) and the source-fidelity rules of section 2 as hard errors: dialogue only from creator recordings, no generated speech, captions quote a transcript range, outputs never inside a source directory, and exports only inside an explicitly configured allowlist (empty allowlist refuses every export; `CreatorStudio\Projects` is never an approved destination). `plan_hash` is the sha256 of the canonical JSON (sorted keys, reduced rates, NFC text). `to_executor_requests(plan)` builds the executor requests without executing anything. `plan_from_brief(brief, inventory, transcript=None)` is a deterministic offline planner that orders the Creative Director's chosen arc ranges into a candidate plan for human/QC review; it is not a creative engine.
+
+Not yet in the schema (still proposed): playback speed/retiming, effects, asset provenance and rights status, platform targets, per-edit transforms. Timing stays in explicit frame counts on an exact timebase; original source frame numbers are preserved.
 
 ## 11. Style profiles
 
