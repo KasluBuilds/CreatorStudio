@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional, Sequence, TextIO, Tuple
 from governance import handoff as handoff_mod
 from governance import tasks as tasks_mod
 
-from . import integrate
+from . import integrate, testreq
 
 __all__ = ["check_spec", "build_records", "claim", "main"]
 
@@ -112,6 +112,10 @@ def check_spec(spec: Any, doc: Dict[str, Any]) -> List[str]:
                      "the claim 'not this PR's own'; say 'an earlier task' instead")
     if integrate._secret_hits(_lines(spec)):
         probs.append("a field looks like a credential; specs are committed to a public repository")
+    for i, text in enumerate(spec["test_requirements"]):
+        req = testreq.classify(text, i)
+        if req.kind == "manual":
+            probs.append(f"test_requirements[{i}] is not machine-executable ({req.reason}): {text[:80]}; write it as an exact command or the gate wording (see dev_supervisor/TEST_EVIDENCE.md)")
     return probs
 
 

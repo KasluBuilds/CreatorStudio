@@ -34,7 +34,7 @@ def spec(**over):
         "owned_paths": ["orchestrator/dev_supervisor/zzz_demo.py", "orchestrator/tests/test_zzz_demo.py"],
         "agreement_id": "AGR-ZZZ-901-01",
         "agreement": "The dev_supervisor package is owned by claude:repository-coordinator. T-ZZZ-901 may add a demo module there.",
-        "acceptance_criteria": ["it works"], "test_requirements": ["python -B -I -m unittest"], "integration_notes": "Claimed for a test.",
+        "acceptance_criteria": ["it works"], "test_requirements": ["python -B -I -m unittest discover -s tests"], "integration_notes": "Claimed for a test.",
     }
     s.update(over)
     return s
@@ -73,6 +73,28 @@ class CheckSpec(unittest.TestCase):
 
     def test_a_valid_spec_has_no_problems(self):
         self.assertEqual(C.check_spec(spec(), self.doc), [])
+
+    def test_a_prose_test_requirement_is_refused(self):
+        probs = self.refused(test_requirements=["full suite before merge"])
+        self.assertEqual(len(probs), 1)
+        self.assertIn("test_requirements[0] is not machine-executable", probs[0])
+        self.assertIn("full suite before merge", probs[0])
+        self.assertIn("TEST_EVIDENCE.md", probs[0])
+
+    def test_a_shell_chained_test_requirement_is_refused(self):
+        probs = self.refused(test_requirements=["cd orchestrator && python -B -m governance validate && rm -rf x"])
+        self.assertEqual(len(probs), 1)
+        self.assertIn("test_requirements[0]", probs[0])
+
+    def test_only_the_manual_requirements_are_reported(self):
+        probs = self.refused(test_requirements=["cd orchestrator && python -B -m governance validate", "make it good", "independent review of the exact diff", "also this"])
+        self.assertEqual(len(probs), 2)
+        self.assertIn("test_requirements[1]", probs[0])
+        self.assertIn("test_requirements[3]", probs[1])
+
+    def test_gate_wording_and_commands_are_accepted(self):
+        self.assertEqual(self.refused(test_requirements=["independent review of the exact diff", "integrate --preflight passes on the branch"]), [])
+        self.assertEqual(self.refused(test_requirements=["cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_claim.py"]), [])
 
     def test_each_claim_rule_is_named_when_broken(self):
         taken = self.doc["tasks"][0]
@@ -179,6 +201,14 @@ class Claim(unittest.TestCase):
             probs, task = C.claim(repo.dir, spec(**over), write=True, now=NOW)
             self.assertTrue(probs)
             self.assertIsNone(task)
+        self.assertEqual(repo.snapshot(), before)
+
+    def test_a_manual_test_requirement_writes_nothing_even_with_write(self):
+        repo = Repo(self)
+        before = repo.snapshot()
+        probs, task = C.claim(repo.dir, spec(test_requirements=["full suite before merge"]), write=True, now=NOW)
+        self.assertTrue(probs)
+        self.assertIsNone(task)
         self.assertEqual(repo.snapshot(), before)
 
     def test_a_registry_that_fails_governance_validation_after_the_claim_is_refused(self):
