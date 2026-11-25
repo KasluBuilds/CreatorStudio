@@ -296,8 +296,26 @@ def _wave_items(root: Path, git: GitRunner, warnings: List[str]) -> List[dict]:
     return items
 
 
-def _worker_items(store: Optional[StateStore], warnings: List[str]) -> Tuple[List[dict], List[dict], set, int]:
-    """(items, blocked, task ids with a live worker, running worker count)."""
+def _task_statuses(root: Optional[Path]) -> Optional[Dict[str, str]]:
+    """{task id: registry status}, or None when the registry cannot be read (callers then keep the old behaviour;
+    ``_task_items`` already warns about an unreadable registry)."""
+    if root is None:
+        return None
+    try:
+        reg = _load_json(root / "ACTIVE_TASKS.json")
+        return {str(t["id"]): str(t.get("status")) for t in reg.get("tasks", []) if isinstance(t, dict) and t.get("id")}
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+
+
+def _worker_items(store: Optional[StateStore], warnings: List[str], root: Optional[Path] = None,
+                  suppressed: Optional[List[dict]] = None) -> Tuple[List[dict], List[dict], set, int]:
+    """(items, blocked, task ids with a live worker, running worker count).
+
+    The registry status of a worker's task is authoritative (T-DEV-072): a FAILED or LOST worker of a COMPLETED or
+    RELEASED task is not offered (it goes to ``suppressed``, so the history stays visible) and one of a BLOCKED task is
+    ``blocked``, never a restart candidate. An unknown task or an unreadable registry keeps the worker item."""
+    statuses = _task_statuses(root)
     items: List[dict] = []
     blocked: List[dict] = []
     running_tasks: set = set()
@@ -331,6 +349,17 @@ def _worker_items(store: Optional[StateStore], warnings: List[str]) -> Tuple[Lis
         newer = [o for o in reg.workers.values() if o.task_id == w.task_id and o.worker_id != w.worker_id
                  and (o.assigned_at or "") > (w.assigned_at or "")]
         if newer:
+            continue
+        tstatus = (statuses or {}).get(w.task_id)
+        if tstatus in DONE_STATUSES:
+            if suppressed is not None:
+                suppressed.append({"id": f"worker_failed:{w.worker_id}:{w.status}:{w.restart_count}",
+                                   "task_id": w.task_id, "worker_id": w.worker_id,
+                                   "reason": f"worker {w.worker_id} is {w.status} but task {w.task_id} is {tstatus} in the registry"})
+            continue
+        if tstatus == "BLOCKED":
+            blocked.append({"kind": "blocked", "id": f"blocked:worker:failed:{w.worker_id}", "task_id": w.task_id,
+                            "blocker": f"worker {w.worker_id} is {w.status} but task {w.task_id} is BLOCKED in the registry"})
             continue
         n = DEFAULT_IDENTICAL_LIMIT
         identical = len(w.failures) >= n and len(set(w.failures[-n:])) == 1
@@ -419,8 +448,9 @@ def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunn
     others: List[dict] = []
     running = in_progress = 0
     running_tasks: set = set()
+    suppressed: List[dict] = []
     try:
-        witems, wblocked, running_tasks, running = _worker_items(store, warnings)
+        witems, wblocked, running_tasks, running = _worker_items(store, warnings, root, suppressed)
         items += witems
         blocked += wblocked
     except Exception as e:  # noqa: BLE001 - tolerant by contract
@@ -473,7 +503,8 @@ def compute_items(root: Path, store: Optional[StateStore], git: Optional[GitRunn
                                                           "running_workers": running, "warnings": len(warnings),
                                                           "others_waiting": len(others), "proposals": len(proposals)},
             "fingerprint": fingerprint(ids), "items": items, "blocked": blocked, "idle_reason": idle,
-            "others_waiting_review": others, "warnings": warnings, "proposals": proposals}
+            "others_waiting_review": others, "warnings": warnings, "proposals": proposals,
+            "suppressed": suppressed}
 
 
 # ------------------------------------------------------------------ state helpers
@@ -563,6 +594,8 @@ def cmd_next(a: argparse.Namespace, out: TextIO, env, clock, git) -> int:
             flag = " (needs a decision: " + "; ".join(p["open_questions"] + p["blockers"])[:160] + ")" \
                 if p["needs_decision"] else ""
             out.write(f"PROPOSED {p['milestone_id']} [{p['phase']}] {p['title']}{flag}\n")
+    for sp in res["suppressed"]:
+        out.write(f"info (suppressed) {sp['task_id']}: {sp['reason']}\n")
     for o in res["others_waiting_review"]:
         out.write(f"info (not actionable) {o['task_id']}: {o['reason']}\n")
     for w in res["warnings"]:

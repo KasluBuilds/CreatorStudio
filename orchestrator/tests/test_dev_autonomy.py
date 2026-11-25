@@ -385,6 +385,69 @@ class TestWorkers(Base):
         self.add_worker("w2", "T-1", WorkerStatus.EXITED, assigned_at="2026-01-02T00:00:00+00:00")
         self.assertEqual(self.items()["items"], [])
 
+    def _failed_for(self, status, wstatus=WorkerStatus.FAILED):
+        shutil.rmtree(self.state, ignore_errors=True)    # fresh worker registry for each sub-case
+        self.mkstore()
+        self.write_registry([task("T-1", status, paths=["a/"])])
+        self.add_worker("w1", "T-1", wstatus, restart_count=0)
+        return self.items()
+
+    def test_failed_worker_of_finished_task_is_suppressed_not_offered(self):
+        for tstatus in ("COMPLETED", "RELEASED"):
+            for wstatus in (WorkerStatus.FAILED, WorkerStatus.LOST):
+                with self.subTest(task=tstatus, worker=wstatus):
+                    res = self._failed_for(tstatus, wstatus)
+                    self.assertEqual(res["items"], [])
+                    self.assertEqual(res["blocked"], [])
+                    self.assertEqual([(x["task_id"], x["worker_id"]) for x in res["suppressed"]], [("T-1", "w1")])
+                    self.assertIn(f"task T-1 is {tstatus}", res["suppressed"][0]["reason"])
+                    self.assertEqual(res["fingerprint"], "")
+                    self.assertNotIn("retry", json.dumps(res["items"]))
+
+    def test_failed_worker_of_open_task_is_still_offered(self):
+        for tstatus in ("PLANNED", "ACTIVE", "UNDER_REVIEW"):
+            with self.subTest(task=tstatus):
+                res = self._failed_for(tstatus)
+                i = [x for x in res["items"] if x["kind"] == "worker_failed"]
+                self.assertEqual([x["id"] for x in i], ["worker_failed:w1:FAILED:0"])
+                self.assertTrue(i[0]["retry_eligible"])
+                self.assertIn("retry eligible (restart 0/3)", i[0]["reason"])
+                self.assertEqual(res["suppressed"], [])
+
+    def test_failed_worker_of_blocked_task_is_blocked_not_restartable(self):
+        res = self._failed_for("BLOCKED")
+        self.assertEqual([i for i in res["items"] if i["kind"] == "worker_failed"], [])
+        self.assertEqual(res["blocked"][0]["id"], "blocked:worker:failed:w1")
+        self.assertIn("BLOCKED", res["blocked"][0]["blocker"])
+        self.assertNotIn("no eligible task", res["idle_reason"])
+
+    def test_failed_worker_of_unknown_task_or_unreadable_registry_keeps_old_behaviour(self):
+        self.add_worker("w1", "T-9", WorkerStatus.FAILED)
+        self.assertEqual(self.items()["items"][0]["kind"], "worker_failed")        # task not in the registry
+        (self.repo / "ACTIVE_TASKS.json").write_text("{not json", encoding="utf-8")
+        res = self.items()
+        self.assertEqual(res["items"][0]["kind"], "worker_failed")
+        self.assertTrue(any("ACTIVE_TASKS.json unreadable" in w for w in res["warnings"]))
+        (self.repo / "ACTIVE_TASKS.json").unlink()
+        self.assertEqual(self.items()["items"][0]["kind"], "worker_failed")
+
+    def test_suppression_hides_nothing_from_the_worker_registry(self):
+        self._failed_for("COMPLETED")
+        reg = WorkerRegistry(self.store)
+        self.assertEqual(reg.workers["w1"].status, WorkerStatus.FAILED)
+
+    def test_text_output_lists_suppressed_failure_as_info(self):
+        self._failed_for("COMPLETED")
+        rc, out = self.run_cli(["next"])
+        self.assertEqual(rc, 0)
+        self.assertIn("info (suppressed) T-1: worker w1 is FAILED but task T-1 is COMPLETED", out)
+        self.assertNotIn("worker_failed", out)
+
+    def test_dispatch_candidate_is_not_hidden_by_a_suppressed_failure(self):
+        self.write_registry([task("T-1", "COMPLETED", paths=["a/"]), task("T-2", paths=["b/"])])
+        self.add_worker("w1", "T-1", WorkerStatus.FAILED)
+        self.assertEqual(self.kinds(self.items()), [("start_task", "start_task:T-2")])
+
     def test_idle_reason_waiting_for_running_workers(self):
         self.add_worker("w1", "T-1", WorkerStatus.RUNNING)
         self.add_worker("w2", "T-2", WorkerStatus.RUNNING)
@@ -750,6 +813,11 @@ class TestStopHook(Base):
         self.assertEqual(len(out.strip().splitlines()), 1)
         self.assertIn("start_task:T-1", d["reason"])
         self.assertNotIn("\n", d["reason"])
+
+    def test_stop_hook_does_not_block_on_failure_of_finished_task(self):
+        self.write_registry([task("T-1", "COMPLETED", paths=["x/"])])
+        self.add_worker("w1", "T-1", WorkerStatus.FAILED)
+        self.assertEqual(self.hook(), (0, ""))
 
     def test_other_session_allowed_silently(self):
         self.assertEqual(self.hook({"session_id": "other", "stop_hook_active": False}), (0, ""))
