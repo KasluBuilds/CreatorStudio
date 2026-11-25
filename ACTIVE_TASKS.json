@@ -622,6 +622,16 @@
         "orchestrator/dev_supervisor/claim.py",
         "orchestrator/tests/test_dev_claim.py"
       ]
+    },
+    "AGR-DEV-067-01": {
+      "description": "T-DEV-067 edits dev_supervisor/cycle.py and its test file only; it does not change integrate.py or testreq.py.",
+      "task_ids": [
+        "T-DEV-067"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/cycle.py",
+        "orchestrator/tests/test_dev_cycle.py"
+      ]
     }
   },
   "tasks": [
@@ -3560,6 +3570,42 @@
       "lease": {
         "acquired": "2026-11-25T06:10:48+00:00",
         "expires": "2026-11-26T06:10:48+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-067",
+      "title": "dev_supervisor: cycle reports needs_tests when the eight gates pass but the tests check does not",
+      "description": "cycle.py classifies an open pull request as ready_to_merge on the eight gates alone, then integrate refuses the merge because of the tests check added by T-DEV-065. Make the tracker consult that check when the eight gates pass and the facts for it are available: a failing check is a new stage needs_tests with the testreq command as the next action, an unreadable one is unknown, and ready_to_merge then means every check passes.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-067-cycle-needs-tests",
+      "worktree": "../CreatorStudio-worktrees/t-dev-067-cycle-needs-tests",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-067-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/cycle.py",
+        "orchestrator/tests/test_dev_cycle.py"
+      ],
+      "acceptance_criteria": [
+        "cycle.track takes an injectable tests_check (default integrate.tests_gate) and calls it only when the eight gates give ready_to_merge and evaluate returned the tests facts",
+        "a FAIL becomes the stage needs_tests with the testreq run command in the next action, an UNKNOWN or a raised error becomes unknown, a PASS keeps ready_to_merge; the check's result is an OBSERVED evidence line",
+        "STAGES and the module text list needs_tests; when evaluate returns no tests facts the behaviour is unchanged",
+        "the eight-gate classification function is unchanged"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_cycle.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_integrate.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission.",
+      "lease": {
+        "acquired": "2026-11-25T06:15:48+00:00",
+        "expires": "2026-11-26T06:15:48+00:00"
       }
     }
   ]
