@@ -3674,7 +3674,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-070-intake-fixture",
       "worktree": "../CreatorStudio-worktrees/t-dev-070-intake-fixture",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3693,10 +3693,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the test-execution mission.",
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission. Merged as PR #235 (independent review of diff 6e9f6cd43ce1cbc5).",
       "lease": {
         "acquired": "2026-11-25T06:52:19+00:00",
-        "expires": "2026-11-26T06:52:19+00:00"
+        "expires": "2026-11-26T06:52:19+00:00",
+        "released": "2026-11-25T07:29:30+00:00"
       }
     }
   ]
