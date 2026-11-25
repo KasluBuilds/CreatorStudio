@@ -48,6 +48,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
 from . import autonomy, compaction, config as config_mod, context_monitor, guard_loop, handoff, main_host, replacement, routing, telemetry
 from . import authority, dispatch_routing, github_log, model_allocation, omniroute, provider_env, resolve_discovery, session_policy
+from . import worker_tests
 from .config import Config, ConfigError
 from .evidence import Evidence, unavailable
 from .launch import (MAIN_ROLE, InteractiveMainLauncher, LaunchError, MainProfile, NewConsoleTerminal,
@@ -416,6 +417,8 @@ class SupervisorLoop:
         self._verify_cache: Dict[str, Tuple[float, Optional[Any]]] = {}
         self.ticks = 0
         self.watch_main = True       # False with start --no-main: the loop supervises workers only
+        self._worker_tests: Optional["worker_tests.WorkerTestScanner"] = None
+        self._worker_tests_error: Optional[str] = None
 
     def close(self) -> None:
         self.sup.close()
@@ -921,6 +924,28 @@ class SupervisorLoop:
               and isinstance(new_sid, str) and bool(new_sid) and new_sid != sid)
         return {"sent": ok, "cid": new_sid if ok else None, "reason": str(out.get("status") or out.get("reasons") or "")}
 
+    def _worker_tests_tick(self) -> List[Dict[str, Any]]:
+        """Run the task tests of finished workers (T-DEV-073/074). A failure here is one event per distinct error and
+        never stops supervision; CREATORSTUDIO_WORKER_TESTS=0 turns it off."""
+        if not worker_tests.enabled(self.svc.env):
+            return []
+        try:
+            if self._worker_tests is None:
+                self._worker_tests = worker_tests.WorkerTestScanner(self.store, self.sup.registry, self.root,
+                                                                    pid_alive=self.svc.pid_alive, clock=self.svc.clock)
+            changes = self._worker_tests.scan()
+            self._worker_tests_error = None
+            return changes
+        except Exception as e:  # noqa: BLE001 - supervision must go on
+            name = e.__class__.__name__
+            if name != self._worker_tests_error:
+                self._worker_tests_error = name
+                try:
+                    self.store.append_event("worker_tests_error", error=name)
+                except (OSError, StoreError):
+                    pass
+            return []
+
     def tick(self) -> Dict[str, Any]:
         self.ticks += 1
         timer = self.svc.timer
@@ -930,6 +955,7 @@ class SupervisorLoop:
         requests = self.process_requests()
         t1 = timer()
         workers = self.sup.tick()
+        wtests = self._worker_tests_tick()
         t2 = timer()
         main = read_main(self.store)
         alive = self.main_alive(main)
@@ -953,7 +979,7 @@ class SupervisorLoop:
         self.write_heartbeat(alive, main.get("session_id"), len(self.sup.registry.list()),
                              duration_ms=_ms(timer() - t0), phase_ms=phases)
         return {"tick": self.ticks, "requests": requests, "workers": workers, "main_alive": alive,
-                "pressure": pressure}
+                "pressure": pressure, "worker_tests": wtests}
 
     def write_heartbeat(self, main_alive: bool, main_session_id: Optional[str], worker_count: int,
                         duration_ms: Optional[float] = None, phase_ms: Optional[Dict[str, float]] = None) -> None:

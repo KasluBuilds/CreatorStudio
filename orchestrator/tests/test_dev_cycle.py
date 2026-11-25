@@ -213,6 +213,77 @@ class StageTests(unittest.TestCase):
         self.assertEqual((r["stage"], r["pr"]), ("ready_to_merge", 6))
 
 
+class WorkerTestStageTests(unittest.TestCase):
+    """T-DEV-074: the Supervisor's test state, before a pull request exists."""
+    HEAD = "d" * 40
+
+    def entry(self, state, detail="d", **kw):
+        return {"task_id": "T-X-001", "state": state, "head": self.HEAD, "detail": detail, "updated": "2026-11-25T10:00:00+00:00", **kw}
+
+    def track(self, entry, remote=False, prs=None, reg=None):
+        return Env(reg=reg or registry(), prs=[] if prs is None else prs, remote=remote).track(worker_tests=lambda t: entry)
+
+    def test_running_and_pending_are_worker_testing(self):
+        for st in ("RUNNING", "PENDING"):
+            r = self.track(self.entry(st, "runner pid 5 started"))
+            self.assertEqual(r["stage"], "worker_testing", st)
+            self.assertIn("Supervisor", r["next_action"])
+            self.assertIn(f"{st} for head {self.HEAD[:12]}: runner pid 5 started", " ".join(e["text"] for e in r["evidence"]))
+
+    def test_failed_and_blocked_are_worker_tests_failed_with_the_cause(self):
+        for st in ("FAILED", "BLOCKED"):
+            r = self.track(self.entry(st, "requirement 2 failed: exit code 1"), remote=True)
+            self.assertEqual(r["stage"], "worker_tests_failed", st)
+            self.assertIn("requirement 2 failed", " ".join(e["text"] for e in r["evidence"]))
+            self.assertIn("testreq show --task T-X-001", r["next_action"])
+
+    def test_passed_keeps_the_stage_and_names_intake(self):
+        r = self.track(self.entry("PASSED"))
+        self.assertEqual(r["stage"], "awaiting_work")
+        self.assertIn("task tests passed", r["next_action"])
+        self.assertIn("intake <worker-id>", r["next_action"])
+        r = self.track(self.entry("PASSED"), remote=True)
+        self.assertEqual(r["stage"], "branch_pushed")
+        self.assertIn("the task tests passed for head " + self.HEAD[:12], r["next_action"])
+
+    def test_nothing_changes_without_an_entry_or_with_a_pull_request_or_a_junk_entry(self):
+        self.assertEqual(self.track(None)["stage"], "awaiting_work")
+        self.assertNotIn("intake <worker-id>", self.track(None)["next_action"])
+        self.assertEqual(self.track({"state": "ODD"})["stage"], "awaiting_work")
+        self.assertEqual(self.track("junk")["stage"], "awaiting_work")
+        r = Env(reg=registry(), prs=OPEN7, gates=ALL_PASS).track(worker_tests=lambda t: self.entry("FAILED"))
+        self.assertEqual(r["stage"], "ready_to_merge")
+        r = Env(reg=registry(), prs=[{"number": 7, "state": "MERGED"}]).track(worker_tests=lambda t: self.entry("FAILED"))
+        self.assertEqual(r["stage"], "awaiting_closeout")
+        self.assertEqual(Env(reg=registry("COMPLETED")).track(worker_tests=lambda t: self.entry("FAILED"))["stage"], "done")
+
+    def test_a_reader_that_raises_changes_nothing(self):
+        def boom(t):
+            raise RuntimeError("x")
+        self.assertEqual(Env(reg=registry(), prs=[]).track(worker_tests=boom)["stage"], "awaiting_work")
+
+    def test_reader_picks_the_newest_entry_for_the_task_and_survives_a_missing_directory(self):
+        import tempfile
+        from dev_supervisor.state_store import StateStore
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(cycle.worker_tests_reader(str(Path(d) / "none"))("T-X-001"))
+            store = StateStore(Path(d))
+            self.assertIsNone(cycle.worker_tests_reader(d)("T-X-001"))
+            store.write("worker_tests", {"entries": {"w1": self.entry("FAILED", updated="2026-11-25T09:00:00+00:00"),
+                                                      "w2": self.entry("PASSED", updated="2026-11-25T10:00:00+00:00"),
+                                                      "w3": {**self.entry("RUNNING"), "task_id": "T-OTHER-001"}}})
+            self.assertEqual(cycle.worker_tests_reader(d)("T-X-001")["state"], "PASSED")
+            self.assertIsNone(cycle.worker_tests_reader(d)("T-NONE-001"))
+
+    def test_cli_uses_an_injected_reader_and_the_json_output_has_the_new_stage(self):
+        env = Env(reg=registry(), prs=[])
+        out = io.StringIO()
+        cycle.main(["T-X-001", "--json"], out=out, gh=env.gh, git=env.git, worker_tests=lambda t: self.entry("RUNNING"))
+        self.assertEqual(json.loads(out.getvalue())["stage"], "worker_testing")
+        self.assertIn("worker_testing", cycle.STAGES)
+        self.assertIn("worker_tests_failed", cycle.STAGES)
+
+
 class FailureTests(unittest.TestCase):
     def test_nothing_is_guessed_when_state_cannot_be_read(self):
         cases = [Env(reg=None, reg_rc=1), Env(reg=b"{not json"), Env(reg=b"{}"), Env(reg=registry(), pr_list_rc=1),

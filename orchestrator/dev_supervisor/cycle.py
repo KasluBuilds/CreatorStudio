@@ -16,6 +16,8 @@ Stages, in chain order::
     needs_fix            open pull request, a gate fails (incl. red CI, a branch behind main) -> fix the named gates
     needs_tests          open pull request, the eight gates PASS, the tests check does not  -> testreq run in the task worktree
     ready_to_merge       open pull request, every gate PASS and the tests check PASS         -> integrate --yes
+    worker_testing       no pull request yet; the Supervisor's test run for the worker's head is running or waiting -> wait
+    worker_tests_failed  no pull request yet; that run failed or is blocked                                      -> fix, commit, it is re-tested
     awaiting_closeout    a pull request merged, task still ACTIVE              -> registry-only close-out on the task branch
     done                 task COMPLETED or RELEASED
     unknown              something could not be read; the reason is stated, never guessed
@@ -31,10 +33,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
 from . import integrate, memory_guard
+from .state_store import StateStore, StoreError, default_directory
 
 __all__ = ["track", "main", "STAGES"]
 
-STAGES = ("unregistered", "awaiting_work", "branch_pushed", "in_review", "waiting_ci", "needs_fix", "needs_tests", "ready_to_merge",
+STAGES = ("unregistered", "awaiting_work", "worker_testing", "worker_tests_failed", "branch_pushed", "in_review", "waiting_ci", "needs_fix", "needs_tests", "ready_to_merge",
           "awaiting_closeout", "done", "unknown")
 DONE_STATUSES = ("COMPLETED", "RELEASED")
 WORK_STATUSES = ("PLANNED", "ACTIVE", "UNDER_REVIEW")
@@ -52,6 +55,19 @@ def _result(task_id: str, stage: str, evidence: List[Dict[str, str]], next_actio
 
 def _unknown(task_id: str, why: str, evidence: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
     return _result(task_id, "unknown", list(evidence or []) + [_ev(why)], "resolve the reason above; nothing was guessed")
+
+
+def worker_tests_reader(state_dir: Optional[str] = None) -> Callable[[str], Optional[Dict[str, Any]]]:
+    """task id -> the newest entry of the Supervisor's ``worker_tests`` document for it (None when absent or unreadable)."""
+    def read(task_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            directory = state_dir or str(default_directory())
+            doc = StateStore(directory, create=False).read("worker_tests", default=None)
+            entries = [e for e in (doc or {}).get("entries", {}).values() if isinstance(e, dict) and e.get("task_id") == task_id]
+        except (StoreError, OSError, AttributeError, TypeError, ValueError):
+            return None
+        return max(entries, key=lambda e: str(e.get("updated") or ""), default=None)
+    return read
 
 
 def _json_list(text: str) -> Optional[List[Any]]:
@@ -100,16 +116,18 @@ def classify(gates: Sequence[Any]) -> Tuple[str, str]:
 
 def track(task_id: str, gh: Callable, git: Callable, *, base: str = "origin/main", pr_base: str = "main",
           evaluate: Callable = integrate.evaluate, free_memory: Callable = memory_guard.free_memory_mb,
-          tests_check: Callable = integrate.tests_gate) -> Dict[str, Any]:
+          tests_check: Callable = integrate.tests_gate,
+          worker_tests: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None) -> Dict[str, Any]:
     """The cycle record for ``task_id``. Never raises."""
     try:
-        return _track(task_id, gh, git, base, pr_base, evaluate, free_memory, tests_check)
+        return _track(task_id, gh, git, base, pr_base, evaluate, free_memory, tests_check, worker_tests)
     except Exception as exc:                                                       # a tracker must not crash its caller
         return _unknown(str(task_id), f"unexpected {type(exc).__name__} while reading state")
 
 
 def _track(task_id: str, gh: Callable, git: Callable, base: str, pr_base: str, evaluate: Callable,
-           free_memory: Callable, tests_check: Callable) -> Dict[str, Any]:
+           free_memory: Callable, tests_check: Callable,
+           worker_tests: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None) -> Dict[str, Any]:
     if not isinstance(base, str) or not base or base.startswith("-"):
         return _unknown(task_id, "the base ref is empty or starts with a dash")
     rc, raw = git(["show", f"{base}:ACTIVE_TASKS.json"])
@@ -171,31 +189,51 @@ def _track(task_id: str, gh: Callable, git: Callable, base: str, pr_base: str, e
         n = max(p["number"] for p in merged)
         return _result(task_id, "awaiting_closeout", ev + [_ev(f"PR #{n} is merged and the task is still {status}")],
                        "registry-only close-out pull request from the task's own branch (status COMPLETED, lease released)", n)
+    entry = None
+    if worker_tests is not None:
+        try:
+            entry = worker_tests(task_id)
+        except Exception:                                                      # a missing or odd record changes nothing
+            entry = None
+    note = ""
+    if isinstance(entry, dict) and entry.get("state") in ("RUNNING", "PENDING", "FAILED", "BLOCKED", "PASSED"):
+        st, head, detail = str(entry["state"]), str(entry.get("head") or "")[:12], str(entry.get("detail") or "")[:300]
+        ev.append(_ev(f"worker tests (Supervisor): {st} for head {head or '?'}: {detail}"))
+        if st in ("RUNNING", "PENDING"):
+            return _result(task_id, "worker_testing", ev, "wait: the Supervisor runs the task's test requirements for the worker's head; "
+                           "it appends a worker_tests_* event when the result is known")
+        if st in ("FAILED", "BLOCKED"):
+            return _result(task_id, "worker_tests_failed", ev,
+                           f"read the cause above (python -B -m dev_supervisor.testreq show --task {task_id}); fix and commit: the Supervisor tests the new head")
+        note = f"the task tests passed for head {head}: "
     rc, _ = git(["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}"])
     if rc == 0:
         return _result(task_id, "branch_pushed", ev + [_ev(f"origin/{branch} exists (as of the last fetch)")],
-                       "open the pull request: dev_supervisor.intake for a worker's branch, else gh pr create")
+                       note + "open the pull request: dev_supervisor.intake for a worker's branch, else gh pr create")
     free = free_memory()
     mem = f"free memory {free} MB, dispatch floor {memory_guard.min_free_mb()} MB" if isinstance(free, int) else "free memory unreadable"
     return _result(task_id, "awaiting_work", ev + [_ev(f"no pushed branch and no pull request; {mem}")],
-                   "implement it, or dispatch a worker (dev_supervisor assign ... --allocation-role implementation); "
+                   (note + "publish the worker's branch with dev_supervisor.intake <worker-id> --yes; or " if note else "") + "implement it, or dispatch a worker (dev_supervisor assign ... --allocation-role implementation); "
                    "the memory guard refuses a dispatch below the floor")
 
 
 def main(argv: Optional[Sequence[str]] = None, *, out: Optional[TextIO] = None,
-         gh: Optional[Callable] = None, git: Optional[Callable] = None) -> int:
+         gh: Optional[Callable] = None, git: Optional[Callable] = None,
+         worker_tests: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None) -> int:
     out = out or sys.stdout
     p = argparse.ArgumentParser(prog="dev_supervisor.cycle", description="Where is a task in the task-to-merge chain? (read-only)")
     p.add_argument("task_id")
     p.add_argument("--repo", help="repository checkout (default: this one)")
     p.add_argument("--base", default="origin/main", help="ref holding ACTIVE_TASKS.json (default %(default)s)")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--state-dir", default=None, help="Supervisor state directory (default: the usual one); read for the worker tests")
     try:
         a = p.parse_args(argv)
     except SystemExit as e:
         return 2 if e.code else 0
     root = Path(a.repo) if a.repo else Path(__file__).resolve().parents[2]
-    rec = track(a.task_id, gh or integrate.real_gh_runner(root), git or integrate.real_git_runner(root), base=a.base)
+    rec = track(a.task_id, gh or integrate.real_gh_runner(root), git or integrate.real_git_runner(root), base=a.base,
+                 worker_tests=worker_tests if worker_tests is not None else worker_tests_reader(a.state_dir))
     if a.json:
         out.write(json.dumps(rec, indent=2, ensure_ascii=False) + "\n")
     else:
