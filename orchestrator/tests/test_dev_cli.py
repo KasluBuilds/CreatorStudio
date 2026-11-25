@@ -1169,6 +1169,65 @@ class TickLatencyTests(Offline):
         code, out = env.cli("status")
         self.assertIn("last_tick_duration_ms=1000.0", out)
 
+    # ---- T-DEV-074: the worker test scan in the loop
+
+    class FakeScanner:
+        def __init__(self, log, raises=None):
+            self.log, self.raises, self.calls = log, list(raises or []), 0
+
+        def scan(self):
+            self.calls += 1
+            self.log.append("scan")
+            if self.raises:
+                exc = self.raises.pop(0)
+                if exc is not None:
+                    raise exc
+            return [{"worker_id": "w1", "state": "RUNNING"}]
+
+    def test_the_scan_runs_once_per_tick_after_the_worker_monitor_pass(self):
+        env, store, loop = self.make()
+        log = []
+        real = loop.sup.tick
+        loop.sup.tick = lambda: (log.append("monitor"), real())[1]
+        loop._worker_tests = self.FakeScanner(log)
+        r1, r2 = loop.tick(), loop.tick()
+        self.assertEqual(log, ["monitor", "scan", "monitor", "scan"])
+        self.assertEqual(r1["worker_tests"], [{"worker_id": "w1", "state": "RUNNING"}])
+        for key in ("tick", "requests", "workers", "main_alive", "pressure"):
+            self.assertIn(key, r2)
+
+    def test_the_switch_turns_the_scan_off(self):
+        env, store, loop = self.make()
+        scanner = loop._worker_tests = self.FakeScanner([])
+        env.svc.env["CREATORSTUDIO_WORKER_TESTS"] = "0"
+        self.assertEqual(loop.tick()["worker_tests"], [])
+        self.assertEqual(scanner.calls, 0)
+
+    def test_a_failing_scan_is_one_event_per_distinct_error_and_the_tick_goes_on(self):
+        env, store, loop = self.make()
+        loop._worker_tests = self.FakeScanner([], raises=[OSError("x"), OSError("x"), ValueError("y"), None, OSError("x")])
+        got = []
+        for _ in range(5):
+            got.append(bool(loop.tick()["worker_tests"]))
+            self.assertGreaterEqual(self.heartbeat(store)["duration_ms"], 0.0)       # the heartbeat is still written
+        self.assertEqual(got, [False, False, False, True, False])
+        events, _ = store.read_events()
+        errs = [e["data"]["error"] for e in events if e["kind"] == "worker_tests_error"]
+        self.assertEqual(errs, ["OSError", "ValueError", "OSError"])
+        self.assertNotIn('"x"', json.dumps([e for e in events if e["kind"] == "worker_tests_error"]))      # no message text
+
+    def test_the_real_scanner_is_created_lazily_and_writes_only_its_first_enabled_stamp(self):
+        env, store, loop = self.make()
+        self.assertIsNone(loop._worker_tests)
+        loop.tick()
+        self.assertIsNotNone(loop._worker_tests)
+        doc = store.read("worker_tests")
+        self.assertEqual(doc["entries"], {})
+        self.assertTrue(doc["enabled_since"])
+        stamp = doc["enabled_since"]
+        loop.tick()
+        self.assertEqual(store.read("worker_tests")["enabled_since"], stamp)
+
     def test_real_timer_gives_a_non_negative_duration(self):
         env, store, loop = self.make()
         loop.tick()
