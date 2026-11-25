@@ -19,9 +19,11 @@ def registry(status="ACTIVE", branch=BRANCH, tid="T-X-001"):
 class Env:
     """Fake git and gh: the registry text, PR list, remote-branch presence and gate results are all injected."""
 
-    def __init__(self, reg=None, prs=None, remote=False, gates=None, pr_list_rc=0, reg_rc=0, diff="abcd1234abcd1234"):
+    def __init__(self, reg=None, prs=None, remote=False, gates=None, pr_list_rc=0, reg_rc=0, diff="abcd1234abcd1234",
+                 info_extra=None):
         self.reg, self.prs, self.remote, self.gates = reg, prs, remote, gates or []
         self.pr_list_rc, self.reg_rc, self.diff = pr_list_rc, reg_rc, diff
+        self.info_extra = info_extra or {}
         self.calls = []
 
     def git(self, args):
@@ -39,10 +41,10 @@ class Env:
         return 1, ""
 
     def evaluate(self, n, gh, git, base="main"):
-        return self.gates, {"diff_sha": self.diff}
+        return self.gates, {"diff_sha": self.diff, **self.info_extra}
 
-    def track(self, task="T-X-001", free=4096):
-        return cycle.track(task, self.gh, self.git, evaluate=self.evaluate, free_memory=lambda: free)
+    def track(self, task="T-X-001", free=4096, **kw):
+        return cycle.track(task, self.gh, self.git, evaluate=self.evaluate, free_memory=lambda: free, **kw)
 
 
 def g(num, name, status="PASS", detail=""):
@@ -92,6 +94,41 @@ class StageTests(unittest.TestCase):
         r = Env(reg=registry(), prs=OPEN7, gates=ALL_PASS).track()
         self.assertEqual((r["stage"], r["pr"]), ("ready_to_merge", 7))
         self.assertEqual(r["next_action"], "python -B -m dev_supervisor.integrate 7 --yes")
+
+    def test_the_tests_check_is_consulted_only_when_the_eight_gates_pass_and_facts_are_given(self):
+        calls = []
+
+        def check(info):
+            calls.append(info)
+            return g(9, "tests", "PASS", "4 command requirement(s) passed")
+        facts = {"tests": {"branch": BRANCH}}
+        r = Env(reg=registry(), prs=OPEN7, gates=ALL_PASS, info_extra=facts).track(tests_check=check)
+        self.assertEqual((r["stage"], len(calls)), ("ready_to_merge", 1))
+        self.assertTrue(any("tests check: PASS" in e["text"] for e in r["evidence"]))
+        calls.clear()
+        Env(reg=registry(), prs=OPEN7, gates=with_gates(scope=("FAIL", "x")), info_extra=facts).track(tests_check=check)
+        Env(reg=registry(), prs=OPEN7, gates=ALL_PASS).track(tests_check=check)           # no facts from evaluate
+        self.assertEqual(calls, [])
+
+    def test_a_failing_tests_check_is_needs_tests_with_the_command_to_run(self):
+        detail = "no test evidence for head 0209709abcde (missing); run: python -B -m dev_supervisor.testreq run --task T-X-001"
+        r = Env(reg=registry(), prs=OPEN7, gates=ALL_PASS, info_extra={"tests": {}}).track(
+            tests_check=lambda info: g(9, "tests", "FAIL", detail))
+        self.assertEqual((r["stage"], r["pr"]), ("needs_tests", 7))
+        self.assertIn("testreq run --task T-X-001", r["next_action"])
+        self.assertTrue(any(detail in e["text"] for e in r["evidence"]))
+        self.assertIn("needs_tests", cycle.STAGES)
+
+    def test_an_unreadable_tests_check_is_unknown_never_ready(self):
+        r = Env(reg=registry(), prs=OPEN7, gates=ALL_PASS, info_extra={"tests": {}}).track(
+            tests_check=lambda info: g(9, "tests", "UNKNOWN", "cannot read"))
+        self.assertEqual(r["stage"], "unknown")
+
+    def test_a_crashing_tests_check_does_not_crash_the_tracker(self):
+        def boom(info):
+            raise RuntimeError("x")
+        r = Env(reg=registry(), prs=OPEN7, gates=ALL_PASS, info_extra={"tests": {}}).track(tests_check=boom)
+        self.assertEqual(r["stage"], "unknown")
 
     def test_in_review_names_the_diff_hash(self):
         gates = with_gates(review=("FAIL", "no dev-review APPROVE for diff abcd1234abcd1234"))
