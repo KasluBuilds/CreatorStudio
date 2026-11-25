@@ -744,6 +744,78 @@ class ThirdReview(Env):
         self.assertEqual(len(self.events()), n)
 
 
+class FourthReview(Env):
+    def running_record(self, pid, started=None):
+        done = self.write_evidence()
+        rec = dict(done, state="running", finished=None, pid=pid, verdict="not_run")
+        if started:
+            rec["started"] = started
+        T.EvidenceStore(self.state).save(rec)
+
+    def test_a_running_record_older_than_the_budget_is_not_adopted_forever(self):
+        self.add_worker()
+        self.running_record(4242, utc_iso(T0 + 100))
+        self.alive.add(4242)                                         # the runner died long ago; its pid now belongs to another process
+        self.now = T0 + 100 + 10 * 3600
+        for _ in range(8):
+            self.now += 20
+            for proc in self.procs:
+                proc.code = 2                                        # every relaunched runner refuses: the old pid looks alive
+            self.scanner.scan()
+        e = self.entry()
+        self.assertNotEqual(e["detail"], "a test run for this head is in progress (adopted)")
+        self.assertEqual(len(self.events("worker_tests_started")), W.MAX_ATTEMPTS)
+        self.assertEqual(e["state"], "BLOCKED")
+        self.assertIn("--ignore-running", e["detail"])
+
+    def test_a_fresh_running_record_is_adopted(self):
+        self.add_worker()
+        self.running_record(4242, utc_iso(self.now - 10))
+        self.alive.add(4242)
+        self.scanner.scan()
+        self.assertEqual((self.entry()["state"], self.entry()["runner_pid"], self.spawned), ("RUNNING", 4242, []))
+
+    def test_a_running_record_whose_pid_is_dead_is_not_adopted(self):
+        self.add_worker()
+        self.running_record(4242, utc_iso(self.now - 10))
+        self.scanner.scan()
+        self.assertEqual(len(self.spawned), 1)
+
+    def test_a_runner_this_process_saw_end_stays_ended_when_its_pid_is_reused(self):
+        p = self.launch()
+        p.code = 0
+        self.scanner.scan()                                          # reaps the handle
+        self.alive.add(p.pid)                                        # the pid now belongs to something else
+        entry = dict(self.entry(), runner_pid=p.pid, state="RUNNING", launched_at=utc_iso(self.now))
+        self.assertFalse(self.scanner._live(entry))
+
+    def test_legacy_integer_attempts_are_respected(self):
+        doc = self.store.read(W.DOC)
+        doc["attempts"] = {f"{TID}:{sha(0)}": W.MAX_ATTEMPTS}
+        self.store.write(W.DOC, doc)
+        self.add_worker()
+        self.scanner.scan()
+        self.assertEqual((self.entry()["state"], self.spawned), ("BLOCKED", []))
+
+    def test_tidy_keeps_the_entry_of_a_live_runner_and_drops_old_dead_ones(self):
+        p = self.launch()
+        self.alive.add(p.pid)
+        doc = self.store.read(W.DOC)
+        doc["entries"]["w1"]["updated"] = utc_iso(self.now - W.ENTRY_KEEP_S - 5)
+        doc["entries"]["old"] = {"worker_id": "old", "task_id": TID, "state": "FAILED", "updated": utc_iso(self.now - W.ENTRY_KEEP_S - 5)}
+        self.store.write(W.DOC, doc)
+        self.registry.workers["old"] = self.registry.workers["w1"]
+        fresh = self.make_scanner()
+        fresh.scan()
+        entries = self.store.read(W.DOC)["entries"]
+        self.assertIn("w1", entries)
+        self.assertNotIn("old", entries)
+
+    def test_the_budget_has_slack_per_command(self):
+        p = self.launch()
+        self.assertGreaterEqual(self.entry()["max_run_s"], (1800 + 300) * 1 + 900)
+
+
 def utc_stamp(i):
     return utc_iso(T0 + i)
 

@@ -96,6 +96,7 @@ class WorkerTestScanner:
         self.base = base
         self.timeout = timeout
         self._snapshot = ""
+        self._ended: set = set()                       # pids of runners this process saw end
         self._handles: Dict[int, Any] = {}          # runners started by this process (to reap them and poll exactly)
 
     # ------------------------------------------------------------ state document
@@ -113,7 +114,7 @@ class WorkerTestScanner:
         h = self._handles.get(pid) if isinstance(pid, int) else None
         if h is not None:
             return h.poll() is None
-        return bool(isinstance(pid, int) and self.pid_alive(pid))
+        return bool(isinstance(pid, int) and pid not in self._ended and self.pid_alive(pid))
 
     def _live(self, entry: Optional[Dict[str, Any]]) -> bool:
         """Is a runner of this entry still working, whatever state the entry has now? (A head that moved or a blocked
@@ -145,6 +146,7 @@ class WorkerTestScanner:
     def _reap(self) -> None:
         for pid in [p for p, h in self._handles.items() if h.poll() is not None]:
             del self._handles[pid]
+            self._ended.add(pid)
 
     # ------------------------------------------------------------ one pass
 
@@ -289,7 +291,7 @@ class WorkerTestScanner:
         if not any(r.kind == "command" for r in reqs):
             blocked("no command test requirement: nothing could be run to test the change", head=head, diff_sha256=diff)
             return
-        max_run = self.timeout * max(1, sum(1 for r in reqs if r.kind == "command")) + 900
+        max_run = (self.timeout + 300) * max(1, sum(1 for r in reqs if r.kind == "command")) + 900
         rec, why = self.evstore.load(w.task_id, head)
         status, detail = testreq.check_evidence(reqs, texts, rec, why, task_id=w.task_id, head=head, diff_sha=diff,
                                                 pid_alive=self.pid_alive)
@@ -301,7 +303,9 @@ class WorkerTestScanner:
         if bound and rec.get("state") == "complete":
             self._set(doc, changes, w, State.FAILED, detail, runner_pid=None, evidence_sha=ev_sha, **known)
             return
-        if bound and rec.get("state") == "running" and self.pid_alive(rec.get("pid")):
+        rec_started = parse_iso(rec.get("started")) if isinstance(rec, dict) else None
+        if bound and rec.get("state") == "running" and self.pid_alive(rec.get("pid")) \
+                and rec_started is not None and self.clock() - rec_started < max_run:
             self._set(doc, changes, w, State.RUNNING, "a test run for this head is in progress (adopted)",
                       runner_pid=rec.get("pid"), launched_at=rec.get("started"),
                       max_run_s=max_run, event="worker_tests_started", **known)
@@ -313,7 +317,8 @@ class WorkerTestScanner:
                       f"record; attempt {attempts} of {MAX_ATTEMPTS}", event="worker_tests_interrupted", **known)
         if attempts >= MAX_ATTEMPTS:
             blocked(f"{attempts} runs were interrupted or left no complete record for this head; run it by hand: "
-                    f"python -B -m dev_supervisor.testreq run --task {w.task_id} --resume", attempts=attempts, **known)
+                    f"python -B -m dev_supervisor.testreq run --task {w.task_id} --resume (add --ignore-running when the old "
+                    f"process is known to be dead)", attempts=attempts, **known)
             return
         self._launch(w, doc, changes, key, attempts, known, max_run)
 
@@ -367,6 +372,7 @@ class WorkerTestScanner:
                       attempts=attempts, spawn_failed_at=utc_iso(self.clock()), **known)
             return
         self._handles[proc.pid] = proc
+        self._ended.discard(proc.pid)
         self._set(doc, changes, w, State.RUNNING, f"runner pid {proc.pid} started, attempt {attempts + 1} of {MAX_ATTEMPTS}",
                   runner_pid=proc.pid, event="worker_tests_started", **known)
         self.store.write(DOC, doc)                                       # the pid is on disk before anything else can fail
