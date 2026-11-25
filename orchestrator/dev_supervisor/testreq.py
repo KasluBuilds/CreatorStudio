@@ -354,6 +354,30 @@ def _execute(argv: Sequence[str], cwd: str, env: Dict[str, str], timeout: float,
             raise
 
 
+def spawn_run(task_id: str, worktree: str, state_dir: str, *, resume: bool = False, timeout: float = DEFAULT_TIMEOUT,
+              base: str = "origin/main", popen: Optional[Callable[..., Any]] = None) -> "subprocess.Popen[bytes]":
+    """Start ``testreq run`` for one task as a child process and return at once (T-DEV-073).
+
+    The argument list is fixed text plus the task id, the worktree, the state directory and the timeout: nothing from a
+    task record is ever passed on a command line, and the child itself runs only what the requirement grammar allows. The
+    environment is the same minimal one the runner gives its own children (no tokens). The child has its own process group
+    (a Ctrl+C in the Supervisor's window does not stop a run) and no console window; it writes the evidence record, not a log."""
+    if not isinstance(task_id, str) or not re.fullmatch(r"T-[A-Z0-9]+-\d{3}", task_id):
+        raise TestReqError(f"not a task id: {str(task_id)[:40]!r}")
+    argv = [sys.executable, "-B", "-m", "dev_supervisor.testreq", "run", "--task", task_id, "--repo", str(worktree),
+            "--state-dir", str(state_dir), "--timeout", f"{float(timeout):g}"] + (["--resume"] if resume else [])
+    if base != "origin/main":
+        if not re.fullmatch(r"[A-Za-z0-9_./-]{1,100}", str(base)) or str(base).startswith("-"):
+            raise TestReqError("not a usable base ref")
+        argv += ["--base", str(base)]
+    if os.name == "nt":
+        flags = {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | 0x08000000}   # + CREATE_NO_WINDOW
+    else:
+        flags = {"start_new_session": True}
+    return (popen or subprocess.Popen)(argv, cwd=str(Path(__file__).resolve().parents[1]), env=clean_env(dict(os.environ), str(state_dir)),
+                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **flags)
+
+
 _RAN = re.compile(r"(?m)^Ran (\d+) tests? in ")
 _SKIPPED = re.compile(r"skipped=(\d+)")
 _NODE = re.compile(r"(?m)^(?:#|\u2139) (tests|skip|skipped) (\d+)\s*$")     # TAP ('# tests 2') and the spec reporter
