@@ -3937,7 +3937,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-075-task-select",
       "worktree": "../CreatorStudio-worktrees/t-dev-075-task-select",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -3962,10 +3962,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 3: the smallest complete component towards unattended selection. Activation of a PLANNED record, the worktree, the prompt and the queued assignment stay separate steps; the registry holds no PLANNED task today.",
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 3: the smallest complete component towards unattended selection. Activation of a PLANNED record, the worktree, the prompt and the queued assignment stay separate steps; the registry holds no PLANNED task today. Merged as PR #250 (independent review of diff c98fa85eddbdd58a).",
       "lease": {
         "acquired": "2026-11-25T15:12:39+00:00",
-        "expires": "2026-11-26T15:12:39+00:00"
+        "expires": "2026-11-26T15:12:39+00:00",
+        "released": "2026-11-25T15:47:41+00:00"
       }
     },
     {
