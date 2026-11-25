@@ -4073,7 +4073,7 @@
       "owner": "claude:main-coordinator",
       "branch": "task/t-dev-078-docs-dispatch-result",
       "worktree": "../CreatorStudio-worktrees/t-dev-078-docs-dispatch-result",
-      "status": "ACTIVE",
+      "status": "COMPLETED",
       "depends_on": [],
       "exclusive_resources": [],
       "integration_agreements": [
@@ -4093,10 +4093,11 @@
         "integrate --preflight passes on the branch",
         "independent review of the exact diff"
       ],
-      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 7 correction.",
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 7 correction. Merged as PR #260 (independent review of diff eb4703a8254e0e1b).",
       "lease": {
         "acquired": "2026-11-25T17:32:29+00:00",
-        "expires": "2026-11-26T17:32:29+00:00"
+        "expires": "2026-11-26T17:32:29+00:00",
+        "released": "2026-11-25T17:44:13+00:00"
       }
     }
   ]
