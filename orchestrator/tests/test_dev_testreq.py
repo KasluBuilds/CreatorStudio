@@ -727,7 +727,7 @@ class RealRepository(unittest.TestCase):
         self.commit({"test_ok.py": OK_TEST, "test_bad.py": FAIL_TEST, "test_skip.py": SKIP_TEST, "test_env.py": ENV_TEST,
                      "test_leak.py": LEAK_TEST})
         reqs = [UNIT.format(n) for n in ("test_ok.py", "test_bad.py", "test_nothing_here.py", "test_skip.py", "test_env.py", "test_leak.py")]
-        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-not-a-real-key-0000", "GH_TOKEN": "x",
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk" + "-" + "x" * 20, "GH_TOKEN": "x",
                                           "CREATORSTUDIO_DEV_SUPERVISOR_DIR": "REAL"}):
             rec = self.run_all(reqs)
         st = {x["index"]: x for x in rec["results"]}
