@@ -684,6 +684,20 @@
         "orchestrator/tests/test_dev_worker_tests.py",
         "orchestrator/tests/test_dev_testreq.py"
       ]
+    },
+    "AGR-DEV-074-01": {
+      "description": "T-DEV-074 edits dev_supervisor/cli.py, autonomy.py, cycle.py and the three test files for them only.",
+      "task_ids": [
+        "T-DEV-074"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/autonomy.py",
+        "orchestrator/dev_supervisor/cycle.py",
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/tests/test_dev_autonomy.py",
+        "orchestrator/tests/test_dev_cycle.py"
+      ]
     }
   },
   "tasks": [
@@ -3849,6 +3863,48 @@
       "lease": {
         "acquired": "2026-11-25T14:39:37+00:00",
         "expires": "2026-11-26T14:39:37+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-074",
+      "title": "dev_supervisor: the Supervisor loop runs worker_tests every tick; next and cycle show the test state",
+      "description": "Wire the worker_tests scanner into the Supervisor loop and show its state. SupervisorLoop.tick calls WorkerTestScanner.scan once per tick after the worker monitor pass, unless CREATORSTUDIO_WORKER_TESTS turns it off; an exception in the scan is recorded as one worker_tests_error event per distinct error and never stops the loop. autonomy next gets items for the worker_tests document: FAILED and BLOCKED entries (diagnostics, priority above worker_failed), PASSED entries (next step: publish with intake) and a waiting note while a run is RUNNING or PENDING; entries of a COMPLETED or RELEASED task are never offered. cycle reads the same document before a pull request exists and reports the stages worker_testing, worker_tests_failed and, for a pass, the next action intake. Nothing is published, reviewed or merged by any of this.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-074-worker-tests-wiring",
+      "worktree": "../CreatorStudio-worktrees/t-dev-074-worker-tests-wiring",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-074-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/cli.py",
+        "orchestrator/dev_supervisor/autonomy.py",
+        "orchestrator/dev_supervisor/cycle.py",
+        "orchestrator/tests/test_dev_cli.py",
+        "orchestrator/tests/test_dev_autonomy.py",
+        "orchestrator/tests/test_dev_cycle.py"
+      ],
+      "acceptance_criteria": [
+        "SupervisorLoop.tick runs the worker test scan once per tick after the worker monitor pass; with CREATORSTUDIO_WORKER_TESTS set to 0 it does nothing; a scan that raises appends one worker_tests_error event per distinct error name, the tick still completes and the heartbeat is still written; the tick result and the heartbeat keep their existing keys",
+        "autonomy next offers a worker_tests item for each FAILED or BLOCKED entry (reason holds the entry's detail, ordered before worker_failed) and for each PASSED entry (reason names intake as the next step); RUNNING and PENDING entries add a waiting note to idle_reason and no item; entries of a COMPLETED or RELEASED task, or whose head is no longer the worktree's recorded head, are not offered; item ids carry worker id, state and head so a change of state changes the fingerprint",
+        "cycle reports worker_testing while a run is RUNNING or PENDING, worker_tests_failed for FAILED or BLOCKED, and for PASSED keeps the stage and names intake as the next action; the evidence line states the state, head and detail; a missing or unreadable worker_tests document changes nothing",
+        "existing kinds, ids, ordering, stop-hook behaviour and cycle stages are unchanged for repositories with no worker_tests document"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_worker_tests.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_autonomy.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_cycle.py",
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_cli.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the worker-to-integration pipeline mission, phase 2 (second of two tasks). Takes effect only when the Supervisor process is restarted: the running Supervisor keeps the code it loaded.",
+      "lease": {
+        "acquired": "2026-11-25T14:58:07+00:00",
+        "expires": "2026-11-26T14:58:07+00:00"
       }
     }
   ]
