@@ -332,7 +332,7 @@ class Execution(Base):
     def test_credentials_in_output_are_not_stored(self):
         secret = "gh" + "p_" + "A" * 24
         self.run_all([UNIT.format("test_a.py")], executor=ok_exec(text=f"token {secret}\n{OKTXT}"))
-        stored = (self.state / f"{T.evidence_name(TID, self.git.head)}.json").read_text(encoding="utf-8")
+        stored = (self.ev.directory / f"{T.evidence_name(TID, self.git.head)}.json").read_text(encoding="utf-8")
         self.assertNotIn("A" * 24, stored)
         self.assertIn("[REDACTED]", stored)
 
@@ -414,8 +414,8 @@ class Binding(Base):
         self.assertEqual(status, "FAIL")
         self.assertIn(f"python -B -m dev_supervisor.testreq run --task {TID}", detail)
         name = T.evidence_name(TID, self.git.head)
-        (self.state / f"{name}.json").write_text("{not json", encoding="utf-8")
-        for bak in self.state.glob(f"{name}.json.bak"):
+        (self.ev.directory / f"{name}.json").write_text("{not json", encoding="utf-8")
+        for bak in self.ev.directory.glob(f"{name}.json.bak"):
             bak.unlink()
         rec, why = self.ev.load(TID, self.git.head)
         self.assertIsNone(rec)
@@ -425,7 +425,7 @@ class Binding(Base):
     def test_a_damaged_record_falls_back_to_its_sealed_backup_which_is_never_better_than_the_truth(self):
         self.run_all(self.REQS)                                    # every save keeps the previous version as the backup
         name = T.evidence_name(TID, self.git.head)
-        (self.state / f"{name}.json").write_text("{not json", encoding="utf-8")
+        (self.ev.directory / f"{name}.json").write_text("{not json", encoding="utf-8")
         rec, why = self.ev.load(TID, self.git.head)
         self.assertEqual(why, "")                                  # recovered by the state store
         self.assertTrue(T._sealed(rec))                            # and still carrying a valid checksum
@@ -740,7 +740,7 @@ class RealRepository(unittest.TestCase):
         self.assertIn("ran no tests", st[2]["reason"])         # a pattern that matches nothing never counts as a pass
         self.assertIn("skipped", st[3]["reason"])
         self.assertEqual(rec["verdict"], "failed")
-        stored = (self.state / f"{T.evidence_name(TID, rec['head'])}.json").read_text(encoding="utf-8")
+        stored = (self.ev.directory / f"{T.evidence_name(TID, rec['head'])}.json").read_text(encoding="utf-8")
         self.assertNotIn("A" * 24, stored)                     # the printed credential-shaped text is redacted
         self.assertEqual(self.run_all(reqs[:1], resume=False)["verdict"], "passed")
         # the repeated run left the worktree untouched

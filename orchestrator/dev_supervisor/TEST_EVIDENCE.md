@@ -46,7 +46,7 @@ python -B -m dev_supervisor.testreq check  --task T-DEV-065        # the verdict
 ```
 
 `--task` defaults to the task whose branch is checked out. The requirement list is read from `origin/main`, the same source `integrate`
-uses, not from the worktree. Evidence is stored in the supervisor state directory (`--state-dir`, default as for the Supervisor), never in the repository.
+uses, not from the worktree. Evidence is stored in the `test_evidence` subfolder of the supervisor state directory (`--state-dir`, default as for the Supervisor; a subfolder so that the Supervisor's own files are never touched), never in the repository.
 Exit codes: 0 passed, 1 not passed, 2 refused (usage, unreadable registry, run already in progress), 130 interrupted.
 
 A run refuses or fails as follows:
@@ -67,7 +67,7 @@ throw-away directory that is deleted afterwards) and `PYTHONDONTWRITEBYTECODE=1`
 
 ## The evidence record
 
-One document per task and head in the state directory, `tev_<task>_<head12>`. It holds the task, branch, the **head commit**, the **diff hash**
+One document per task and head in that subfolder, `tev_<task>_<head12>.json` (the state store's envelope, written atomically, with a `.bak` of the previous version). It holds the task, branch, the **head commit**, the **diff hash**
 (the same 16-hex hash the review marker uses), a **hash of the requirement list**, the attempt number, state (`running`, `complete`, `interrupted`),
 the runner pid, and per requirement: index, text, kind, argv, directory, start and end time, duration, exit code, test counts, status
 (`passed failed skipped blocked not_run`), reason and output tail. A SHA-256 checksum over the whole record is stored in it.

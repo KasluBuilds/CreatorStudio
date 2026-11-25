@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from dev_supervisor.state_store import StateStore, StoreError, scrub, utc_iso
+from dev_supervisor.state_store import StateStore, StoreError, default_directory, scrub, utc_iso
 
 __all__ = ["Req", "classify", "classify_all", "reqs_hash", "EvidenceStore", "run_requirements", "check_evidence",
            "gate_verdict", "evidence_name", "main"]
@@ -186,10 +186,12 @@ def _sealed(record: Dict[str, Any]) -> bool:
 
 
 class EvidenceStore:
-    """Evidence records in the supervisor state directory (never inside the repository)."""
+    """Evidence records in the ``test_evidence`` subdirectory of the supervisor state directory (never inside the repository).
+    A subdirectory of its own, so that opening it never touches the Supervisor's own files or their temporary files."""
 
     def __init__(self, directory: Optional[os.PathLike] = None, *, create: bool = True, clock: Callable[[], float] = time.time):
-        self.store = StateStore(directory, create=create, clock=clock)
+        self.directory = Path(os.path.abspath(str(directory if directory is not None else default_directory()))) / "test_evidence"
+        self.store = StateStore(self.directory, create=create, clock=clock)
 
     def load(self, task_id: str, head: str) -> Tuple[Optional[Dict[str, Any]], str]:
         """(record, "") or (None, reason). A missing record and an unreadable one are different reasons."""
