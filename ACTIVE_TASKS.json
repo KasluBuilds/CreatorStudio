@@ -651,6 +651,17 @@
       "paths": [
         "orchestrator/tests/test_dev_intake.py"
       ]
+    },
+    "AGR-DEV-071-01": {
+      "description": "T-DEV-071 edits three documentation pages only; no code, test or launcher changes.",
+      "task_ids": [
+        "T-DEV-071"
+      ],
+      "paths": [
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/TEST_EVIDENCE.md"
+      ]
     }
   },
   "tasks": [
@@ -3699,6 +3710,42 @@
         "acquired": "2026-11-25T06:52:19+00:00",
         "expires": "2026-11-26T06:52:19+00:00",
         "released": "2026-11-25T07:29:30+00:00"
+      }
+    },
+    {
+      "id": "T-DEV-071",
+      "title": "dev_supervisor: record the test-evidence mission, the third worker change and the remaining autonomy gaps",
+      "description": "Documentation only. Record in WORKER_GATEWAY.md (new section 13), WORKER_DISPATCH.md and TEST_EVIDENCE.md what the test-execution mission implemented and merged (T-DEV-065 to T-DEV-070), the third worker-produced change (T-DEV-066: worker, times, turns, tool use, gateway counts, what review found, what Main added), what is demonstrated and what is not, and the next milestones with measurable acceptance criteria. Also correct the wording of the two git commit forms in section 12.",
+      "owner": "claude:main-coordinator",
+      "branch": "task/t-dev-071-docs-test-evidence",
+      "worktree": "../CreatorStudio-worktrees/t-dev-071-docs-test-evidence",
+      "status": "ACTIVE",
+      "depends_on": [],
+      "exclusive_resources": [],
+      "integration_agreements": [
+        "AGR-DEV-071-01"
+      ],
+      "owned_paths": [
+        "orchestrator/dev_supervisor/WORKER_GATEWAY.md",
+        "orchestrator/dev_supervisor/WORKER_DISPATCH.md",
+        "orchestrator/dev_supervisor/TEST_EVIDENCE.md"
+      ],
+      "acceptance_criteria": [
+        "the merged pull requests, review rounds, tests run and what each worker or Main produced are recorded with labels and match GitHub and the registry",
+        "the pages do not call the system autonomous and list what is still not demonstrated",
+        "next milestones each have a measurable acceptance criterion",
+        "the section 12 wording about the two git commit forms is corrected; no credential or fragment appears"
+      ],
+      "test_requirements": [
+        "cd orchestrator && python -B -I -m unittest discover -s tests -p test_dev_docs.py",
+        "cd orchestrator && python -B -m governance validate",
+        "integrate --preflight passes on the branch",
+        "independent review of the exact diff"
+      ],
+      "integration_notes": "Claimed 2026-11-25 under the test-execution mission.",
+      "lease": {
+        "acquired": "2026-11-25T07:38:19+00:00",
+        "expires": "2026-11-26T07:38:19+00:00"
       }
     }
   ]
